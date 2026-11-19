@@ -81,6 +81,8 @@ sheets.
 
 What is left against the VAE on `mixr_1119_1455`, on the user's read: screentone dots smoothed
 into soft shading; earlier, speed lines and footnote-size glyphs soft under zoom.
+Measured beside it: textured regions 1 – 2.5 levels darker than the VAE in linear light
+(`tone_probe.py`), the meter for any arm here.
 
 - GAN on the head: FastFrames uses DINOv3 ViT-S/16 heads at layers 4 / 8 / 12 with a
   relativistic loss and R1 / R2; the turbo line's disc code is in git history.
@@ -110,6 +112,11 @@ memory is the motive there (the fp32 VAE decode does not fit beside the DiT). No
 - Screentone: small dots smoothed into soft shading, a systematic difference from the VAE (the
   user's read on `mixr_1119_1455`, good enough to release). Taken up under P5, pixel losses on
   the head.
+- Tone: the head is darker than the VAE on textured regions (the user's read; `tone_probe.py`,
+  `reports/p4_mix_2026_11_19.md`): about 2.5 levels in linear light on screentone-like blocks of
+  mono renders on the base DiT, 1 on turbo, under 1 level over a whole image; flat regions level.
+  The loss has no term on local tone. Same P5 topic.
+- The user's read of the 50-step and Spectrum renders of `mixr_1119_1455`: not given yet.
 - Speed lines (강조선) slightly soft, footnote-size glyphs blur, under zoom only (the user's read
   and Claude's on `pagemix_1119_1242`).
 - The P3a generations (6 mono, 26 colour) not re-run on the pagemix head (`p3_generated.py`).

@@ -11,7 +11,7 @@ App. C). Run records, numbers and reads: `project/pixel_decoder/reports/` (index
 | script | what it does | records |
 |---|---|---|
 | `linear_probe.py` | P1: ridge per-token linear readout; writes `readout_linear.safetensors` | `p1_readout_2026_11_18.md` |
-| `convnext_head.py` | head training (rollout → DiT forward → VAE target → replay updates); evals on test / text / manga | `p2_skip`, `upsample`, `replay_recipe`, `pagemix`, `p4_t2` |
+| `convnext_head.py` | head training (rollout → DiT forward → VAE target → replay updates); `--points` draws the decode point per rollout; evals on test / text / manga | `p2_skip`, `upsample`, `replay_recipe`, `pagemix`, `p4_t2`, `p4_mix` |
 | `p3_generated.py` | the head on sampled images (`generate_body`), base and / or an adapter; reads cfg / cond / teacher-forced | `p3_2026_11_19.md`, `p4_t2_2026_11_19.md` |
 | `render_sheets.py` | VAE \| P1 \| head sheets on chosen cached items or raw images (raw: original \| VAE \| head) | `p2_skip`, `p3`, `upsample` |
 | `build_pages.py` | precaches manga page latents into `post_image_dataset/pixel_pages/{train,eval}/` | `pagemix_2026_11_19.md` |
@@ -20,6 +20,7 @@ App. C). Run records, numbers and reads: `project/pixel_decoder/reports/` (index
 | `ceiling_probe.py` | which target the features reach: VAE(x_t), VAE(x̂0) vs VAE(x0), head vs both | `p2_skip_2026_11_19.md` |
 | `overfit_probe.py` | can a fresh head fit 16 images (~70 s per arm) | `p2_skip_2026_11_19.md` |
 | `grad_probe.py` | gradient shares and per-image gradient cosines of a head | `p2_skip_2026_11_19.md` |
+| `tone_probe.py` | tone of a head against the VAE on sheets (CPU): block mean shift in code values and in linear light, by texture | `p4_mix_2026_11_19.md` |
 
 Every script compiles through `_compile.py::compile_blocks_isolated` (a compile cache per seq-band
 signature; a shared cache replayed head training's 4032–4200 guard into the 3952–4096 P3 renders).
