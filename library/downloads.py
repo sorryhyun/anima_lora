@@ -61,6 +61,11 @@ ANIMA_VAE_FILE = "qwen_image_vae.safetensors"
 ANIMA_DIT_INT8_REPO = "sorryhyun/anima-base-v1.0-int8"
 ANIMA_DIT_INT8_FILE = "anima-base-v1.0_int8_gptq.safetensors"
 
+# Pixel head: decodes the DiT's last features to RGB in place of the VAE
+# (``library/anima/pixel_head.py``, ``inference.py --decoder pixel_head``).
+ANIMA_PIXEL_HEAD_REPO = "sorryhyun/anima-pixel-decoder"
+ANIMA_PIXEL_HEAD_FILE = "anima_pixel_head.safetensors"
+
 # PE-Core-L14-336 — global/CLIP-aligned vision features (CMMD validation
 # only). PE-Spatial, the REPA/grouping tower, is the package's row.
 PE_CORE_REPO = "facebook/PE-Core-L14-336"
@@ -101,6 +106,11 @@ MOSS_TE_INT8_DIR = "int8"
 # ``library/moss/dit_int8/base.py``, the ``TrainRequest.int8`` default.
 MOSS_DIT_INT8_REPO = "sorryhyun/MOSS-Image-Base-int8"
 MOSS_DIT_INT8_FILE = "moss_image_base_int8_gptq.safetensors"
+
+
+def default_pixel_head_path() -> Path:
+    """``<models_dir>/vae/anima_pixel_head.safetensors`` — the pixel head beside the VAE."""
+    return models_dir() / kind_dir("vae") / ANIMA_PIXEL_HEAD_FILE
 
 
 def default_pe_core_path() -> Path:
@@ -152,6 +162,12 @@ TRAINER_PACKS: tuple[Pack, ...] = (
         "Anima INT8 DiT",
         "Anima base's DiT with its block linears in int8 GPTQ (~2.4 GB), for "
         "--int8: fetched on first use.",
+    ),
+    Pack(
+        "anima-pixel-head",
+        "Anima pixel head",
+        "A ~95 MB decoder that turns the DiT's last-step features into the image "
+        "in place of the VAE, for --decoder pixel_head: fetched on first use.",
     ),
     Pack(
         "pe",
@@ -425,6 +441,18 @@ def anima_catalog() -> tuple[Asset, ...]:
             notes="~2.4 GB. The block linears INT8 ConvRot with offline GPTQ, the "
             "rest bf16. A fingerprint of the first and last block linears refuses any DiT that differs "
             "in them, so the 40-block Anima-2.9B needs its own file or round to nearest.",
+        ),
+        Asset(
+            id="anima_pixel_head",
+            pack="anima-pixel-head",
+            title="Anima pixel head (decoder)",
+            repo=ANIMA_PIXEL_HEAD_REPO,
+            files=(ANIMA_PIXEL_HEAD_FILE,),
+            dest=models_dir() / kind_dir("vae"),
+            used_by="inference.py --decoder pixel_head (PIXEL=1 on test-*)",
+            notes="~95 MB. Reads the DiT's last-step features and writes RGB in "
+            "place of the VAE decode; trained on the base DiT at shift-3 Euler "
+            "20-50 steps and the 4-step turbo LoRA. Fetched on first use.",
         ),
         Asset(
             id="pe_core",

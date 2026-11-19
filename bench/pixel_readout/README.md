@@ -6,6 +6,10 @@ App. C). Run records, numbers and reads: `project/pixel_decoder/reports/` (index
 `README.md`). Plan: `project/pixel_decoder/plan.md`; current recipe:
 `project/pixel_decoder/reports/phases_p1_p4_2026_11_19.md`.
 
+The model code (`PixelHead`, `PixelTap`, `load_pixel_head`, `lat_patches`, `from_patches`,
+`PATCH`) lives in `library/anima/pixel_head.py` since 2026-11-19; `convnext_head.py` and
+`linear_probe.py` re-export it for the scripts here.
+
 ## Scripts
 
 | script | what it does | records |
@@ -15,7 +19,7 @@ App. C). Run records, numbers and reads: `project/pixel_decoder/reports/` (index
 | `p3_generated.py` | the head on sampled images (`generate_body`), base and / or an adapter; reads cfg / cond / teacher-forced | `p3_2026_11_19.md`, `p4_t2_2026_11_19.md` |
 | `render_sheets.py` | VAE \| P1 \| head sheets on chosen cached items or raw images (raw: original \| VAE \| head) | `p2_skip`, `p3`, `upsample` |
 | `build_pages.py` | precaches manga page latents into `post_image_dataset/pixel_pages/{train,eval}/` | `pagemix_2026_11_19.md` |
-| `e2e_speed.py` | decode cost on the `make test SPECTRUM=1` sampler (head vs VAE resident / swap / disk) | `replay_recipe_2026_11_19.md` |
+| `e2e_speed.py` | decode cost on the `make test SPECTRUM=1` sampler, or turbo with `--adapter --no_spectrum` (head vs VAE resident / swap / disk) | `replay_recipe_2026_11_19.md`, `release_2026_11_19.md` |
 | `rollout_profile.py` | where a training rollout's time goes | `replay_recipe_2026_11_19.md` |
 | `ceiling_probe.py` | which target the features reach: VAE(x_t), VAE(x̂0) vs VAE(x0), head vs both | `p2_skip_2026_11_19.md` |
 | `overfit_probe.py` | can a fresh head fit 16 images (~70 s per arm) | `p2_skip_2026_11_19.md` |

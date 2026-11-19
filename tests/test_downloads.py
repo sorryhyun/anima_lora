@@ -52,6 +52,7 @@ def test_every_visible_row_belongs_to_a_listed_pack():
     assert [p.id for p in DL.TRAINER_PACKS] == [
         "anima",
         "anima-dit-int8",
+        "anima-pixel-head",
         "pe",
         "cjk",
         "moss-base",

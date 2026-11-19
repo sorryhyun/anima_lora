@@ -21,6 +21,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dit", type=str, default=None, help="DiT directory or path")
     parser.add_argument("--vae", type=str, default=None, help="VAE directory or path")
     parser.add_argument(
+        "--decoder",
+        choices=("vae", "pixel_head"),
+        default="vae",
+        help="Latent → pixels: the VAE, or the pixel head reading the DiT's last-step "
+        "features (no VAE load; ~7 ms per ~1 MP image). The head was trained on "
+        "shift-3 Euler at 20-50 steps and the 4-step turbo LoRA; elsewhere it decodes "
+        "with a warning. docs/anima/inference/pixel_head.md.",
+    )
+    parser.add_argument(
+        "--pixel_head",
+        type=str,
+        default=None,
+        help="Pixel head file (default: the catalog's anima_pixel_head, fetched on "
+        "first use).",
+    )
+    parser.add_argument(
         "--vae_chunk_size",
         type=int,
         default=None,

@@ -35,6 +35,16 @@ def _mod_flags() -> list[str]:
     return ["--pooled_text_proj", str(latest_output("pooled_text_proj"))]
 
 
+def _pixel_flags() -> list[str]:
+    """``PIXEL=1`` → ``--decoder pixel_head`` (+ ``--pixel_head`` from ``PIXEL_HEAD=``)."""
+    if not _env_truthy("PIXEL"):
+        return []
+    flags = ["--decoder", "pixel_head"]
+    if head := os.environ.get("PIXEL_HEAD", "").strip():
+        flags += ["--pixel_head", head]
+    return flags
+
+
 def _base_test_args(*, lora_default: bool = True) -> list[str]:
     """Build the shared ``inference.py`` argv prefix used by every ``test*`` command.
 
@@ -60,6 +70,8 @@ def _base_test_args(*, lora_default: bool = True) -> list[str]:
       default 0.85). Composes with every other lever here.
     - ``INT8=1`` appends ``--int8`` (the int8 base, LoRAs as hooks).
     - ``STREAM=bf16|fp32`` appends ``--stream`` (fp32 by default).
+    - ``PIXEL=1`` appends ``--decoder pixel_head`` (decode with the pixel head, no
+      VAE); ``PIXEL_HEAD=<file>`` points it at another head. Also on ``test-turbo``.
     """
     args = list(INFERENCE_BASE)
     nolora_env = os.environ.get("NOLORA")
@@ -83,6 +95,7 @@ def _base_test_args(*, lora_default: bool = True) -> list[str]:
         args += ["--int8"]
     if stream := os.environ.get("STREAM", "").strip():
         args += ["--stream", stream]
+    args += _pixel_flags()
     if _env_truthy("DAVE"):
         args += _dave_flags()
     if _env_truthy("FSG"):
@@ -304,11 +317,7 @@ def cmd_test_easycontrol(extra):
         "region": {
             "weight": "anima_easycontrol_region",
             "out": "region",
-            "ref_dir": ROOT
-            / "post_image_dataset"
-            / "i2i"
-            / "region"
-            / "cond_images",
+            "ref_dir": ROOT / "post_image_dataset" / "i2i" / "region" / "cond_images",
             "empty_prompt": False,
         },
         # subject: ref is a DIFFERENT image of the character to retrieve; the
@@ -408,6 +417,7 @@ def cmd_test_turbo(extra):
         pass
     base = override_arg(base, "--infer_steps", infer_steps)
     base = override_arg(base, "--guidance_scale", "1.0")
+    base += _pixel_flags()
     run(
         [
             *base,

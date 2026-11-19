@@ -456,6 +456,8 @@ STRINGS: dict[str, str] = {
     "models_pack_anima_desc": "The DiT, the Qwen3-0.6B text encoder and the Qwen-Image VAE — every training and inference run needs all three.",
     "models_pack_anima_dit_int8": "Anima INT8 DiT",
     "models_pack_anima_dit_int8_desc": "Anima base's DiT with its block linears in int8 GPTQ (~2.4 GB), for --int8: fetched on first use.",
+    "models_pack_anima_pixel_head": "Anima pixel head",
+    "models_pack_anima_pixel_head_desc": "A ~95 MB decoder that turns the DiT's last-step features into the image in place of the VAE, for --decoder pixel_head: fetched on first use.",
     "models_pack_pe": "PE-Core",
     "models_pack_pe_desc": "PE-Core-L14-336: the CMMD validation metric only (use_cmmd, off by default). The REPA feature cache uses PE-Spatial — the Grouping pack on the Curation tab.",
     "models_pack_cjk": "CJK vocab pack",

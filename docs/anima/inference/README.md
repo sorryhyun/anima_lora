@@ -14,6 +14,12 @@ The DiT operates on 5D latents `(B, C, T=1, H, W)`; sampler-boundary plug-ins he
 | [spd.md](spd.md) | Spectral Progressive Diffusion — early steps at low res, spectral noise-expansion handoff to full res. Runner in `networks/spd.py`. | `--spd` | v0 = Euler-only, no SMC/Spectrum compose; single-late `0.5→1.0 @ σ0.7` default. `_archive/spd/bench/plan.md` Phase 3, `_archive/proposals/spd_finetune_lora.md` (Case B). |
 | [foveated.md](foveated.md) | Deferred-foveated merge — full grid above σ_c, then fovea tokens 1:1 + 2×2 periphery token groups merged (endogenous `combo` mask). Identity-preserving, ×1.37 e2e. Runner in `networks/foveated.py`. Line ARCHIVED 2026-07-03 (periphery blur constitutive — P4t; runner stays, off by default). | `--fovea_sigma_c 0.75` | Euler-only; σ_c=0.75 and the final bicubic readout are load-bearing; frac floor 0.25. Foveated-Spectrum compose CLOSED by P3, tail un-merge by P4t (`_archive/bench/foveated/`) — don't re-propose. |
 
+## Decode
+
+| Doc | What it is | Flag | Load-bearing gotcha |
+|-----|-----------|------|---------------------|
+| [pixel_head.md](pixel_head.md) | 25M-parameter head that decodes the DiT's last-step features to RGB in place of the VAE (~7 ms per ~1 MP image, no VAE load). Trained, not training-free. | `--decoder pixel_head` / `make test PIXEL=1` | Trained at shift-3 Euler 20–50 steps and the 4-step turbo (σ 0.5); elsewhere it warns. Screentone comes out as soft shading. |
+
 ## Sampler-boundary corrections
 
 | Doc | What it is | Flag | Load-bearing gotcha |

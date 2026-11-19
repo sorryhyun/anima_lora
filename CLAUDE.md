@@ -235,6 +235,9 @@ routing axes: `lora-routing` skill).
   `configs/base.toml` for training) runs the stream, modulation, q / k norms, RoPE, embedder and
   head in fp32 around the block GEMMs; a seed renders differently on each. EasyControl stays on
   bf16, with a warning. `library/anima/stream.py`, `docs/anima/optimizations/fp32_stream.md`.
+- `--decoder pixel_head` (`PIXEL=1` on `test-*` and `test-turbo`) decodes with the pixel head
+  (`library/anima/pixel_head.py`, catalog `anima_pixel_head`) instead of the VAE; trained at
+  shift-3 Euler 20–50 steps and the 4-step turbo, warns elsewhere. `docs/anima/inference/pixel_head.md`.
 - `make merge ADAPTER_DIR=… [MULTIPLIER=0.8]` bakes a LoRA / T-LoRA into the DiT;
   refuses Hydra-moe / postfix / prefix / register tokens / step-expert turbo heads unless `--allow-partial`.
 - `--sigma_lowres` (σ-demoted training, opt-in): the research line is archived but the

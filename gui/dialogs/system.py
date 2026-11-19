@@ -60,6 +60,7 @@ _TITLE_KEYS: dict[str, str] = {
 _PACK_KEYS: dict[str, str] = {
     "anima": "models_pack_anima",
     "anima-dit-int8": "models_pack_anima_dit_int8",
+    "anima-pixel-head": "models_pack_anima_pixel_head",
     "pe": "models_pack_pe",
     "cjk": "models_pack_cjk",
     "moss-base": "models_pack_moss_base",

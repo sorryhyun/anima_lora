@@ -19,5 +19,9 @@ attach(
         "GenerationRequest": "library.inference",
         "prepare_text_inputs": "library.inference",
         "ensure_text_strategies": "library.inference",
+        # --decoder pixel_head: attach before sampling, decode after, save
+        "ensure_pixel_decoder": "library.inference",
+        "pixel_decode": "library.inference",
+        "save_decoded": "library.inference",
     },
 )

@@ -14,34 +14,38 @@ then promotion of the model core into `library/`, then the P5 topics.
 
 ### 1. Release
 
-- Done 2026-11-19: `mixr_1119_1455` uploaded to the private repo `sorryhyun/anima-pixel-head`
+- Done 2026-11-19: `mixr_1119_1455` uploaded to the private repo `sorryhyun/anima-pixel-decoder`
   (the user: private first, they edit the card later). Card source `deploy/README.md`; decode
   cost on turbo and Spectrum and the upload record in `reports/release_2026_11_19.md` (turbo:
   VAE swap 15 % of DiT + decode, head 7 ms).
 - Left to the user: the card text, making the repo public.
 - Open: the head's turbo point was trained with the Hub turbo repo's
-  `old/anima_turbo_4step.safetensors`; v3 and v4 are not read. A `p3_generated.py` run with
-  `--adapter` on v3 / v4 answers it (minutes).
+  `old/anima_turbo_4step.safetensors`; on v3 / v4 it reads 31.50 / 31.40 against 34.61
+  (`reports/release_2026_11_19.md`). A turbo point on v3 or v4 (`--points … :adapter`,
+  ~7 min per 500 rollouts) is the fix; not run.
 
 ### 2. Promotion — the model core into `library/`
 
-After the release. The steps below are Claude's draft, to be settled when the item opens.
+Done 2026-11-19 (the user: "승격 ㄱㄱ"), except the ComfyUI node:
 
-- What moves: `PixelHead` / `ConvNeXtBlock`, `load_head`, `lat_patches`, `from_patches` and
-  `PATCH`, the tap on `final_layer.linear`'s input, the CFG feature combine
-  f_u + g·(f_c − f_u), and one decode call (features + x_t → pixels). Destination
-  `library/anima/pixel_head.py`: the tap, the 16-px patch and the 64-value latent patch are
-  Anima's. `bench/pixel_readout/` imports from it and keeps training, evals, sheets and probes.
-- A model-catalog row for the released weight (`library/downloads.py`); the loader's default
-  path comes from it.
-- An `inference.py` decode switch (head or VAE) and its `test-*` lever. The head is read only
-  where it was trained: shift-3 Euler at 20 … 50 steps on the base DiT, and the 4-step turbo
-  grid. Outside that the head still decodes and the CLI logs a warning; no refusal, no fallback
-  (the user, 2026-11-19: "거부까진 안해도 될듯. 경고 cli 로그만 출력하면 될거같고").
-- `anima_lora` façade re-export for embedders.
-- `CONTRIBUTING.md` Tier 2: `e2e_speed.py` as the bench, an invariant test that runs without
-  the card (a saved head loads from its metadata; decode output shape per token grid), and a
-  `docs/anima/` page.
+- `library/anima/pixel_head.py`: `PixelHead`, `ConvNeXtBlock`, `load_pixel_head` (shape and
+  trained σ ranges from the metadata), `lat_patches`, `from_patches`, `PATCH`, `PixelTap`
+  (hooks on the DiT forward and `final_layer.linear`, CFG combine, decode), `out_of_range`.
+  `bench/pixel_readout/` imports the model code from it.
+- Catalog row `anima_pixel_head`, pack `anima-pixel-head` (`models/vae/`, fetched on first use;
+  GUI pack strings in four languages).
+- `inference.py --decoder pixel_head [--pixel_head <file>]` (`library/inference/pixel_decoder.py`)
+  on the single, interactive and batch paths; `PIXEL=1` / `PIXEL_HEAD=` on `test-*` and
+  `test-turbo`; `GenerationRequest(decoder=…, pixel_head=…)`. Warns outside the trained σ, on a
+  Spectrum cached last step and under `--cfgpp` / `--smc_cfg`; refuses `--tiled_diffusion`;
+  `--latent_path` falls back to the VAE with a warning.
+- Façade: `anima_lora.models.{PixelHead, load_pixel_head, PixelTap}`,
+  `anima_lora.inference.{ensure_pixel_decoder, pixel_decode, save_decoded}`.
+- Tier 2: bench `e2e_speed.py`, test `tests/test_pixel_head.py` (CPU), doc
+  `docs/anima/inference/pixel_head.md`.
+- Check through the daemon (one seed, one prompt, head PNG vs VAE decode of the saved latent):
+  base 28 steps CFG 4 46.2 dB, turbo 38.2 dB; no warnings.
+
 - ComfyUI node (the user plans one, 2026-11-19), after the library lands. Its own standalone
   repo symlinked into `../comfy/custom_nodes/`, the head code a `_vendor/` copy of
   `library/anima/pixel_head.py` (`make vendor-sync`). Two parts: a MODEL patch that keeps the

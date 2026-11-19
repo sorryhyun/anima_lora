@@ -198,6 +198,23 @@ def save_images(
     return f"{save_path}/{image_name}"
 
 
+def save_decoded(
+    args: argparse.Namespace,
+    latent: torch.Tensor,
+    pixels: torch.Tensor,
+    original_base_name: Optional[str] = None,
+) -> None:
+    """``save_output`` for pixels decoded elsewhere (``--decoder pixel_head``):
+    the latent per ``output_type``, then the (3, H, W) pixels as the image."""
+    if args.output_type in ("latent", "latent_images"):
+        height, width = latent.shape[-2] * 8, latent.shape[-1] * 8
+        save_latent(latent, args, height, width)
+    if args.output_type == "latent":
+        return
+    original_name = "" if original_base_name is None else f"_{original_base_name}"
+    save_images(pixels, args, original_name)
+
+
 def save_output(
     args: argparse.Namespace,
     vae: qwen_image_autoencoder_kl.AutoencoderKLQwenImage,

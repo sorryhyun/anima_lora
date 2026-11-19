@@ -1074,6 +1074,10 @@ def generate(
     else:
         anima.reset_dave()
 
+    from library.inference.pixel_decoder import ensure_pixel_decoder
+
+    ensure_pixel_decoder(args, anima, device)
+
     try:
         return generate_body(args, anima, context, context_null, device, seed)
     finally:

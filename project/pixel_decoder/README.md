@@ -11,7 +11,7 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
 - [plan.md](plan.md) — what is next (release, promotion into `library/`), the P5 topics and the
   open items. P1 – P4 and the settled recipe: `reports/phases_p1_p4_2026_11_19.md`.
 - [reports/](reports/) — one report per run or probe, indexed in its `README.md`.
-- [deploy/](deploy/) — the Hub card and NOTICE of `sorryhyun/anima-pixel-head` (private).
+- [deploy/](deploy/) — the Hub card and NOTICE of `sorryhyun/anima-pixel-decoder` (private).
 - Code and per-run records: `bench/pixel_readout/` (`linear_probe.py` P1, `convnext_head.py`
   head training, `e2e_speed.py`, `rollout_profile.py`, `render_sheets.py`, `ceiling_probe.py`, `overfit_probe.py`, `grad_probe.py`;
   its `README.md` maps the scripts; run records are in `reports/`). Results:
@@ -55,5 +55,6 @@ verdict: P4 passed. One head over both decode points (`mix_1119_1415`,
 29.06 / 23.13; the user settled the recipe on it. Release head `mixr_1119_1455` (base σ 0.0577 … 0.1364 and turbo σ 0.5,
 3,000 rollouts): turbo 35.90 / 29.01, base 28 steps 33.83 / 26.38; the user's verdict: good
 enough to release, P4 complete. Released 2026-11-19 to the private Hub repo
-`sorryhyun/anima-pixel-head` (`reports/release_2026_11_19.md`). Next: promotion of the model
-core into `library/`, then the P5 topics (`plan.md`).
+`sorryhyun/anima-pixel-decoder` (`reports/release_2026_11_19.md`). Promoted the same day: the model
+core in `library/anima/pixel_head.py`, `inference.py --decoder pixel_head` (`make test PIXEL=1`),
+`docs/anima/inference/pixel_head.md`. Next: the ComfyUI node, then the P5 topics (`plan.md`).

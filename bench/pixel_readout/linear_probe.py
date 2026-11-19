@@ -49,7 +49,7 @@ from library.io.cache import (
 )
 from library.models import qwen_vae
 
-PATCH = 16  # pixels per DiT token side (VAE /8 × DiT patch 2)
+from library.anima.pixel_head import PATCH, from_patches  # noqa: E402, F401
 
 
 def pick_samples(
@@ -89,14 +89,6 @@ def to_patches(img: torch.Tensor) -> torch.Tensor:
         img.view(c, h // PATCH, PATCH, w // PATCH, PATCH)
         .permute(1, 3, 2, 4, 0)
         .reshape((h // PATCH) * (w // PATCH), PATCH * PATCH * c)
-    )
-
-
-def from_patches(tok: torch.Tensor, gh: int, gw: int) -> torch.Tensor:
-    return (
-        tok.view(gh, gw, PATCH, PATCH, 3)
-        .permute(4, 0, 2, 1, 3)
-        .reshape(3, gh * PATCH, gw * PATCH)
     )
 
 

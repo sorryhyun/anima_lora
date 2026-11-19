@@ -38,6 +38,10 @@ from library.inference import (
     generate_body,
     save_latent,
     save_output,
+    save_decoded,
+    check_pixel_head_args,
+    ensure_pixel_decoder,
+    pixel_decode,
     write_gen_manifest,
 )
 from library.inference.text import MAX_CROSSATTN_TOKENS
@@ -201,6 +205,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         first_prompt_args.compile_seq_range = (min(counts), max(counts))
         first_prompt_args.compile_token_bands = cluster_token_bands(counts)
     anima = load_dit_model(first_prompt_args, device, dit_weight_dtype)
+    use_head = ensure_pixel_decoder(args, anima, device) is not None
 
     # 3. Precompute Text Data (Text Encoder)
     logger.info("Loading Text Encoder for batch text preprocessing...")
@@ -325,11 +330,18 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                     latents=batched_latents,
                 )
 
+                pixels = pixel_decode(first_args, anima) if use_head else None
+
                 # Split batch and save
                 for j, idx in enumerate(indices):
                     single_latent = latents[j : j + 1]
                     all_prompt_args_list[idx].seed = seeds[j]
                     all_prompt_args_list[idx].save_path = save_dir
+                    if pixels is not None:
+                        save_decoded(
+                            all_prompt_args_list[idx], single_latent, pixels[j]
+                        )
+                        continue
                     if all_prompt_args_list[idx].output_type in [
                         "latent",
                         "latent_images",
@@ -383,16 +395,19 @@ def process_interactive(args: argparse.Namespace) -> None:
     shared_models = load_shared_models(args)
     shared_models["conds_cache"] = {}
 
-    vae = qwen_image_autoencoder_kl.load_vae(
-        args.vae,
-        device="cpu",
-        disable_mmap=True,
-        spatial_chunk_size=args.vae_chunk_size,
-        disable_cache=args.vae_disable_cache,
-        vae_2d=args.vae_2d,
-    )
-    vae.to(torch.bfloat16)
-    vae.eval()
+    use_head = args.decoder == "pixel_head"
+    vae = None
+    if not use_head:
+        vae = qwen_image_autoencoder_kl.load_vae(
+            args.vae,
+            device="cpu",
+            disable_mmap=True,
+            spatial_chunk_size=args.vae_chunk_size,
+            disable_cache=args.vae_disable_cache,
+            vae_2d=args.vae_2d,
+        )
+        vae.to(torch.bfloat16)
+        vae.eval()
 
     print("Interactive mode. Enter prompts (Ctrl+D or Ctrl+Z (Windows) to exit):")
 
@@ -433,7 +448,11 @@ def process_interactive(args: argparse.Namespace) -> None:
                 prompt_args.seed = resolve_seed(prompt_args)
                 latent = generate(prompt_args, gen_settings, shared_models)
 
-                save_output(prompt_args, vae, latent, device)
+                if use_head:
+                    pixels = pixel_decode(prompt_args, shared_models["model"])
+                    save_decoded(prompt_args, latent, pixels[0])
+                else:
+                    save_output(prompt_args, vae, latent, device)
 
             except KeyboardInterrupt:
                 print("\nInterrupted. Continue (Ctrl+D or Ctrl+Z (Windows) to exit)")
@@ -487,8 +506,14 @@ def main():
     device = torch.device(device)
     logger.info(f"Using device: {device}")
     args.device = device
+    check_pixel_head_args(args)
 
     if latents_mode:
+        if args.decoder == "pixel_head":
+            logger.warning(
+                "--decoder pixel_head reads the DiT's features; --latent_path has none, "
+                "decoding with the VAE."
+            )
         # Original latent decode mode
         original_base_names = []
         latents_list = []
@@ -579,6 +604,14 @@ def main():
             # generate() doesn't write the resolved seed back to args; pin it
             # for save_output()'s filename + metadata.
             args.seed = resolve_seed(args)
+            if args.decoder == "pixel_head":
+                shared: dict = {}
+                latent = generate(args, gen_settings, shared)
+                save_decoded(args, latent, pixel_decode(args, shared["model"])[0])
+                new_images = sorted(_list_pngs(args) - _pngs_before)
+                write_gen_manifest(args, new_images)
+                logger.info("Done!")
+                return
             latent = generate(args, gen_settings)
 
             clean_memory_on_device(device)

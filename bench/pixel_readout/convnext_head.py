@@ -63,6 +63,12 @@ from bench.pixel_readout.linear_probe import (
     psnr,
     to_pil,
 )
+from library.anima.pixel_head import (  # noqa: F401  (re-exported for the bench scripts)
+    ConvNeXtBlock,
+    PixelHead,
+    lat_patches,
+    load_pixel_head,
+)
 from library.datasets.buckets import cluster_token_bands
 from library.env import resolve_under_home
 from library.inference.sampling import get_timesteps_sigmas
@@ -91,88 +97,7 @@ TEXT_ARTISTS = (  # most "Japanese text" captions in post_image_dataset/resized
 # --------------------------------------------------------------------------- head
 
 
-class ConvNeXtBlock(nn.Module):
-    def __init__(self, dim: int, ls_init: float = 1e-6):
-        super().__init__()
-        self.dw = nn.Conv2d(dim, dim, 3, padding=1, groups=dim)
-        self.norm = nn.LayerNorm(dim, eps=1e-6)
-        self.fc1 = nn.Linear(dim, 4 * dim)
-        self.fc2 = nn.Linear(4 * dim, dim)
-        self.gamma = nn.Parameter(torch.full((dim,), ls_init))
-
-    def forward(self, x):  # (B, C, H, W)
-        h = self.dw(x).permute(0, 2, 3, 1)
-        h = self.fc2(F.gelu(self.fc1(self.norm(h))))
-        return x + (self.gamma * h).permute(0, 3, 1, 2)
-
-
-class PixelHead(nn.Module):
-    def __init__(
-        self,
-        d_feat: int,
-        d_lat: int,
-        width: int,
-        depth: int,
-        ls_init: float = 1e-6,
-        use_skip: bool = True,
-        up: int = 0,
-    ):
-        """``up`` > 0: the last ``up`` of the ``depth`` blocks run after one 2× upsample
-        (LayerNorm + per-token linear to 4 × width/2, pixel shuffle) at width/2, and
-        ``out`` writes an 8×8 patch per upsampled position instead of 16×16 per token."""
-        super().__init__()
-        out = PATCH * PATCH * 3
-        self.use_skip = use_skip
-        self.up = up
-        self.linear = nn.Linear(d_feat, out)  # P1 skip (unused when use_skip is off)
-        self.proj = nn.Linear(d_feat, width)
-        self.lat_embed = nn.Linear(d_lat, width)
-        self.blocks = nn.ModuleList(
-            ConvNeXtBlock(width, ls_init) for _ in range(depth - up)
-        )
-        w_out = width
-        if up:
-            w_out = width // 2
-            self.up_norm = nn.LayerNorm(width, eps=1e-6)
-            self.up_proj = nn.Linear(width, 4 * w_out)
-            self.up_blocks = nn.ModuleList(
-                ConvNeXtBlock(w_out, ls_init) for _ in range(up)
-            )
-        self.patch = PATCH // 2 if up else PATCH
-        self.norm_out = nn.LayerNorm(w_out, eps=1e-6)
-        self.out = nn.Linear(w_out, self.patch * self.patch * 3)
-        if (
-            use_skip
-        ):  # step 0 reproduces P1; without the skip, out keeps its default init
-            nn.init.zeros_(self.out.weight)
-            nn.init.zeros_(self.out.bias)
-
-    def forward(self, f, lat):  # f (gh, gw, D), lat (gh, gw, 64) → (3, H, W)
-        gh, gw = f.shape[:2]
-        h = (self.proj(f) + self.lat_embed(lat)).permute(2, 0, 1)[None]
-        for b in self.blocks:
-            h = b(h)
-        if self.up:
-            u = self.up_proj(self.up_norm(h.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
-            h = F.pixel_shuffle(u, 2)  # (1, width/2, 2gh, 2gw)
-            for b in self.up_blocks:
-                h = b(h)
-        h = self.norm_out(h[0].permute(1, 2, 0))
-        # the ridge solution loses ~dB under bf16 weights; keep the skip in fp32
-        with torch.autocast("cuda", enabled=False):
-            tok = self.out(h).float()
-            if self.up:
-                n, m, p = h.shape[0], h.shape[1], self.patch
-                img = tok.view(n, m, p, p, 3).permute(4, 0, 2, 1, 3)
-                img = img.reshape(3, n * p, m * p)
-                if self.use_skip:
-                    img = img + from_patches(
-                        self.linear(f.float()).reshape(gh * gw, -1), gh, gw
-                    )
-                return img
-            if self.use_skip:
-                tok = tok + self.linear(f.float())
-        return from_patches(tok.reshape(gh * gw, -1).float(), gh, gw)
+# ConvNeXtBlock / PixelHead live in library/anima/pixel_head.py (promoted 2026-11-19).
 
 
 def resolve_run(run: str | Path) -> Path:
@@ -188,21 +113,9 @@ def resolve_run(run: str | Path) -> Path:
     return hits[-1]
 
 
-def load_head(run: str | Path, d_feat: int, device) -> "PixelHead":
+def load_head(run: str | Path, d_feat: int, device) -> PixelHead:
     """A trained head from ``<run>/head.safetensors`` (shape from its metadata)."""
-    path = resolve_run(run) / "head.safetensors"
-    with safe_open(str(path), "pt") as fh:
-        meta = fh.metadata()
-    head = PixelHead(
-        d_feat,
-        64,
-        int(meta["width"]),
-        int(meta["depth"]),
-        use_skip=meta.get("skip", "1") == "1",
-        up=int(meta.get("up", "0")),
-    ).to(device)
-    head.load_state_dict(load_file(str(path)))
-    return head.eval()
+    return load_pixel_head(resolve_run(run) / "head.safetensors", device, d_feat)
 
 
 def attach_adapter(anima, path: str, device):
@@ -263,17 +176,6 @@ def pick_text(cache_root: Path, exclude: set[str]) -> list:
         if best is not None:
             out.append(best)
     return out
-
-
-def lat_patches(lat: torch.Tensor) -> torch.Tensor:
-    """(1, C, h, w) latent → (h/2, w/2, 4C)."""
-    _, c, h, w = lat.shape
-    return (
-        lat[0]
-        .view(c, h // 2, 2, w // 2, 2)
-        .permute(1, 3, 0, 2, 4)
-        .reshape(h // 2, w // 2, 4 * c)
-    )
 
 
 def page_token_count(path: Path) -> int:
