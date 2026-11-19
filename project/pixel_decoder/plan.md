@@ -61,15 +61,11 @@ line of work with its own proposal; order not set. The first steps are Claude's 
 
 ### ×2 / ×4 output
 
-The head writes 16×16 px per token after one internal 2× stage; ×2 output is 32×32 per token,
-decode and upscale in one readout. Under L1 / MSE a 1024-tier feature has no 2048 detail to
-regress, so a ×2 head trained on the recipe's loss alone gives a blurred mean
-(`proposal.md`); it needs a pixel loss (below) or a refiner. What exists: the SR sidecar's
-1-step ResShift ×2 / ×4 students (`project/finished/sr/`).
-
-- First steps: the chain swap with no training (head output in place of the VAE decode ahead
-  of ResShift ×2, minutes); a count of training images whose master in `image_dataset/` is at
-  least 2× the resized side, the supply of real ×2 targets.
+Its own plan: `x2_plan.md` (state, arm A's design and outcome, next arms). In short: the head
+writes 32×32 px per token through a second 2× stage; arm A (`x2a_1119_1802`, regression onto the
+released ResShift ×2 student's output) came out soft, 1.7 – 3.0 dB under the teacher run on the
+release head's ×1 output; next are a tone term and a perceptual or adversarial term on the ×2
+output (`reports/x2_arm_a_2026_11_19.md`).
 
 ### RGBA
 

@@ -1,0 +1,745 @@
+#!/usr/bin/env python3
+"""×2 pixel head: decode and 2× upscale in one readout (pixel_decoder P5, arm A).
+
+A released head (``PixelHead`` with one upsample stage, 8-px spacing at width 512) gets a
+second stage: LayerNorm + per-position linear 512 → 4 × 256, pixel shuffle, ConvNeXt blocks
+at 4-px spacing (width 256), and a linear that writes an 8×8 RGB patch per position, i.e.
+32×32 output pixels per DiT token. The ×1 output of the base head is kept and trained
+beside it, so one file decodes at ×1 and ×2.
+
+Target (arm A, teacher distillation): the released 1-step ResShift ×2 student
+(``ComfyUI-Distilled-ResShift``, its ``upscale`` at the node's defaults) applied to
+VAE(x̂0), x̂0 = x_t − σ·v from the same DiT forward. The ×1 output keeps its recipe target,
+VAE(x̂0). Both use the recipe loss (0.5 L1 + 5 MSE + 0.05 L_grad).
+
+Training is windowed: the DiT forward and the VAE decode run on the whole image; one
+random window of ``--window`` + 2 × ``--margin`` tokens per rollout goes to the teacher and
+into the replay buffer, and the loss leaves ``--margin`` tokens out on every window side
+that is not an image edge (the head's receptive field is 3 tokens; the same strip is the
+teacher's context). Evals run the head and the teacher on whole images.
+
+Usage::
+
+    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/x2_head.py \
+        --compile --init mixr_1119_1455 --adapter models/loras/anima_turbo_4step.safetensors \
+        --points 0.0577-0.1364 0.5:adapter --pages post_image_dataset/pixel_pages \
+        --page_share 0.33 --label x2a_mmdd_hhmm"
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import math
+import os
+import random
+import sys
+import time
+from collections import deque
+from pathlib import Path
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from PIL import Image, ImageDraw
+from safetensors import safe_open
+from safetensors.torch import load_file, save_file
+
+from bench._anima import (
+    DEFAULT_TEXT_ENCODER,
+    add_common_args,
+    add_model_args,
+    build_anima,
+)
+from bench._common import make_run_dir, start_heartbeat, write_result
+from bench.pixel_readout._compile import compile_blocks_isolated
+from bench.pixel_readout.convnext_head import (
+    P1_RUN,
+    attach_adapter,
+    densest_window,
+    page_token_count,
+    pick_text,
+    rec_loss,
+    resolve_run,
+    token_count,
+)
+from bench.pixel_readout.linear_probe import PATCH, pick_samples, psnr, to_pil
+from library.anima.pixel_head import (
+    ConvNeXtBlock,
+    PixelHead,
+    lat_patches,
+    load_pixel_head,
+)
+from library.datasets.buckets import cluster_token_bands
+from library.env import resolve_under_home
+from library.inference.sampling import get_timesteps_sigmas
+from library.inference.text import prepare_text_inputs
+from library.io.cache import (
+    discover_cached_pairs,
+    load_cached_latents,
+    load_cached_text_features,
+)
+from library.models import qwen_vae
+
+TEACHER_REPO = "../comfy/custom_nodes/comfyui-distilled-resshift"
+TEACHER_DIR = "../comfy/models/resshift"
+TEACHER_FILE = "rsd_student_18k.safetensors"  # Hub sorryhyun/Distilled-ResShift-2x
+VQGAN_FILE = "autoencoder_vq_f4.pth"
+
+
+# --------------------------------------------------------------------------- head
+
+
+class PixelHeadX2(nn.Module):
+    """A ``PixelHead`` (``up`` = 1) plus one more 2× stage → (×1 image, ×2 image)."""
+
+    def __init__(
+        self,
+        base: PixelHead,
+        depth2: int = 2,
+        ls_init: float = 1.0,
+        width2: int | None = None,
+    ):
+        super().__init__()
+        assert base.up and not base.use_skip, "base head: one upsample stage, no skip"
+        self.base = base
+        w = base.out.in_features
+        w2 = width2 or w // 2
+        self.patch2 = base.patch  # 8 output px per 4-px position = 2× the base
+        self.up2_norm = nn.LayerNorm(w, eps=1e-6)
+        self.up2_proj = nn.Linear(w, 4 * w2)
+        self.up2_blocks = nn.ModuleList(
+            ConvNeXtBlock(w2, ls_init) for _ in range(depth2)
+        )
+        self.norm2 = nn.LayerNorm(w2, eps=1e-6)
+        self.out2 = nn.Linear(w2, self.patch2 * self.patch2 * 3)
+
+    @staticmethod
+    def _unpatch(tok: torch.Tensor, p: int) -> torch.Tensor:
+        n, m = tok.shape[:2]
+        return tok.view(n, m, p, p, 3).permute(4, 0, 2, 1, 3).reshape(3, n * p, m * p)
+
+    def forward(self, f, lat):  # f (gh, gw, D), lat (gh, gw, 64)
+        b = self.base
+        h = (b.proj(f) + b.lat_embed(lat)).permute(2, 0, 1)[None]
+        for blk in b.blocks:
+            h = blk(h)
+        u = b.up_proj(b.up_norm(h.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
+        h = F.pixel_shuffle(u, 2)  # (1, w, 2gh, 2gw)
+        for blk in b.up_blocks:
+            h = blk(h)
+        h1 = b.norm_out(h[0].permute(1, 2, 0))
+        u = self.up2_proj(self.up2_norm(h.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
+        g = F.pixel_shuffle(u, 2)  # (1, w/2, 4gh, 4gw)
+        for blk in self.up2_blocks:
+            g = blk(g)
+        h2 = self.norm2(g[0].permute(1, 2, 0))
+        with torch.autocast(h.device.type, enabled=False):  # output layers in fp32
+            x1 = self._unpatch(b.out(h1.float()), b.patch)
+            x2 = self._unpatch(self.out2(h2.float()), self.patch2)
+        return x1, x2
+
+
+# --------------------------------------------------------------------------- teacher
+
+
+def load_teacher(repo: Path, weights: Path, device):
+    """The released ResShift ×2 student as ``up2(img (3,H,W) in [-1,1], seed) → (3,2H,2W)``.
+
+    Loaded the way the ComfyUI node loads it (student fp32 under bf16 autocast, VQGAN
+    fp16) and run through the node's ``upscale`` at its defaults (chop 512, overlap 64,
+    tile batch 4, shared noise)."""
+    spec = importlib.util.spec_from_file_location(
+        "resshift_infer", str(repo / "resshift_infer.py")
+    )
+    R = importlib.util.module_from_spec(spec)
+    sys.modules["resshift_infer"] = R
+    spec.loader.exec_module(R)
+    cfg = R.load_configs(str(weights / VQGAN_FILE), config_path=R.CONFIGS["x2"])
+    diff = R.build_diffusion(cfg)
+    path = str(weights / TEACHER_FILE)
+    with safe_open(path, "pt") as fh:
+        meta = fh.metadata() or {}
+    nc = meta.get("noise_channels")
+    student = R.build_student(
+        cfg,
+        device,
+        noise_mode=meta.get("noise_mode", "concat"),
+        noise_channels=int(nc) if nc is not None else None,
+    )
+    R.load_student_weights(student, load_file(path))
+    vqgan = R.build_autoencoder(cfg, device, dtype=torch.float16)
+    align = R.swin_align(cfg)
+    cond = meta.get("cond_lq", "latent")
+    scale = int(cfg.diffusion.params.sf)
+    assert scale == 2, f"teacher scale {scale}"
+
+    @torch.no_grad()
+    def up2(img: torch.Tensor, seed: int) -> torch.Tensor:
+        return R.upscale(
+            cfg,
+            diff,
+            vqgan,
+            student,
+            img[None].float().clamp(-1, 1),
+            device,
+            scale,
+            align,
+            overlap=64,
+            chop=512,
+            tile_batch=4,
+            amp=True,
+            seed=seed,
+            shared_noise=True,
+            cond_mode=cond,
+        )[0].float()
+
+    return up2
+
+
+# --------------------------------------------------------------------------- helpers
+
+
+def crop_margin(img: torch.Tensor, mar: tuple[int, int, int, int], px: int):
+    """Drop ``mar`` = (top, bottom, left, right) tokens, ``px`` pixels per token."""
+    t, b, lf, r = (k * px for k in mar)
+    h, w = img.shape[-2:]
+    return img[..., t : h - b, lf : w - r]
+
+
+def bicubic2(img: torch.Tensor) -> torch.Tensor:
+    return F.interpolate(
+        img[None].float(), scale_factor=2, mode="bicubic", align_corners=False
+    )[0].clamp(-1, 1)
+
+
+def down2(img: torch.Tensor) -> torch.Tensor:
+    return F.avg_pool2d(img[None].float(), 2)[0]
+
+
+def pair_sheet(cols, path: Path, at: tuple[int, int, int] | None = None):
+    """Two labelled columns at native pixels; ``at`` = (x, y, size) crops both."""
+    pils = [to_pil(t) for _, t in cols]
+    if at is not None:
+        x, y, s = at
+        pils = [p.crop((x, y, x + s, y + s)) for p in pils]
+    w, h = pils[0].size
+    canvas = Image.new("RGB", (w * len(cols), 24 + h), "white")
+    d = ImageDraw.Draw(canvas)
+    for i, ((name, _), p) in enumerate(zip(cols, pils)):
+        d.text((i * w + 6, 4), name, fill="black")
+        canvas.paste(p, (i * w, 24))
+    canvas.save(path)
+
+
+# --------------------------------------------------------------------------- main
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    add_model_args(p, text_encoder=False)
+    add_common_args(p)
+    p.add_argument("--cache_root", default="post_image_dataset/lora")
+    p.add_argument("--p1_run", default=P1_RUN, help="held-out picker's args")
+    p.add_argument("--init", required=True, help="base head: <run>/head.safetensors")
+    p.add_argument("--depth2", type=int, default=2, help="blocks at 4-px spacing")
+    p.add_argument("--ls_init", type=float, default=1.0)
+    p.add_argument("--rollouts", type=int, default=1000)
+    p.add_argument("--opt_steps", type=int, default=16)
+    p.add_argument("--replay", type=int, default=64)
+    p.add_argument("--window", type=int, default=32, help="loss window, tokens")
+    p.add_argument("--margin", type=int, default=3, help="context strip, tokens")
+    p.add_argument("--x1_weight", type=float, default=1.0, help="×1 output's loss")
+    p.add_argument("--lr", type=float, default=2e-4)
+    p.add_argument("--warmup", type=int, default=200, help="opt steps")
+    p.add_argument("--eval_every", type=int, default=250, help="rollouts")
+    p.add_argument("--n_test", type=int, default=12, help="test images read (of 30)")
+    p.add_argument("--n_manga", type=int, default=4)
+    p.add_argument("--n_sheets", type=int, default=4, help="per point and set")
+    p.add_argument("--crop", type=int, default=768, help="zoom sheet side, ×2 pixels")
+    p.add_argument("--pages", default=None)
+    p.add_argument("--page_share", type=float, default=0.0)
+    p.add_argument(
+        "--page_caption",
+        default="monochrome, greyscale, comic, speech bubble, japanese text",
+    )
+    p.add_argument("--stream", choices=["bf16", "fp32"], default="fp32")
+    p.add_argument("--text_encoder", default=DEFAULT_TEXT_ENCODER)
+    p.add_argument("--infer_steps", type=int, default=50)
+    p.add_argument("--flow_shift", type=float, default=3.0)
+    p.add_argument("--adapter", default=None)
+    p.add_argument(
+        "--points",
+        nargs="+",
+        default=None,
+        metavar="SIGMA[-SIGMA][:adapter]",
+        help="decode points, in turn per rollout (convnext_head.py's form); a LO-HI "
+        "range trains on uniform σ and is read at its midpoint",
+    )
+    p.add_argument(
+        "--chain",
+        action="store_true",
+        help="read the chain too: the teacher on the head's ×1 output against the "
+        "teacher on VAE(x̂0), and put it on the sheets in place of the ×2 output "
+        "(with --rollouts 0: the base head as loaded, no training)",
+    )
+    p.add_argument("--teacher_repo", default=TEACHER_REPO)
+    p.add_argument("--teacher_dir", default=TEACHER_DIR)
+    args = p.parse_args()
+    start_heartbeat(label="x2head")
+    device = torch.device(args.device)
+    torch.manual_seed(args.seed)
+    rng = random.Random(args.seed + 1)
+
+    # --- data: the parent recipe's split (convnext_head.py) ---
+    cache_root = Path(resolve_under_home(args.cache_root))
+    p1 = json.loads((Path(resolve_under_home(args.p1_run)) / "result.json").read_text())
+    a1 = p1["args"]
+    p1_train, test, test_artists = pick_samples(
+        cache_root,
+        a1["n_train"],
+        a1["n_test_artists"],
+        a1["per_artist"],
+        a1["max_tokens"],
+        a1["seed"],
+    )
+    assert test_artists == p1["metrics"]["test_artists"], (
+        "P1 test set did not reproduce"
+    )
+    text = pick_text(cache_root, {ci.npz_path for ci in p1_train})
+    held = set(test_artists)
+    held_paths = {ci.npz_path for ci in text}
+    train = [
+        ci
+        for a in sorted(d.name for d in cache_root.iterdir() if d.is_dir())
+        if a not in held
+        for ci in discover_cached_pairs(str(cache_root / a))
+        if ci.npz_path not in held_paths
+    ]
+    page_train: list[Path] = []
+    page_eval: list[Path] = []
+    if args.pages:
+        proot = Path(resolve_under_home(args.pages))
+        page_train = sorted((proot / "train").glob("*.safetensors"))
+        page_eval = sorted((proot / "eval").glob("*.safetensors"))
+    seq_bands = cluster_token_bands(
+        [token_count(ci) for ci in train + test + text]
+        + [page_token_count(pth) for pth in page_train + page_eval]
+    )
+    _, sigmas = get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
+    sigma_last = float(sigmas[-2])
+    train_points: list[tuple[float, float, bool]] = [(sigma_last, sigma_last, False)]
+    points: list[tuple[str, float, bool]] = [
+        (f"base_s{sigma_last:.4g}", sigma_last, False)
+    ]
+    if args.points:
+        train_points, points = [], []
+        for spec in args.points:
+            s, _, tag = spec.partition(":")
+            assert tag in ("", "adapter"), f"--points {spec}: SIGMA or SIGMA:adapter"
+            assert not tag or args.adapter, f"--points {spec} needs --adapter"
+            lo, _, hi = s.partition("-")
+            lo, hi = float(lo), float(hi or lo)
+            train_points.append((lo, hi, bool(tag)))
+            mid = (lo + hi) / 2
+            points.append((f"{'lora' if tag else 'base'}_s{mid:.4g}", mid, bool(tag)))
+    sig_rng = random.Random(args.seed + 4)
+    print(
+        f"train {len(train)}  test {len(test)} (read {args.n_test})  text {len(text)}  "
+        f"pages {len(page_train)} / eval {len(page_eval)}  bands {seq_bands}  "
+        f"points {', '.join(n for n, _, _ in points)}",
+        flush=True,
+    )
+
+    # --- models: VAE + frozen DiT + teacher ---
+    vae = qwen_vae.load_vae(
+        args.vae, device="cpu", dtype=torch.bfloat16, eval=True, vae_2d=True
+    ).to(device)
+    compile_blocks, args.compile = args.compile, False
+    anima = build_anima(args, adapter=None, train_mode=False).anima
+    args.compile = compile_blocks
+    if args.stream == "fp32":
+        from library.anima.stream import stream_fp32_
+
+        stream_fp32_(anima)
+    network = attach_adapter(anima, args.adapter, device) if args.adapter else None
+    if compile_blocks:
+        compile_blocks_isolated(anima, seq_bands)
+    tap: dict[str, torch.Tensor] = {}
+    anima.final_layer.linear.register_forward_pre_hook(
+        lambda _m, inp: tap.__setitem__("x", inp[0].detach())
+    )
+    up2 = load_teacher(
+        Path(resolve_under_home(args.teacher_repo)),
+        Path(resolve_under_home(args.teacher_dir)),
+        device,
+    )
+
+    page_cross = None
+    if args.pages:
+        arg_c, _ = prepare_text_inputs(
+            device=device,
+            anima=anima,
+            prompt=args.page_caption,
+            text_encoder_path=str(resolve_under_home(args.text_encoder)),
+        )
+        page_cross = arg_c["embed"][0].to(device, torch.bfloat16)
+
+    def load_item(item):
+        if isinstance(item, Path):  # a build_pages.py page
+            lat = load_file(str(item))["latent"].float()[None].to(device)
+            return lat, page_cross
+        lat = load_cached_latents(item.npz_path)[0].unsqueeze(0).to(device)
+        cross, _ = load_cached_text_features(item.te_path, variant=0)
+        return lat, cross.unsqueeze(0).to(device, torch.bfloat16)
+
+    @torch.no_grad()
+    def rollout(item, idx: int, sigma: float, adapter_on: bool):
+        """→ (features (gh, gw, D), x_t patches, VAE(x̂0) (3, H, W)) at one decode point."""
+        if network is not None:
+            network.set_enabled(adapter_on)
+        lat, cross = load_item(item)
+        g = torch.Generator(device=device).manual_seed(args.seed * 100003 + idx)
+        noise = torch.randn(lat.shape, generator=g, device=device, dtype=lat.dtype)
+        x_t = (1 - sigma) * lat + sigma * noise
+        sig = torch.tensor([sigma], device=device)
+        pad = torch.zeros(1, 1, *lat.shape[-2:], dtype=torch.bfloat16, device=device)
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            v = anima(x_t.unsqueeze(2).to(torch.bfloat16), sig, cross, padding_mask=pad)
+        f = tap.pop("x")[0, 0]
+        x0_hat = x_t - sigma * v.float().squeeze(2)
+        img = vae.decode_to_pixels(x0_hat)[0].float().clamp(-1, 1)
+        return f.float(), lat_patches(x_t).float(), img
+
+    # --- head ---
+    D = anima.final_layer.hidden_size
+    init_path = resolve_run(args.init) / "head.safetensors"
+    base = load_pixel_head(init_path, device, D).train()
+    head = PixelHeadX2(base, args.depth2, args.ls_init).to(device)
+    n_params = sum(q.numel() for q in head.parameters())
+    n_new = n_params - sum(q.numel() for q in base.parameters())
+    print(
+        f"head {n_params / 1e6:.1f}M params ({n_new / 1e6:.1f}M new), base {init_path}",
+        flush=True,
+    )
+    head_train = torch.compile(head, dynamic=True) if compile_blocks else head
+    opt = torch.optim.AdamW(
+        head.parameters(), lr=args.lr, betas=(0.9, 0.99), weight_decay=0.01
+    )
+    total = args.rollouts * args.opt_steps
+
+    def set_lr(step):
+        s = (
+            min(1.0, (step + 1) / args.warmup)
+            * 0.5
+            * (1 + math.cos(math.pi * step / total))
+        )
+        for g in opt.param_groups:
+            g["lr"] = args.lr * s
+
+    # --- held-out: whole-image features, VAE(x̂0), and the teacher's ×2 of it ---
+    t0 = time.perf_counter()
+    held_items = (
+        [(ci, "test") for ci in test[: args.n_test]]
+        + [(ci, "text") for ci in text]
+        + [(pth, "manga") for pth in page_eval[: args.n_manga]]
+    )
+    held_feats = []  # (item, set key, f, lat, VAE(x̂0), teacher ×2, bicubic dB, twin dB)
+    t_teacher = []
+    for name, sigma, adapter_on in points:  # the same noise per item at every point
+        for j, (item, key) in enumerate(held_items):
+            f, lat, img = rollout(item, 10_000 + j, sigma, adapter_on)
+            torch.cuda.synchronize()
+            tt = time.perf_counter()
+            t2 = up2(img, 0)
+            torch.cuda.synchronize()
+            t_teacher.append(time.perf_counter() - tt)
+            # two draws of the teacher on one input: how far the target is from a
+            # function of the input (the ceiling a regression can reach)
+            first = j == 0 or held_items[j - 1][1] != key  # each set's first image
+            twin = psnr(up2(img, 1), t2) if first or j % 4 == 0 else None
+            held_feats.append(
+                (
+                    item,
+                    f"{name}.{key}",
+                    f.to("cpu", torch.bfloat16),
+                    lat.cpu(),
+                    img.to("cpu", torch.float16),
+                    t2.to("cpu", torch.float16),
+                    psnr(bicubic2(img), t2),
+                    twin,
+                )
+            )
+    sets = list(dict.fromkeys(h[1] for h in held_feats))
+    refs = {}
+    for st in sets:
+        rows_ = [h for h in held_feats if h[1] == st]
+        refs[f"{st}_psnr_bicubic"] = float(np.mean([h[6] for h in rows_]))
+        refs[f"{st}_psnr_teacher_twin"] = float(
+            np.mean([h[7] for h in rows_ if h[7] is not None])
+        )
+    refs["teacher_sec_per_image"] = float(np.mean(t_teacher))
+    print(
+        f"held-out {len(held_feats)} in {time.perf_counter() - t0:.0f}s, teacher "
+        f"{refs['teacher_sec_per_image']:.2f} s / image",
+        flush=True,
+    )
+    print(
+        "vs teacher ×2 — bicubic / second teacher draw: "
+        + "  ".join(
+            f"{st} {refs[f'{st}_psnr_bicubic']:.2f} / {refs[f'{st}_psnr_teacher_twin']:.2f}"
+            for st in sets
+        ),
+        flush=True,
+    )
+
+    @torch.no_grad()
+    def predict(f, lat):
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            x1, x2 = head(f.to(device).float(), lat.to(device))
+        return x1.float().clamp(-1, 1), x2.float().clamp(-1, 1)
+
+    def evaluate():
+        """Per set: ×2 vs the teacher, ×1 vs VAE(x̂0), 2×2-mean of ×2 vs VAE(x̂0)."""
+        head.eval()
+        out: dict[str, list] = {}
+        for _, key, f, lat, img, t2, _, _ in held_feats:
+            x1, x2 = predict(f, lat)
+            img = img.to(device).float()
+            out.setdefault(f"{key}_x2", []).append(psnr(x2, t2.to(device).float()))
+            out.setdefault(f"{key}_x1", []).append(psnr(x1, img))
+            out.setdefault(f"{key}_down", []).append(psnr(down2(x2), img))
+        head.train()
+        return {k: float(np.mean(v)) for k, v in out.items()}
+
+    def fmt(ev):
+        return "  ".join(
+            f"{k} ×2 {ev[k + '_x2']:.2f} ×1 {ev[k + '_x1']:.2f} down {ev[k + '_down']:.2f}"
+            for k in sets
+        )
+
+    ev0 = evaluate()
+    history = [{"rollout": 0, "step": 0, **ev0}]
+    print(f"  eval @ 0 (×1 = the base head as loaded): {fmt(ev0)}", flush=True)
+
+    # --- train ---
+    order: list = []
+    page_order: list = []
+    page_rng = random.Random(args.seed + 2)
+    win_rng = random.Random(args.seed + 5)
+    replay: deque = deque(maxlen=args.replay)
+    replay_rng = random.Random(args.seed + 3)
+    n_page_rollouts = 0
+    step = 0
+    wt = args.window + 2 * args.margin
+    ema: dict[str, float] = {}
+    t0 = time.perf_counter()
+    for r in range(args.rollouts):
+        if page_train and page_rng.random() < args.page_share:
+            if not page_order:
+                page_order = page_train[:]
+                page_rng.shuffle(page_order)
+            item = page_order.pop()
+            n_page_rollouts += 1
+        else:
+            if not order:
+                order = train[:]
+                rng.shuffle(order)
+            item = order.pop()
+        lo, hi, adapter_on = train_points[r % len(train_points)]
+        sg = lo if hi == lo else sig_rng.uniform(lo, hi)
+        f, lat, img = rollout(item, r, sg, adapter_on)
+        gh, gw = f.shape[:2]
+        wh, ww = min(gh, wt), min(gw, wt)
+        y0, x0 = win_rng.randint(0, gh - wh), win_rng.randint(0, gw - ww)
+        m = args.margin
+        mar = (
+            0 if y0 == 0 else m,
+            0 if y0 + wh == gh else m,
+            0 if x0 == 0 else m,
+            0 if x0 + ww == gw else m,
+        )
+        win = img[:, y0 * PATCH : (y0 + wh) * PATCH, x0 * PATCH : (x0 + ww) * PATCH]
+        t2 = up2(win, r)
+        replay.append(
+            (
+                f[y0 : y0 + wh, x0 : x0 + ww].to(torch.bfloat16).clone(),
+                lat[y0 : y0 + wh, x0 : x0 + ww].clone(),
+                crop_margin(win, mar, PATCH).half().clone(),
+                crop_margin(t2, mar, 2 * PATCH).half(),
+                mar,
+            )
+        )
+        for _ in range(args.opt_steps):
+            set_lr(step)
+            opt.zero_grad(set_to_none=True)
+            bf, blat, b1, b2, bmar = replay_rng.choice(replay)
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                x1, x2 = head_train(bf, blat)
+            l2, mse2 = rec_loss(crop_margin(x2, bmar, 2 * PATCH), b2.float())
+            l1, mse1 = rec_loss(crop_margin(x1, bmar, PATCH), b1.float())
+            (l2 + args.x1_weight * l1).backward()
+            torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
+            opt.step()
+            step += 1
+        for k, v in (("mse2", mse2.item()), ("mse1", mse1.item())):
+            ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
+        if (r + 1) % 50 == 0:
+            el = time.perf_counter() - t0
+            print(
+                f"  rollout {r + 1}/{args.rollouts}  psnr~ ×2 "
+                f"{10 * math.log10(4 / ema['mse2']):.2f} ×1 "
+                f"{10 * math.log10(4 / ema['mse1']):.2f}  {el / (r + 1):.2f}s/rollout  "
+                f"eta {(args.rollouts - r - 1) * el / (r + 1) / 60:.0f}m",
+                flush=True,
+            )
+        if (r + 1) % args.eval_every == 0 or r + 1 == args.rollouts:
+            ev = evaluate()
+            history.append({"rollout": r + 1, "step": step, **ev})
+            print(f"  eval @ {r + 1}: {fmt(ev)}", flush=True)
+    sec_per_rollout = (time.perf_counter() - t0) / max(1, args.rollouts)
+
+    # --- read ---
+    run_dir = make_run_dir("pixel_readout", label=args.label)
+    head.eval()
+    rows, artifacts = [], []
+    counters: dict[str, int] = {}
+    for item, key, f, lat, img, t2, bic, twin in held_feats:
+        x1, x2 = predict(f, lat)
+        img, t2 = img.to(device).float(), t2.to(device).float()
+        is_page = isinstance(item, Path)
+        rows.append(
+            {
+                "stem": item.stem,
+                "artist": "pages" if is_page else Path(item.npz_path).parent.name,
+                "set": key,
+                "psnr_x2_vs_teacher": psnr(x2, t2),
+                "psnr_bicubic_vs_teacher": bic,
+                "psnr_teacher_twin": twin,
+                "psnr_x1_vs_vae": psnr(x1, img),
+                "psnr_down_vs_vae": psnr(down2(x2), img),
+                "psnr_teacher_down_vs_vae": psnr(down2(t2), img),
+            }
+        )
+        if args.chain:
+            chain = up2(x1, 0)
+            rows[-1]["psnr_chain_vs_teacher"] = psnr(chain, t2)
+        n = counters.get(key, 0)
+        counters[key] = n + 1
+        if n >= args.n_sheets and not key.endswith(".text"):
+            continue
+        cols = [("VAE -> ResShift x2", t2), ("x2 head", x2)]
+        if args.chain:
+            cols[1] = ("head x1 -> ResShift x2", chain)
+        stem = f"{key.replace('.', '_')}_{n:02d}_{item.stem}"
+        pair_sheet(cols, run_dir / f"{stem}_full.png")
+        cx, cy = densest_window(t2, args.crop)
+        pair_sheet(cols, run_dir / f"{stem}_crop.png", at=(cx, cy, args.crop))
+        artifacts += [f"{stem}_full.png", f"{stem}_crop.png"]
+
+    # head time on one 1024-tier image, eager, bf16 autocast (whole-image ×1 + ×2)
+    _, _, f, lat, *_ = held_feats[0]
+    fd, ld = f.to(device).float(), lat.to(device)
+    for _ in range(3):
+        predict(fd, ld)
+    torch.cuda.synchronize()
+    tt = time.perf_counter()
+    for _ in range(10):
+        predict(fd, ld)
+    torch.cuda.synchronize()
+    head_ms = (time.perf_counter() - tt) / 10 * 1e3
+
+    b = head.base
+    save_file(
+        {k: v.detach().contiguous().cpu() for k, v in head.state_dict().items()},
+        str(run_dir / "head_x2.safetensors"),
+        metadata={
+            "width": str(b.proj.out_features),
+            "depth": str(len(b.blocks) + len(b.up_blocks)),
+            "up": str(b.up),
+            "skip": "0",
+            "x2_depth": str(args.depth2),
+            "sigma": ",".join(
+                f"{lo}" if lo == hi else f"{lo}-{hi}" for lo, hi, _ in train_points
+            ),
+            "points": " ".join(args.points or []),
+            "stream": args.stream,
+            "adapter": args.adapter or "",
+            "init": args.init,
+            "teacher": TEACHER_FILE,
+        },
+    )
+    artifacts.append("head_x2.safetensors")
+
+    set_metrics = {}
+    for st in sets:
+        for col in (
+            "psnr_x2_vs_teacher",
+            "psnr_bicubic_vs_teacher",
+            "psnr_x1_vs_vae",
+            "psnr_down_vs_vae",
+            "psnr_teacher_down_vs_vae",
+            *(["psnr_chain_vs_teacher"] if args.chain else []),
+        ):
+            set_metrics[f"{st}_{col}"] = float(
+                np.mean([row[col] for row in rows if row["set"] == st])
+            )
+    metrics = {
+        "train_points": [
+            {"sigma_lo": lo, "sigma_hi": hi, "adapter": a} for lo, hi, a in train_points
+        ],
+        "eval_points": [{"name": n, "sigma": s, "adapter": a} for n, s, a in points],
+        "n_train": len(train),
+        "n_page_train": len(page_train),
+        "n_page_rollouts": n_page_rollouts,
+        "head_params_M": n_params / 1e6,
+        "head_new_params_M": n_new / 1e6,
+        "opt_steps_total": step,
+        "sec_per_rollout": sec_per_rollout,
+        "head_ms_whole_image": head_ms,
+        "head_ms_image_tokens": list(f.shape[:2]),
+        "peak_vram_gb": torch.cuda.max_memory_allocated() / 1e9,
+        **refs,
+        **set_metrics,
+        "eval_history": history,
+        "per_image": rows,
+    }
+    print(
+        "×2 head vs teacher (bicubic | second teacher draw): "
+        + " | ".join(
+            f"{st}: {set_metrics[f'{st}_psnr_x2_vs_teacher']:.2f} "
+            f"({refs[f'{st}_psnr_bicubic']:.2f} | {refs[f'{st}_psnr_teacher_twin']:.2f})"
+            for st in sets
+        ),
+        flush=True,
+    )
+    if args.chain:
+        print(
+            "chain (teacher on the ×1 output) vs teacher: "
+            + " | ".join(
+                f"{st}: {set_metrics[f'{st}_psnr_chain_vs_teacher']:.2f}" for st in sets
+            ),
+            flush=True,
+        )
+    print(
+        f"head {head_ms:.1f} ms on {tuple(f.shape[:2])} tokens, "
+        f"{sec_per_rollout:.2f} s / rollout, peak {metrics['peak_vram_gb']:.1f} GB",
+        flush=True,
+    )
+    out = write_result(
+        run_dir,
+        script=__file__,
+        args=args,
+        metrics=metrics,
+        label=args.label,
+        artifacts=artifacts,
+        device=device,
+    )
+    print(f"envelope: {out}")
+
+
+if __name__ == "__main__":
+    main()
