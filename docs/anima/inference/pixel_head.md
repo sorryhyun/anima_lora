@@ -32,6 +32,16 @@ VAE decode of the same latent (one seed, 16 prompts, `project/pixel_decoder/repo
 Decode time ~7 ms per ~1 MP image against 141 ms (VAE resident), 176 ms (VAE moved to the card
 and back) or ~850 ms (VAE loaded from disk). On turbo the VAE is 15 % of DiT + decode.
 
+## ComfyUI
+
+The node pack `ComfyUI-Anima-PixelDecoder` (`comfyui-anima-pixel-decoder` under
+`../comfy/custom_nodes/`): **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or
+Spectrum), **Anima Pixel Decode** (tapped MODEL, the sampler's LATENT, head file) in place of VAE
+Decode. The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
+`pixel_head`. Run the DiT on the fp32 stream (Anima Adapter Loader `stream = fp32`), as the head
+was trained. Turbo in ComfyUI 0.43: 1.127 s per image with VAE Decode, 1.005 s with the head
+(`bench/pixel_readout/comfy_e2e.py`, `project/pixel_decoder/reports/comfy_node_2026_11_19.md`).
+
 ## How it works
 
 `library/anima/pixel_head.py` holds the module (`PixelHead`, `load_pixel_head`) and

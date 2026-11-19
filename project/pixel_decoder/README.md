@@ -57,4 +57,6 @@ verdict: P4 passed. One head over both decode points (`mix_1119_1415`,
 enough to release, P4 complete. Released 2026-11-19 to the private Hub repo
 `sorryhyun/anima-pixel-decoder` (`reports/release_2026_11_19.md`). Promoted the same day: the model
 core in `library/anima/pixel_head.py`, `inference.py --decoder pixel_head` (`make test PIXEL=1`),
-`docs/anima/inference/pixel_head.md`. Next: the ComfyUI node, then the P5 topics (`plan.md`).
+`docs/anima/inference/pixel_head.md`. ComfyUI node pack `ComfyUI-Anima-PixelDecoder` built the
+same day; turbo in ComfyUI 1.127 s with VAE Decode vs 1.005 s with the head
+(`reports/comfy_node_2026_11_19.md`). Next: the P5 topics (`plan.md`).

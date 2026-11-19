@@ -5,7 +5,7 @@ vendor copy when the host install is not inside the anima_lora repo. The vendor 
 mirrors the live namespace (``library.*`` / ``networks.*``), so the copied files'
 internal imports work unchanged.
 
-Four targets:
+Five targets:
 
 * ``custom_nodes/comfyui-anima-directedit/_vendor/``: the DirectEdit primitives, a
   trimmed sampling helper, the trimmed ``EDGE_TOKEN_BANDS`` constant and a stub
@@ -24,9 +24,13 @@ Four targets:
 * ``ComfyUI-Spectrum-KSampler/_vendor/``: the pure-compute ``*_core`` kernels (FSG /
   SMC / CNS / SPD numerics) shared between the library's sampler plugins and the
   node's ComfyUI wrappers; torch / numpy only.
+* ``ComfyUI-Anima-PixelDecoder/_vendor/pixel_head.py``: ``library/anima/pixel_head.py``
+  (the head module and its loader), flat — the node imports the file by path under a
+  private name, so no ``library`` package is written.
 
-The Adapter and Spectrum nodes are standalone repos checked out beside anima_lora's
-parent (override with ``ANIMA_ADAPTER_NODE_REPO`` / ``ANIMA_SPECTRUM_NODE_REPO``);
+The Adapter, Spectrum and pixel-decoder nodes are standalone repos checked out beside
+anima_lora's parent (override with ``ANIMA_ADAPTER_NODE_REPO`` /
+``ANIMA_SPECTRUM_NODE_REPO`` / ``ANIMA_PIXEL_NODE_REPO``);
 the vendor tree is written into that repo, and the target is skipped with a warning
 when it is not checked out.
 
@@ -59,6 +63,13 @@ SPECTRUM_NODE_REPO = Path(
     )
 )
 SPECTRUM_VENDOR = SPECTRUM_NODE_REPO / "_vendor"
+
+PIXEL_NODE_REPO = Path(
+    os.environ.get(
+        "ANIMA_PIXEL_NODE_REPO", ROOT.parents[1] / "ComfyUI-Anima-PixelDecoder"
+    )
+)
+PIXEL_VENDOR = PIXEL_NODE_REPO / "_vendor"
 
 DIRECTEDIT_VERBATIM: list[tuple[str, str]] = [
     (
@@ -388,11 +399,26 @@ def build_spectrum_vendor() -> None:
     _copy_verbatim(SPECTRUM_VENDOR, SPECTRUM_VERBATIM)
 
 
+def build_pixel_vendor() -> None:
+    if not PIXEL_NODE_REPO.is_dir():
+        print(
+            f"\n[pixel] SKIPPED — standalone node repo not found at {PIXEL_NODE_REPO}\n"
+            f"        clone it beside anima_lora, or set ANIMA_PIXEL_NODE_REPO to its path."
+        )
+        return
+    print(f"\n[pixel] -> {PIXEL_VENDOR}")
+    if PIXEL_VENDOR.exists():
+        shutil.rmtree(PIXEL_VENDOR)
+    PIXEL_VENDOR.mkdir(parents=True)
+    _copy_verbatim(PIXEL_VENDOR, [("library/anima/pixel_head.py", "pixel_head.py")])
+
+
 def main() -> None:
     build_directedit_vendor()
     build_hydralora_vendor()
     build_trainer_vendor()
     build_spectrum_vendor()
+    build_pixel_vendor()
     print("\nvendor trees fresh.")
 
 

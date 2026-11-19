@@ -46,16 +46,11 @@ Done 2026-11-19 (the user: "승격 ㄱㄱ"), except the ComfyUI node:
 - Check through the daemon (one seed, one prompt, head PNG vs VAE decode of the saved latent):
   base 28 steps CFG 4 46.2 dB, turbo 38.2 dB; no warnings.
 
-- ComfyUI node (the user plans one, 2026-11-19), after the library lands. Its own standalone
-  repo symlinked into `../comfy/custom_nodes/`, the head code a `_vendor/` copy of
-  `library/anima/pixel_head.py` (`make vendor-sync`). Two parts: a MODEL patch that keeps the
-  last forward's pre-head features and x_t (cond and uncond, for the CFG combine), and a decode
-  node that turns them into an IMAGE in place of VAE Decode; the same out-of-range warning as
-  the CLI. The tap sits on the DiT (`final_layer.linear`'s input), not on a sampler, so the
-  stock KSampler and the Spectrum KSampler need no change: Spectrum's cached steps still run
-  `final_layer` on the forecast feature (`ComfyUI-Spectrum-KSampler/spectrum.py`,
-  `_spectrum_fast_forward`), and its tail steps are actual forwards. x_t and σ come from a
-  `CALC_COND_BATCH` wrapper, which runs above Spectrum's model wrapper on every step.
+- ComfyUI node: built 2026-11-19, `~/ComfyUI-Anima-PixelDecoder` (local git; GitHub repo,
+  registry publish and the Hub card link not done). `AnimaPixelHeadTap` + `AnimaPixelDecode`,
+  `_vendor/pixel_head.py` via `make vendor-sync`. Turbo in ComfyUI: total 1.127 s (VAE Decode)
+  vs 1.005 s (head), 36.91 dB (`reports/comfy_node_2026_11_19.md`). Not run in ComfyUI: the
+  Spectrum KSampler, the base DiT at CFG 4.
 
 ## P5 topics
 

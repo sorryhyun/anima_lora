@@ -62,6 +62,23 @@ The move row is the moved-VAE path (176 ms) minus a decode with the VAE already 
 total 1.82 s); keeping it on the card saves the move (total 1.11 s, 1.30 GB). Text encoding
 (~0.3 s per prompt) is outside the totals.
 
+### In ComfyUI
+
+The same turbo setting and 16 prompts in ComfyUI 0.43.0 (dynamic VRAM, PyTorch attention), same
+card, medians. Workflow: Load Diffusion Model → Anima Adapter Loader (turbo LoRA, fp32 stream) →
+Anima Block Compile → KSampler (euler, simple, 4 steps, CFG 1) → VAE Decode; the head column adds
+Anima Pixel Head Tap before the KSampler and uses Anima Pixel Decode in place of VAE Decode.
+
+| | KSampler + VAE Decode | KSampler + Anima Pixel Decode |
+|---|---|---|
+| KSampler | 0.976 s | 0.998 s (with the tap) |
+| decode | 151 ms | 7 ms |
+| decode peak VRAM above the loaded models | 1.22 GB | 0.21 GB |
+| PSNR against VAE Decode | — | 36.9 dB |
+| **total per image** | **1.13 s** | **1.00 s (1.12×)** |
+
+ComfyUI keeps the VAE on the card after its first decode, so the VAE column has no move cost.
+
 Held-out reads during training (dB, colour / mono):
 
 | decode point | colour | mono |
@@ -82,9 +99,13 @@ Held-out reads during training (dB, colour / mono):
 
 ## Use
 
-The loader, the feature tap and the decode call live in
-[anima_lora](https://github.com/sorryhyun/anima_lora) (`bench/pixel_readout/`; moving to
-`library/anima/pixel_head.py`). A ComfyUI node is planned.
+- ComfyUI: the ComfyUI-Anima-PixelDecoder node pack. Put this file in `models/pixel_heads/`,
+  add **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or Spectrum) and decode
+  the sampler's LATENT with **Anima Pixel Decode** instead of VAE Decode. Run the DiT on the
+  fp32 stream (Anima Adapter Loader, `stream = fp32`).
+- [anima_lora](https://github.com/sorryhyun/anima_lora): `inference.py --decoder pixel_head`
+  (`make test PIXEL=1`, `make test-turbo PIXEL=1`); the module, loader and feature tap are in
+  `library/anima/pixel_head.py`.
 
 ## License
 
