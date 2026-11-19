@@ -99,7 +99,13 @@ def main():
     with safe_open(str(head_path), "pt") as fh:
         meta = fh.metadata()
     D = anima.final_layer.hidden_size
-    head = PixelHead(D, 64, int(meta["width"]), int(meta["depth"])).to(device)
+    head = PixelHead(
+        D,
+        64,
+        int(meta["width"]),
+        int(meta["depth"]),
+        use_skip=meta.get("skip", "1") == "1",
+    ).to(device)
     head.load_state_dict(load_file(str(head_path)))
     head.eval()
     w1 = load_file(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ConvNeXt pixel head on the frozen Anima DiT's pre-head features (pixel readout P2).
 
-``docs/anima/proposal/pixel_readout_head.md`` P2. The head reads the same tap as
+``project/pixel_decoder/proposal.md`` P2. The head reads the same tap as
 probe 1 (the input of ``final_layer.linear``: LayerNorm + adaLN-modulated, 2048-dim
 per token) plus x_t's 2×2 latent patch (64 values), and predicts a 16×16 RGB patch
 per token:
@@ -36,6 +36,7 @@ import math
 import os
 import random
 import time
+from collections import deque
 from pathlib import Path
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
@@ -98,18 +99,28 @@ class ConvNeXtBlock(nn.Module):
 
 class PixelHead(nn.Module):
     def __init__(
-        self, d_feat: int, d_lat: int, width: int, depth: int, ls_init: float = 1e-6
+        self,
+        d_feat: int,
+        d_lat: int,
+        width: int,
+        depth: int,
+        ls_init: float = 1e-6,
+        use_skip: bool = True,
     ):
         super().__init__()
         out = PATCH * PATCH * 3
-        self.linear = nn.Linear(d_feat, out)  # P1 skip
+        self.use_skip = use_skip
+        self.linear = nn.Linear(d_feat, out)  # P1 skip (unused when use_skip is off)
         self.proj = nn.Linear(d_feat, width)
         self.lat_embed = nn.Linear(d_lat, width)
         self.blocks = nn.ModuleList(ConvNeXtBlock(width, ls_init) for _ in range(depth))
         self.norm_out = nn.LayerNorm(width, eps=1e-6)
         self.out = nn.Linear(width, out)
-        nn.init.zeros_(self.out.weight)
-        nn.init.zeros_(self.out.bias)
+        if (
+            use_skip
+        ):  # step 0 reproduces P1; without the skip, out keeps its default init
+            nn.init.zeros_(self.out.weight)
+            nn.init.zeros_(self.out.bias)
 
     def forward(self, f, lat):  # f (gh, gw, D), lat (gh, gw, 64) → (3, H, W)
         gh, gw = f.shape[:2]
@@ -119,7 +130,9 @@ class PixelHead(nn.Module):
         h = self.norm_out(h[0].permute(1, 2, 0))
         # the ridge solution loses ~dB under bf16 weights; keep the skip in fp32
         with torch.autocast("cuda", enabled=False):
-            tok = self.linear(f.float()) + self.out(h).float()
+            tok = self.out(h).float()
+            if self.use_skip:
+                tok = tok + self.linear(f.float())
         return from_patches(tok.reshape(gh * gw, -1).float(), gh, gw)
 
 
@@ -226,9 +239,21 @@ def main():
     p.add_argument("--p1_run", default=P1_RUN)
     p.add_argument("--rollouts", type=int, default=3600)
     p.add_argument("--opt_steps", type=int, default=4)
+    p.add_argument(
+        "--accum",
+        type=int,
+        default=1,
+        help="each update averages the gradient over the last N rollouts (images "
+        "differ in shape, so this is accumulation, not a batch axis)",
+    )
     p.add_argument("--width", type=int, default=1024)
     p.add_argument("--depth", type=int, default=3)
     p.add_argument("--ls_init", type=float, default=1e-6, help="layer-scale γ init")
+    p.add_argument(
+        "--no_skip",
+        action="store_true",
+        help="drop the P1 linear skip; out keeps its default init (FastFrames' form)",
+    )
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--lr_linear", type=float, default=2e-5)
     p.add_argument("--warmup", type=int, default=200, help="opt steps")
@@ -308,7 +333,9 @@ def main():
 
     # --- head ---
     D = anima.final_layer.hidden_size
-    head = PixelHead(D, 64, args.width, args.depth, args.ls_init).to(device)
+    head = PixelHead(
+        D, 64, args.width, args.depth, args.ls_init, use_skip=not args.no_skip
+    ).to(device)
     w1 = load_file(
         str(Path(resolve_under_home(args.p1_run)) / "readout_linear.safetensors")
     )
@@ -320,13 +347,10 @@ def main():
     print(f"head {n_params / 1e6:.1f}M params", flush=True)
     lin_params = list(head.linear.parameters())
     rest = [p for n, p in head.named_parameters() if not n.startswith("linear.")]
-    opt = torch.optim.AdamW(
-        [
-            {"params": rest, "lr": args.lr, "weight_decay": 0.01},
-            {"params": lin_params, "lr": args.lr_linear, "weight_decay": 0.0},
-        ],
-        betas=(0.9, 0.99),
-    )
+    groups = [{"params": rest, "lr": args.lr, "weight_decay": 0.01}]
+    if head.use_skip:
+        groups.append({"params": lin_params, "lr": args.lr_linear, "weight_decay": 0.0})
+    opt = torch.optim.AdamW(groups, betas=(0.9, 0.99))
     total = args.rollouts * args.opt_steps
     base_lrs = [g["lr"] for g in opt.param_groups]
 
@@ -394,19 +418,22 @@ def main():
     step = 0
     t0 = time.perf_counter()
     loss_ema = mse_ema = None
+    window: deque = deque(maxlen=args.accum)
     for r in range(args.rollouts):
         if not order:
             order = train[:]
             rng.shuffle(order)
         ci = order.pop()
-        f, lat, tgt = rollout(ci, r)
+        window.append(rollout(ci, r))
         for _ in range(args.opt_steps):
             set_lr(step)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
-                pred = head(f, lat)
-            loss, mse = rec_loss(pred, tgt)
             opt.zero_grad(set_to_none=True)
-            loss.backward()
+            # newest rollout last, so the logged loss / mse are this rollout's
+            for f, lat, tgt in window:
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    pred = head(f, lat)
+                loss, mse = rec_loss(pred, tgt)
+                (loss / len(window)).backward()
             torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
             opt.step()
             step += 1
@@ -472,6 +499,7 @@ def main():
             "width": str(args.width),
             "depth": str(args.depth),
             "ls_init": str(args.ls_init),
+            "skip": str(int(head.use_skip)),
             "sigma": f"{sigma_last}",
         },
     )

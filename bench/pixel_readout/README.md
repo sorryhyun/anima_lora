@@ -35,7 +35,7 @@ Linear is above token-mean bilinear on all 30 test images (+2.6 … +6.4 dB). Ri
 1e-2: 24.83. Features are teacher-forced (real latents at σ_last), not taken from a sampled
 trajectory.
 
-## convnext_head.py — P2 (`docs/anima/proposal/pixel_readout_head.md`)
+## convnext_head.py — P2 (`project/pixel_decoder/proposal.md`)
 
 Head: P1's ridge linear as an fp32 skip (init from `readout_1118_2219`, LR 2e-5) plus
 `proj(f) + embed(x_t 2×2 patch)` → 3 ConvNeXt blocks (width 1024, 3×3 depthwise, 4× GELU MLP,
@@ -98,6 +98,98 @@ No null run for the cosine. P1's error RMS on test ≈ 0.097 (from 26.28 dB).
 
 Note: clipping never engaged and the out layer gets gradient at init under either γ, so neither
 clipping nor the init held the residual path back.
+
+## ceiling_probe.py — which target the features can reach
+
+### ceiling_1119_0920 (forward only, P2's 30 test + 8 text images, same noise seeds; head = `0835`)
+
+Results `results/20261119-0920-ceiling_1119_0920/` (local). x̂0 = x_t − σ·v, the DiT's one-step
+estimate at σ 0.0577. PSNR, dB:
+
+| | test (30) | text (8) |
+|---|---|---|
+| VAE(x_t) vs VAE(x0) | 30.73 | 27.08 |
+| VAE(x̂0) vs VAE(x0) | 37.00 | 32.02 |
+| P1 / P2 vs VAE(x0) | 26.30 / 26.50 | 21.62 / 21.59 |
+| P1 / P2 vs VAE(x̂0) | 26.47 / 26.69 | 21.73 / 21.70 |
+
+Latent RMSE to x0: x_t 0.068, x̂0 0.032 (latent RMS 0.63). VAE(x̂0) is above the P2 head on
+38 / 38 images, VAE(x_t) on 38 / 38.
+
+Note: the clean-latent target is not what holds the head at P1's level; the VAE decode of the
+head's own x_t input is 4.2 dB above the head on test.
+
+## overfit_probe.py — can the head fit 16 images?
+
+Features, x_t and VAE targets of 16 train images computed once (fixed noise), then a fresh head
+per arm trained on those pairs with `0835`'s optimizer, 4000 steps, batch 1, 18 ms / step.
+Arms: `parent` = `0835`'s head (P1 skip at LR 2e-5, out zero-init, γ 1e-6); `open` = γ 1;
+`noskip` = no skip, out default init, γ 1. On the 16 fit images: P1 25.71, VAE(x_t) 31.07,
+VAE(x̂0) 37.05 (all vs VAE(x0)); P1 on test 26.30.
+
+### overfit_1119_0924 (head LR 2e-4) and overfit_lr1e3_1119_0925 (head LR 1e-3)
+
+Results `results/20261119-0929-overfit_1119_0924/`, `results/20261119-0933-overfit_lr1e3_1119_0925/`
+(local). PSNR vs VAE(x0) at step 4000, dB; one seed, spread unknown.
+
+| arm | LR 2e-4: fit (16) / test (30) | LR 1e-3: fit / test | steps clipped, 2e-4 / 1e-3 |
+|---|---|---|---|
+| `parent` | 31.51 / 25.67 | 40.48 / 23.79 | 0 / 1 |
+| `open` | 35.05 / 24.66 | 47.53 / 25.21 | 0 / 0 |
+| `noskip` | 30.83 / 27.16 | 39.42 / 26.74 | 413 / 500 |
+
+`noskip` test by step: LR 2e-4 24.05 @ 500, 26.94 @ 2000, 27.16 @ 4000; LR 1e-3 24.98 @ 1000,
+26.91 @ 2000, 26.74 @ 4000. Both skip arms' test falls from P1's 26.30 at every eval after
+step 1000 (LR 2e-4) or from the first eval (LR 1e-3). `parent`'s γ ended at 0.16–0.17 (LR 2e-4)
+against 1e-3 in `0835`.
+
+Note: every arm fits 16 images, so the head is trainable as built; with the P1 skip what the
+residual path learns does not carry to held-out images, and without it 16 images already put
+test above `0835`'s 26.50. Fit values above 37 are past what the DiT's own x̂0 gives and can
+only be memorised noise draws. The probe does not separate the skip from γ 1 and the out init.
+
+### convnext_1119_0938 — no skip
+
+Parent `convnext_1119_0835`, `--no_skip --ls_init 1.0` (no P1 skip, out default init, γ 1; the
+three change together as in `overfit_1119_0924`'s `noskip` arm, and the run does not separate
+them). Head LR 2e-4, data, order, noise seeds and schedule as the parent.
+Question: does the no-skip head, on the full train set, pass `0835` and remove the 16-px grid /
+grain / thin-outline errors? Yes → P3 on this head, LR 1e-3 as the next arm. Level with `0835`
+→ gradient accumulation over rollouts.
+Records: `overfit_1119_0924` `noskip` test 27.16 from 16 images; `ceiling_1119_0920` VAE(x̂0)
+37.00 / VAE(x_t) 30.73 on test.
+Read: same sheets and PSNR as `0835`, labelled; spread unknown; the user's read decides.
+Cost: 3600 rollouts × 4 steps, ≈ 26 min.
+
+Result (25 min, 0.42 s / rollout; `results/20261119-0959-convnext_1119_0938/` (local)):
+
+| test PSNR vs VAE (dB) | test (30) | text (8) |
+|---|---|---|
+| P1 linear | 26.28 | 21.61 |
+| `0835` final | 26.50 | 21.58 |
+| `0938`, rollout 600 / 1200 / 1800 / 2400 / 3000 | 25.69 / 29.39 / 31.01 / 32.21 / 32.64 | 22.63 / 25.14 / 26.21 / 26.99 / 27.36 |
+| `0938`, rollout 3600 (final) | 32.93 | 27.45 |
+
+Per image, head − P1: test +5.04 … +8.27 (30 / 30 up), text +4.95 … +6.66 (8 / 8 up). Train
+PSNR (EMA) 30.7 at rollout 1950 against 24.3–25.0 throughout `0835`.
+
+Claude's read (labelled, 2× crops of sheets 00, 08 and text 02): the 16-px grid and the grain
+are gone and outlines are continuous; against the VAE the head is a little softer, thin lines
+waver slightly (bikini strings, sheet 08), and small balloon text is legible with softer strokes.
+
+### convnext_1119_0950 — gradient over 4 rollouts, LR 1e-3 (the user's arm)
+
+Parent `convnext_1119_0938` (no skip, γ 1), `--accum 4 --opt_steps 1 --lr 1e-3`: each update
+averages the gradient over the last 4 rollouts (sliding window; shapes differ, so accumulation),
+one update per rollout, head LR 2e-4 → 1e-3. The three change together and the run does not
+separate them. Kept: each rollout enters 4 gradient evaluations, head compute per rollout, data,
+order, noise seeds, cosine, clip 1.0. Changed with them: 3600 updates against 14,400; warmup
+200 updates is 200 rollouts against 50; summed LR 1.25×.
+Question: at the same rollout budget, does 4-rollout averaging at LR 1e-3 end above batch 1 at
+2e-4? Above → the recipe for longer runs; level or below → `0938`'s recipe stays.
+Read: test / text PSNR at each eval beside `0938`, same sheets, labelled; spread unknown; the
+user's read decides.
+Cost: 3600 rollouts, ≈ 26 min.
 
 ## render_sheets.py — sheets for chosen images
 

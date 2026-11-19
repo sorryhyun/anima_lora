@@ -1,10 +1,10 @@
 # Pixel readout head — a light pixel decoder on the frozen DiT's last features
 
-Status: PROPOSAL. Probe 1 (linear readout) done on anima-base, 2026-11-18; nothing trained past it.
-Probe code and results: `bench/pixel_readout/`. P2 `convnext_1119_0835` ran 2026-11-19: test 26.50 dB against P1's 26.28, text 21.58 against
-21.61, sheets close to P1's; `gradprobe_1119_0914` ruled out clipping and the layer-scale init
-(`bench/pixel_readout/README.md`).
-If P2 reads well, the line moves into `project/anima_turbo/` (the user, 2026-11-19).
+Status: the proposal the line opened on (2026-11-18). P1 and P2 are done; state and order of
+work: [README.md](README.md), [plan.md](plan.md). Probe code and results: `bench/pixel_readout/`.
+Moved here from `docs/anima/proposal/pixel_readout_head.md` when the line became its own
+project (the user, 2026-11-19). The P2 head below is described with a P1 linear skip in the
+code's first version; the skip was dropped (`reports/p2_skip_2026_11_19.md`).
 
 ## TL;DR
 
