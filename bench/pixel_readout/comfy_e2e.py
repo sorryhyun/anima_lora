@@ -69,6 +69,11 @@ def main_():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--no_compile", action="store_true")
     p.add_argument("--only", nargs="*", default=None, help="prompt names (smoke)")
+    p.add_argument(
+        "--tags",
+        default="",
+        help="tags appended to each prompt's leading tag sentence, e.g. 'monochrome, comic'",
+    )
     p.add_argument("--save_images", type=int, default=16, help="first N, first stream")
     p.add_argument(
         "--comfy_args", default="", help="extra ComfyUI CLI flags, e.g. '--use-flash-attention'"
@@ -92,6 +97,8 @@ def main_():
     mapping = nodes.NODE_CLASS_MAPPINGS
     run_dir = make_run_dir("pixel_readout", label=args.label)
     prompts = [x for x in PROMPTS if not args.only or x[0] in args.only]
+    if args.tags:  # "masterpiece, …, safe. Prose" → "masterpiece, …, safe, <tags>. Prose"
+        prompts = [(n, t.replace(". ", f", {args.tags}. ", 1), hw) for n, t, hw in prompts]
     device = comfy.model_management.get_torch_device()
 
     def sync_time(fn):

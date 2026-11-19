@@ -25,8 +25,8 @@ Five targets:
   SMC / CNS / SPD numerics) shared between the library's sampler plugins and the
   node's ComfyUI wrappers; torch / numpy only.
 * ``ComfyUI-Anima-PixelDecoder/_vendor/pixel_head.py``: ``library/anima/pixel_head.py``
-  (the head module and its loader), flat — the node imports the file by path under a
-  private name, so no ``library`` package is written.
+  (the head module and its loader), flat — the node imports it as ``._vendor.pixel_head``,
+  so no ``library`` package is written.
 
 The Adapter, Spectrum and pixel-decoder nodes are standalone repos checked out beside
 anima_lora's parent (override with ``ANIMA_ADAPTER_NODE_REPO`` /
@@ -410,6 +410,9 @@ def build_pixel_vendor() -> None:
     if PIXEL_VENDOR.exists():
         shutil.rmtree(PIXEL_VENDOR)
     PIXEL_VENDOR.mkdir(parents=True)
+    (PIXEL_VENDOR / "__init__.py").write_text(
+        '"""Synced by anima_lora\'s scripts/release/sync_vendor.py — do not edit by hand."""\n'
+    )
     _copy_verbatim(PIXEL_VENDOR, [("library/anima/pixel_head.py", "pixel_head.py")])
 
 

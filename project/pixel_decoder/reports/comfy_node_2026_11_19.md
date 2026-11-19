@@ -43,6 +43,17 @@ resident / 176 ms moved, head 7 ms, 35.40 dB; totals 1.15 s (moved VAE) vs 0.98 
 
 A bf16-stream arm was dropped before it ran (the user: "bf16 스트림은 없어도돼").
 
+Published 2026-11-19: GitHub `sorryhyun/ComfyUI-Anima-PixelDecoder` (public), ComfyUI registry
+`comfyui-anima-pixel-decoder` 0.1.0. The weights repo is still private.
+
+Card samples (the user asked for the ANIMA-sign image in colour and with `monochrome, comic`,
+VAE and head, full size and crops): runs `sign_color_1119_1810` and `sign_mono_1119_1810`
+(`comfy_e2e.py --only anima_sign [--tags 'monochrome, comic']`, same settings as above, seed 42).
+Head vs VAE: colour 37.35 dB, mono 31.14 dB. Crops 384×384 native at x 192–576, y 512–896.
+Files: `bench/pixel_readout/results/card_samples_1119/` (local), uploaded to the Hub repo's
+`samples/`. Claude's read of the crops (labels visible): colour level; on mono the VAE keeps the
+screentone dots on the shorts and the head renders flat grey.
+
 ## Interpretation
 
 The node reproduces the CLI decode: the PSNR against the VAE sits at the CLI's level and the

@@ -46,8 +46,8 @@ Done 2026-11-19 (the user: "승격 ㄱㄱ"), except the ComfyUI node:
 - Check through the daemon (one seed, one prompt, head PNG vs VAE decode of the saved latent):
   base 28 steps CFG 4 46.2 dB, turbo 38.2 dB; no warnings.
 
-- ComfyUI node: built 2026-11-19, `~/ComfyUI-Anima-PixelDecoder` (local git; GitHub repo,
-  registry publish and the Hub card link not done). `AnimaPixelHeadTap` + `AnimaPixelDecode`,
+- ComfyUI node: built and published 2026-11-19, GitHub `sorryhyun/ComfyUI-Anima-PixelDecoder`,
+  registry `comfyui-anima-pixel-decoder` 0.1.0, linked from the card with colour / mono samples. `AnimaPixelHeadTap` + `AnimaPixelDecode`,
   `_vendor/pixel_head.py` via `make vendor-sync`. Turbo in ComfyUI: total 1.127 s (VAE Decode)
   vs 1.005 s (head), 36.91 dB (`reports/comfy_node_2026_11_19.md`). Not run in ComfyUI: the
   Spectrum KSampler, the base DiT at CFG 4.

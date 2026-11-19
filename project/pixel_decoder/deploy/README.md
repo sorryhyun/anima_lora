@@ -79,6 +79,28 @@ Anima Pixel Head Tap before the KSampler and uses Anima Pixel Decode in place of
 
 ComfyUI keeps the VAE on the card after its first decode, so the VAE column has no move cost.
 
+## Samples
+
+Turbo 4 steps, CFG 1, seed 42, 1024×1024, in ComfyUI (the workflow above); left VAE Decode,
+right Anima Pixel Decode, decoded from the same latent. Prompt: `masterpiece, best quality,
+score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors.
+She's holding a rectangular sign out in front of her that reads "ANIMA". She's looking at the
+viewer with a smile. The background features some trees and blue sky with clouds.`; the
+monochrome pair adds `monochrome, comic` after `safe`. Crops: 384×384 at native resolution,
+x 192–576, y 512–896.
+
+| | VAE Decode | pixel head |
+|---|---|---|
+| colour, 37.3 dB | ![colour, VAE](samples/color_vae.png) | ![colour, pixel head](samples/color_head.png) |
+| crop | ![colour crop, VAE](samples/color_vae_crop.png) | ![colour crop, pixel head](samples/color_head_crop.png) |
+| monochrome, comic, 31.1 dB | ![mono, VAE](samples/mono_vae.png) | ![mono, pixel head](samples/mono_head.png) |
+| crop | ![mono crop, VAE](samples/mono_vae_crop.png) | ![mono crop, pixel head](samples/mono_head_crop.png) |
+
+On the monochrome crop the VAE keeps the screentone dots on the shorts; the head renders them as
+flat grey (see Known limits).
+
+## Held-out reads
+
 Held-out reads during training (dB, colour / mono):
 
 | decode point | colour | mono |
@@ -99,7 +121,8 @@ Held-out reads during training (dB, colour / mono):
 
 ## Use
 
-- ComfyUI: the ComfyUI-Anima-PixelDecoder node pack. Put this file in `models/pixel_heads/`,
+- ComfyUI: the [ComfyUI-Anima-PixelDecoder](https://github.com/sorryhyun/ComfyUI-Anima-PixelDecoder)
+  node pack (ComfyUI Manager: "Anima Pixel Decoder"). Put this file in `models/pixel_heads/`,
   add **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or Spectrum) and decode
   the sampler's LATENT with **Anima Pixel Decode** instead of VAE Decode. Run the DiT on the
   fp32 stream (Anima Adapter Loader, `stream = fp32`).
