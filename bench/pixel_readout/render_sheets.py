@@ -27,7 +27,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image
-from safetensors import safe_open
 from safetensors.torch import load_file
 
 from bench._anima import (
@@ -39,7 +38,7 @@ from bench._anima import (
 from bench._common import make_run_dir, start_heartbeat, write_result
 from bench.pixel_readout.convnext_head import (
     P1_RUN,
-    PixelHead,
+    load_head,
     densest_window,
     lat_patches,
     sheet,
@@ -95,19 +94,8 @@ def main():
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())
     )
 
-    head_path = Path(resolve_under_home(args.head_run)) / "head.safetensors"
-    with safe_open(str(head_path), "pt") as fh:
-        meta = fh.metadata()
     D = anima.final_layer.hidden_size
-    head = PixelHead(
-        D,
-        64,
-        int(meta["width"]),
-        int(meta["depth"]),
-        use_skip=meta.get("skip", "1") == "1",
-    ).to(device)
-    head.load_state_dict(load_file(str(head_path)))
-    head.eval()
+    head = load_head(args.head_run, D, device)
     w1 = load_file(
         str(Path(resolve_under_home(args.p1_run)) / "readout_linear.safetensors")
     )["weight"]
@@ -126,7 +114,7 @@ def main():
         )
         lat = load_cached_latents(ci.npz_path)[0].unsqueeze(0)
         cross, _ = load_cached_text_features(ci.te_path, variant=0)
-        items.append((f"{artist}_{stem}", lat, cross.unsqueeze(0)))
+        items.append((f"{artist}_{stem}", lat, cross.unsqueeze(0), None))
     if args.images:
         arg_c, _ = prepare_text_inputs(
             device=device,
@@ -142,12 +130,12 @@ def main():
             with torch.no_grad():
                 lat = vae.encode_pixels_to_latents(px).squeeze(2).float().cpu()
             name = "_".join(Path(path).parts[-2:]).rsplit(".", 1)[0]
-            items.append((name, lat, cross))
+            items.append((name, lat, cross, px[0].float().cpu()))
     print(f"{len(items)} images, sigma_last {sigma_last:.4f}", flush=True)
 
     run_dir = make_run_dir("pixel_readout", label=args.label)
     rows, artifacts = [], []
-    for k, (name, lat, cross) in enumerate(items):
+    for k, (name, lat, cross, orig) in enumerate(items):
         lat = lat.to(device)
         with torch.no_grad():
             tgt = vae.decode_to_pixels(lat)[0].float()
@@ -161,7 +149,7 @@ def main():
                 1, 1, *lat.shape[-2:], dtype=torch.bfloat16, device=device
             )
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                anima(
+                v = anima(
                     x_t.unsqueeze(2).to(torch.bfloat16),
                     sig,
                     cross.to(device, torch.bfloat16),
@@ -173,20 +161,31 @@ def main():
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 pred = head(f, lat_patches(x_t).float())
             pred = pred.float().clamp(-1, 1)
-        rows.append(
-            {
-                "name": name,
-                "psnr_p1_linear": psnr(lin, tgt),
-                "psnr_head": psnr(pred, tgt),
-            }
-        )
+            x0_hat = x_t - sigma_last * v.float().squeeze(2)
+            dec_hat = vae.decode_to_pixels(x0_hat)[0].float()
+        row = {
+            "name": name,
+            "psnr_p1_linear": psnr(lin, tgt),
+            "psnr_head": psnr(pred, tgt),
+            "psnr_vae_xhat0": psnr(dec_hat, tgt),
+            "psnr_head_vs_xhat0": psnr(pred, dec_hat),
+        }
+        if orig is not None:  # raw images: the VAE's own loss against the pixels
+            o = orig.to(device)
+            row["psnr_vae_vs_orig"] = psnr(tgt, o)
+            row["psnr_head_vs_orig"] = psnr(pred, o)
+        rows.append(row)
         print(
-            f"  {name}: P1 {rows[-1]['psnr_p1_linear']:.2f}  head {rows[-1]['psnr_head']:.2f}",
+            f"  {name}: "
+            + "  ".join(f"{k[5:]} {v:.2f}" for k, v in row.items() if k != "name"),
             flush=True,
         )
         fn = f"sheet_{k:02d}_{name}.png"
+        cols = [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)]
+        if orig is not None:
+            cols = [("original", orig.to(device)), cols[0], cols[2]]
         sheet(
-            [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)],
+            cols,
             run_dir / fn,
             at=densest_window(tgt, 384),
         )

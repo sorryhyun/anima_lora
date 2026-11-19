@@ -242,3 +242,79 @@ Claude's read (labelled, sheets 00, 05, 07): colour images as in the test set (1
 washed contrast, grain). Manga: panels, faces and large SFX kept; small balloon text keeps its
 layout but not readable glyphs; blacks lift to grey and white paper takes grain; screentone and
 hatching blur to grey.
+
+## p3_generated.py — P3, the head on sampled images
+
+Renders each (prompt, seed) with `generate_body` (Euler, 50 steps, shift 3, CFG 3.5, bench
+negative prompt, vocab pack attached), hooks the last step's x_t, cond / uncond features and
+velocities, and reads the head three ways against VAE(x_final): CFG-combined feature, cond
+feature, and teacher-forced on the generated latent. `--adapter` repeats every prompt at
+multiplier 0 and 1. `cfg_check` confirms x_final = x_t − σ·v_cfg.
+
+### p3_1119_1056 (head `0938`, adapter `anima_merged15`, 16 prompts × seeds 0, 1)
+
+Results `results/20261119-1057-p3_1119_1056/` (local). PSNR vs VAE(x_final), dB, mean:
+
+| | base cfg / cond / tf | LoRA cfg / cond / tf |
+|---|---|---|
+| colour (26) | 30.90 / 30.94 / 30.17 | 31.24 / 31.28 / 30.61 |
+| mono (6) | 22.51 / 22.53 / 21.86 | 22.85 / 22.87 / 22.26 |
+
+`cfg_check` ≤ 1.71e-3. Per-prompt table and reads: `project/pixel_decoder/reports/p3_2026_11_19.md`.
+
+### manga_1119_1052 (`render_sheets.py`, head `0938`)
+
+`render_sheets.py` now also reports VAE(x̂0) vs VAE(x0), the head vs VAE(x̂0), and for raw images
+VAE vs original and head vs original (sheet columns original | VAE | head). Inputs: 4 Manga109-s
+p.14 spreads, page 8 of 6 hitocrawl JA works, 2 sushispin. Results
+`results/20261119-1054-manga_1119_1052/` (local); table in the P3 report. Manga: VAE vs original
+21.46–39.79, VAE(x̂0) vs VAE(x0) 24.31–36.25, head vs VAE(x0) 21.51–33.24.
+
+### mangaup_1119_1152 (head `convnext_1119_1106`, same 12 inputs and noise as `manga_1119_1052`)
+
+Results `results/20261119-1201-mangaup_1119_1152/` (local). Head vs VAE(x0), `0938` → `1106`:
+Manga109-s 21.51 → 21.82, 22.15 → 22.47, 27.53 → 27.87, 24.26 → 24.67; hitocrawl +0.32 … +0.79;
+sushispin +0.60 / +0.68; 12 / 12 up. Head vs original on the 10 pages: +0.14 … +0.74.
+
+### convnext_1119_1106 — one 2× upsample stage (the user's arm, 2026-11-19)
+
+Parent `convnext_1119_0938` (`--no_skip --ls_init 1.0`), `--up 1`: blocks 1–2 at token
+resolution (width 1024) as before; the third block runs after one 2× upsample (LayerNorm +
+per-token linear 1024 → 4 × 512, pixel shuffle) at width 512, so its 3×3 depthwise sits at 8-px
+spacing, and `out` writes an 8×8 patch per upsampled position (512 → 192) in place of 16×16
+per token (1024 → 768). Same multiplies in the third block's MLP (4× positions, ¼ per
+position); 23.3M against 28.2M parameters. Data, order, noise seeds, LR 2e-4, 4 updates per
+rollout, 3600 rollouts, cosine, clip 1.0 unchanged.
+Question: does a block at 8-px spacing pass `0938` on test / text and take out the softness
+left in thin lines, small text and screentone? Above → the upsample stage joins the recipe
+(P3's manga training runs on it). Level → `0938`'s head stays and capacity goes to width or
+data.
+Records: `0938` test 32.93 / text 27.45; `0950` (different recipe) 32.96 / 27.46.
+Read: same sheets and PSNR beside `0938`, then `render_sheets.py` on `manga_1119_1052`'s
+inputs; labelled; bars: spread unknown (no seed twin of `0938`); the user's read decides.
+Cost: 3600 rollouts, ≈ 27 min.
+
+Result (26 min, 0.43 s / rollout, 24.9M parameters; `results/20261119-1151-convnext_1119_1106/` (local)):
+
+| test PSNR vs VAE (dB), rollout 600 / 1200 / 1800 / 2400 / 3000 / 3600 | test (30) | text (8) |
+|---|---|---|
+| `0938` | 25.69 / 29.39 / 31.01 / 32.21 / 32.64 / 32.93 | 22.63 / 25.14 / 26.21 / 26.99 / 27.36 / 27.45 |
+| `1106` | 26.94 / 30.57 / 31.73 / 32.89 / 33.44 / 33.64 | 23.47 / 26.01 / 26.93 / 27.62 / 27.96 / 28.04 |
+
+Per image, `1106` − `0938`: test +0.31 … +1.31 (30 / 30 up), text +0.42 … +0.87 (8 / 8 up). Spread
+unknown. Claude's read (labelled, VAE | 0938 | 1106 crops of text 00, 02 and sheet 08): balloon
+glyph strokes sharper with `1106`, closer to the VAE. Adopted into the recipe (Claude's call under
+the user's proceed-unless-flagged rule, 2026-11-19).
+
+## build_pages.py — manga pages for the training mix
+
+Precaches VAE latents of Manga109-s images and hitocrawl JA pages (resized to ~4100 tokens) into
+`post_image_dataset/pixel_pages/{train,eval}/`; the eval split is `manga_1119_1052`'s 10 pages
+with their original pixels. `convnext_head.py --pages <dir> --page_share p` mixes `train/` in
+(one fixed tag caption, `--page_caption`) and scores `eval/` as a `manga` set; `--target xhat0`
+trains against VAE(x̂0). Every eval now reports each set against VAE(x0) and VAE(x̂0).
+
+Build 2026-11-19: pools 8,140 Manga109-s / 9,683 hitocrawl JA (pages 1–2 of each work skipped),
+1,500 + 1,500 drawn (seed 0), 471 s, 1.6 GB. `smoke_pages` (20 rollouts, `--target xhat0
+--page_share 0.33`, no `--up`): 9 page rollouts; manga eval VAE vs original and VAE(x̂0) vs
+VAE(x0) match `manga_1119_1052` within 0.1 dB.

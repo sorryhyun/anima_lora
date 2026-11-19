@@ -28,14 +28,13 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import numpy as np
 import torch
 import torch.nn as nn
-from safetensors import safe_open
 from safetensors.torch import load_file
 
 from bench._anima import add_common_args, add_model_args, build_anima
 from bench._common import make_run_dir, start_heartbeat, write_result
 from bench.pixel_readout.convnext_head import (
     P1_RUN,
-    PixelHead,
+    load_head,
     lat_patches,
     pick_text,
 )
@@ -96,19 +95,8 @@ def main():
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())
     )
 
-    head_path = Path(resolve_under_home(args.head_run)) / "head.safetensors"
-    with safe_open(str(head_path), "pt") as fh:
-        meta = fh.metadata()
     D = anima.final_layer.hidden_size
-    head = PixelHead(
-        D,
-        64,
-        int(meta["width"]),
-        int(meta["depth"]),
-        use_skip=meta.get("skip", "1") == "1",
-    ).to(device)
-    head.load_state_dict(load_file(str(head_path)))
-    head.eval()
+    head = load_head(args.head_run, D, device)
     w1 = load_file(
         str(Path(resolve_under_home(args.p1_run)) / "readout_linear.safetensors")
     )["weight"]

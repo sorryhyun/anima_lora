@@ -45,9 +45,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image, ImageDraw
+from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
-from bench._anima import add_common_args, add_model_args, build_anima
+from bench._anima import (
+    DEFAULT_TEXT_ENCODER,
+    add_common_args,
+    add_model_args,
+    build_anima,
+)
 from bench._common import make_run_dir, start_heartbeat, write_result
 from bench.pixel_readout.linear_probe import (
     PATCH,
@@ -59,6 +65,7 @@ from bench.pixel_readout.linear_probe import (
 from library.datasets.buckets import cluster_token_bands
 from library.env import resolve_under_home
 from library.inference.sampling import get_timesteps_sigmas
+from library.inference.text import prepare_text_inputs
 from library.io.cache import (
     discover_cached_pairs,
     load_cached_latents,
@@ -106,16 +113,32 @@ class PixelHead(nn.Module):
         depth: int,
         ls_init: float = 1e-6,
         use_skip: bool = True,
+        up: int = 0,
     ):
+        """``up`` > 0: the last ``up`` of the ``depth`` blocks run after one 2× upsample
+        (LayerNorm + per-token linear to 4 × width/2, pixel shuffle) at width/2, and
+        ``out`` writes an 8×8 patch per upsampled position instead of 16×16 per token."""
         super().__init__()
         out = PATCH * PATCH * 3
         self.use_skip = use_skip
+        self.up = up
         self.linear = nn.Linear(d_feat, out)  # P1 skip (unused when use_skip is off)
         self.proj = nn.Linear(d_feat, width)
         self.lat_embed = nn.Linear(d_lat, width)
-        self.blocks = nn.ModuleList(ConvNeXtBlock(width, ls_init) for _ in range(depth))
-        self.norm_out = nn.LayerNorm(width, eps=1e-6)
-        self.out = nn.Linear(width, out)
+        self.blocks = nn.ModuleList(
+            ConvNeXtBlock(width, ls_init) for _ in range(depth - up)
+        )
+        w_out = width
+        if up:
+            w_out = width // 2
+            self.up_norm = nn.LayerNorm(width, eps=1e-6)
+            self.up_proj = nn.Linear(width, 4 * w_out)
+            self.up_blocks = nn.ModuleList(
+                ConvNeXtBlock(w_out, ls_init) for _ in range(up)
+            )
+        self.patch = PATCH // 2 if up else PATCH
+        self.norm_out = nn.LayerNorm(w_out, eps=1e-6)
+        self.out = nn.Linear(w_out, self.patch * self.patch * 3)
         if (
             use_skip
         ):  # step 0 reproduces P1; without the skip, out keeps its default init
@@ -127,13 +150,44 @@ class PixelHead(nn.Module):
         h = (self.proj(f) + self.lat_embed(lat)).permute(2, 0, 1)[None]
         for b in self.blocks:
             h = b(h)
+        if self.up:
+            u = self.up_proj(self.up_norm(h.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
+            h = F.pixel_shuffle(u, 2)  # (1, width/2, 2gh, 2gw)
+            for b in self.up_blocks:
+                h = b(h)
         h = self.norm_out(h[0].permute(1, 2, 0))
         # the ridge solution loses ~dB under bf16 weights; keep the skip in fp32
         with torch.autocast("cuda", enabled=False):
             tok = self.out(h).float()
+            if self.up:
+                n, m, p = h.shape[0], h.shape[1], self.patch
+                img = tok.view(n, m, p, p, 3).permute(4, 0, 2, 1, 3)
+                img = img.reshape(3, n * p, m * p)
+                if self.use_skip:
+                    img = img + from_patches(
+                        self.linear(f.float()).reshape(gh * gw, -1), gh, gw
+                    )
+                return img
             if self.use_skip:
                 tok = tok + self.linear(f.float())
         return from_patches(tok.reshape(gh * gw, -1).float(), gh, gw)
+
+
+def load_head(run: str | Path, d_feat: int, device) -> "PixelHead":
+    """A trained head from ``<run>/head.safetensors`` (shape from its metadata)."""
+    path = Path(resolve_under_home(str(run))) / "head.safetensors"
+    with safe_open(str(path), "pt") as fh:
+        meta = fh.metadata()
+    head = PixelHead(
+        d_feat,
+        64,
+        int(meta["width"]),
+        int(meta["depth"]),
+        use_skip=meta.get("skip", "1") == "1",
+        up=int(meta.get("up", "0")),
+    ).to(device)
+    head.load_state_dict(load_file(str(path)))
+    return head.eval()
 
 
 def rec_loss(pred, tgt):
@@ -187,6 +241,13 @@ def lat_patches(lat: torch.Tensor) -> torch.Tensor:
         .permute(1, 3, 0, 2, 4)
         .reshape(h // 2, w // 2, 4 * c)
     )
+
+
+def page_token_count(path: Path) -> int:
+    """Tokens of a build_pages.py page, from its stored ``size`` (WxH pixels)."""
+    with safe_open(str(path), "pt") as fh:
+        w, h = (int(v) for v in fh.metadata()["size"].split("x"))
+    return (w // PATCH) * (h // PATCH)
 
 
 def token_count(ci) -> int:
@@ -254,6 +315,31 @@ def main():
         action="store_true",
         help="drop the P1 linear skip; out keeps its default init (FastFrames' form)",
     )
+    p.add_argument(
+        "--up",
+        type=int,
+        default=0,
+        help="the last N of --depth blocks run after one 2× upsample at width/2",
+    )
+    p.add_argument(
+        "--target",
+        choices=["x0", "xhat0"],
+        default="x0",
+        help="train against VAE(x0) (clean latent) or VAE(x̂0) (x_t − σ·v, the DiT's own "
+        "estimate from the same forward); evals report both",
+    )
+    p.add_argument(
+        "--pages",
+        default=None,
+        help="build_pages.py output (train/, eval/): manga pages in the mix, eval/ "
+        "pages scored as a third held-out set",
+    )
+    p.add_argument("--page_share", type=float, default=0.0, help="P(rollout is a page)")
+    p.add_argument(
+        "--page_caption",
+        default="monochrome, greyscale, comic, speech bubble, japanese text",
+    )
+    p.add_argument("--text_encoder", default=DEFAULT_TEXT_ENCODER)
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--lr_linear", type=float, default=2e-5)
     p.add_argument("--warmup", type=int, default=200, help="opt steps")
@@ -292,12 +378,22 @@ def main():
         for ci in discover_cached_pairs(str(cache_root / a))
         if ci.npz_path not in held_paths
     ]
-    seq_bands = cluster_token_bands(token_count(ci) for ci in train + test + text)
+    page_train: list[Path] = []
+    page_eval: list[Path] = []
+    if args.pages:
+        proot = Path(resolve_under_home(args.pages))
+        page_train = sorted((proot / "train").glob("*.safetensors"))
+        page_eval = sorted((proot / "eval").glob("*.safetensors"))
+    page_tokens = [page_token_count(pth) for pth in page_train + page_eval]
+    seq_bands = cluster_token_bands(
+        [token_count(ci) for ci in train + test + text] + page_tokens
+    )
     _, sigmas = get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
     sigma_last = float(sigmas[-2])
     print(
         f"train {len(train)}  test {len(test)} ({', '.join(test_artists)})  "
-        f"text {len(text)}  bands {seq_bands}  sigma_last {sigma_last:.4f}",
+        f"text {len(text)}  pages {len(page_train)} / eval {len(page_eval)}  "
+        f"bands {seq_bands}  sigma_last {sigma_last:.4f}",
         flush=True,
     )
 
@@ -315,26 +411,55 @@ def main():
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())
     )
 
+    page_cross = None
+    if args.pages:
+        arg_c, _ = prepare_text_inputs(
+            device=device,
+            anima=anima,
+            prompt=args.page_caption,
+            text_encoder_path=str(resolve_under_home(args.text_encoder)),
+        )
+        page_cross = arg_c["embed"][0].to(device, torch.bfloat16)
+
+    def load_item(item):
+        if isinstance(item, Path):  # a build_pages.py page
+            lat = load_file(str(item))["latent"].float()[None].to(device)
+            return lat, page_cross
+        lat = load_cached_latents(item.npz_path)[0].unsqueeze(0).to(device)
+        cross, _ = load_cached_text_features(item.te_path, variant=0)
+        return lat, cross.unsqueeze(0).to(device, torch.bfloat16)
+
     @torch.no_grad()
-    def rollout(ci, idx: int):
-        lat = load_cached_latents(ci.npz_path)[0].unsqueeze(0).to(device)
-        tgt = vae.decode_to_pixels(lat)[0].float()
-        cross, _ = load_cached_text_features(ci.te_path, variant=0)
-        cross = cross.unsqueeze(0).to(device, torch.bfloat16)
+    def rollout(item, idx: int, targets=None):
+        """→ (features, x_t patches, {target name: VAE decode})."""
+        targets = targets or (args.target,)
+        lat, cross = load_item(item)
         g = torch.Generator(device=device).manual_seed(args.seed * 100003 + idx)
         noise = torch.randn(lat.shape, generator=g, device=device, dtype=lat.dtype)
         x_t = (1 - sigma_last) * lat + sigma_last * noise
         sig = torch.tensor([sigma_last], device=device)
         pad = torch.zeros(1, 1, *lat.shape[-2:], dtype=torch.bfloat16, device=device)
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            anima(x_t.unsqueeze(2).to(torch.bfloat16), sig, cross, padding_mask=pad)
+            v = anima(x_t.unsqueeze(2).to(torch.bfloat16), sig, cross, padding_mask=pad)
         f = tap.pop("x")[0, 0]  # (gh, gw, D)
-        return f.float(), lat_patches(x_t).float(), tgt
+        tgts = {}
+        if "x0" in targets:
+            tgts["x0"] = vae.decode_to_pixels(lat)[0].float()
+        if "xhat0" in targets:
+            x0_hat = x_t - sigma_last * v.float().squeeze(2)
+            tgts["xhat0"] = vae.decode_to_pixels(x0_hat)[0].float()
+        return f.float(), lat_patches(x_t).float(), tgts
 
     # --- head ---
     D = anima.final_layer.hidden_size
     head = PixelHead(
-        D, 64, args.width, args.depth, args.ls_init, use_skip=not args.no_skip
+        D,
+        64,
+        args.width,
+        args.depth,
+        args.ls_init,
+        use_skip=not args.no_skip,
+        up=args.up,
     ).to(device)
     w1 = load_file(
         str(Path(resolve_under_home(args.p1_run)) / "readout_linear.safetensors")
@@ -365,12 +490,28 @@ def main():
 
     # --- held-out features once (CPU), so evals cost no DiT forward ---
     t0 = time.perf_counter()
-    held_feats = []
-    for j, ci in enumerate(test + text):
-        f, lat, tgt = rollout(ci, 10_000 + j)
+    held_feats = []  # (item, set, features, x_t patches, {target: decode}, original | None)
+    held_items = (
+        [(ci, "test") for ci in test]
+        + [(ci, "text") for ci in text]
+        + [(pth, "manga") for pth in page_eval]
+    )
+    for j, (item, key) in enumerate(held_items):
+        f, lat, tgts = rollout(item, 10_000 + j, targets=("x0", "xhat0"))
+        orig = None
+        if isinstance(item, Path):
+            orig = load_file(str(item))["pixels"].float() / 127.5 - 1
         held_feats.append(
-            (ci, f.to("cpu", torch.bfloat16), lat.cpu(), tgt.to("cpu", torch.float16))
+            (
+                item,
+                key,
+                f.to("cpu", torch.bfloat16),
+                lat.cpu(),
+                {k: v.to("cpu", torch.float16) for k, v in tgts.items()},
+                orig,
+            )
         )
+    sets = list(dict.fromkeys(key for _, key in held_items))
     print(
         f"held-out features {len(held_feats)} in {time.perf_counter() - t0:.0f}s",
         flush=True,
@@ -388,24 +529,29 @@ def main():
         return pred.float().clamp(-1, 1)
 
     def evaluate():
+        """{set: mean PSNR vs VAE(x0)} and {set_xhat0: … vs VAE(x̂0)}."""
         head.eval()
-        out = {"test": [], "text": []}
-        for k, (ci, f, lat, tgt) in enumerate(held_feats):
-            key = "test" if k < len(test) else "text"
-            out[key].append(psnr(predict(f, lat), tgt.to(device)))
+        out: dict[str, list] = {}
+        for _, key, f, lat, tgts, _ in held_feats:
+            pred = predict(f, lat)
+            out.setdefault(key, []).append(psnr(pred, tgts["x0"].to(device)))
+            out.setdefault(f"{key}_xhat0", []).append(
+                psnr(pred, tgts["xhat0"].to(device))
+            )
         head.train()
         return {k: float(np.mean(v)) for k, v in out.items()}
 
-    p1_lin = [
-        psnr(predict(f, lat, use_head=False), tgt.to(device))
-        for _, f, lat, tgt in held_feats
-    ]
-    p1_scores = {
-        "test": float(np.mean(p1_lin[: len(test)])),
-        "text": float(np.mean(p1_lin[len(test) :])),
-    }
+    def fmt(ev):
+        return "  ".join(f"{k} {ev[k]:.2f} (x̂0 {ev[k + '_xhat0']:.2f})" for k in sets)
+
+    p1_lin: dict[str, list] = {}
+    for _, key, f, lat, tgts, _ in held_feats:
+        p1_lin.setdefault(key, []).append(
+            psnr(predict(f, lat, use_head=False), tgts["x0"].to(device))
+        )
+    p1_scores = {k: float(np.mean(v)) for k, v in p1_lin.items()}
     print(
-        f"P1 linear: test {p1_scores['test']:.2f}  text {p1_scores['text']:.2f}",
+        "P1 linear: " + "  ".join(f"{k} {v:.2f}" for k, v in p1_scores.items()),
         flush=True,
     )
     # P1 linear weights are about to train; keep a frozen copy for the sheets
@@ -415,16 +561,27 @@ def main():
     # --- train ---
     history = []
     order: list = []
+    page_order: list = []
+    page_rng = random.Random(args.seed + 2)  # own stream: colour order as without pages
+    n_page_rollouts = 0
     step = 0
     t0 = time.perf_counter()
     loss_ema = mse_ema = None
     window: deque = deque(maxlen=args.accum)
     for r in range(args.rollouts):
-        if not order:
-            order = train[:]
-            rng.shuffle(order)
-        ci = order.pop()
-        window.append(rollout(ci, r))
+        if page_train and page_rng.random() < args.page_share:
+            if not page_order:
+                page_order = page_train[:]
+                page_rng.shuffle(page_order)
+            item = page_order.pop()
+            n_page_rollouts += 1
+        else:
+            if not order:
+                order = train[:]
+                rng.shuffle(order)
+            item = order.pop()
+        f, lat, tgts = rollout(item, r)
+        window.append((f, lat, tgts[args.target]))
         for _ in range(args.opt_steps):
             set_lr(step)
             opt.zero_grad(set_to_none=True)
@@ -451,18 +608,16 @@ def main():
         if (r + 1) % args.eval_every == 0 or r + 1 == args.rollouts:
             ev = evaluate()
             history.append({"rollout": r + 1, "step": step, **ev})
-            print(
-                f"  eval @ {r + 1}: test {ev['test']:.2f}  text {ev['text']:.2f}",
-                flush=True,
-            )
+            print(f"  eval @ {r + 1}: {fmt(ev)}", flush=True)
 
     # --- read ---
     run_dir = make_run_dir("pixel_readout", label=args.label)
     rows, artifacts = [], []
     head.eval()
-    text_k = 0
-    for k, (ci, f, lat, tgt) in enumerate(held_feats):
-        tgt = tgt.to(device).float()
+    counters: dict[str, int] = {}
+    for k, (item, key, f, lat, tgts, orig) in enumerate(held_feats):
+        tgt = tgts["x0"].to(device).float()
+        tgt_hat = tgts["xhat0"].to(device).float()
         pred = predict(f, lat)
         with torch.no_grad():
             fd = f.to(device).float()
@@ -470,23 +625,34 @@ def main():
             lin = from_patches(
                 p1_linear(fd).reshape(gh * gw, -1).float(), gh, gw
             ).clamp(-1, 1)
-        is_text = k >= len(test)
-        rows.append(
-            {
-                "stem": ci.stem,
-                "artist": Path(ci.npz_path).parent.name,
-                "set": "text" if is_text else "test",
-                "psnr_p1_linear": psnr(lin, tgt),
-                "psnr_head": psnr(pred, tgt),
-            }
-        )
-        cols = [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)]
-        if is_text:
-            name = f"text_{text_k:02d}_{ci.stem}.png"
-            text_k += 1
+        is_page = isinstance(item, Path)
+        row = {
+            "stem": item.stem,
+            "artist": "pages" if is_page else Path(item.npz_path).parent.name,
+            "set": key,
+            "psnr_p1_linear": psnr(lin, tgt),
+            "psnr_head": psnr(pred, tgt),
+            "psnr_head_xhat0": psnr(pred, tgt_hat),
+            "psnr_vae_xhat0": psnr(tgt_hat, tgt),
+        }
+        if orig is not None:
+            o = orig.to(device)
+            row["psnr_vae_vs_orig"] = psnr(tgt, o)
+            row["psnr_head_vs_orig"] = psnr(pred, o)
+        rows.append(row)
+        n = counters.get(key, 0)
+        counters[key] = n + 1
+        if key == "manga":
+            cols = [("original", orig.to(device)), ("VAE decode", tgt), ("head", pred)]
+            name = f"manga_{n:02d}_{item.stem}.png"
             sheet(cols, run_dir / name, at=densest_window(tgt, 384))
-        elif k < args.n_sheets:
-            name = f"sheet_{k:02d}_{ci.stem}.png"
+        elif key == "text":
+            cols = [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)]
+            name = f"text_{n:02d}_{item.stem}.png"
+            sheet(cols, run_dir / name, at=densest_window(tgt, 384))
+        elif n < args.n_sheets:
+            cols = [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)]
+            name = f"sheet_{n:02d}_{item.stem}.png"
             sheet(cols, run_dir / name)
         else:
             continue
@@ -500,6 +666,8 @@ def main():
             "depth": str(args.depth),
             "ls_init": str(args.ls_init),
             "skip": str(int(head.use_skip)),
+            "up": str(args.up),
+            "target": args.target,
             "sigma": f"{sigma_last}",
         },
     )
@@ -522,6 +690,17 @@ def main():
         "test_psnr_head": mean("test", "psnr_head"),
         "text_psnr_p1_linear": mean("text", "psnr_p1_linear"),
         "text_psnr_head": mean("text", "psnr_head"),
+        **{f"{st}_psnr_head_xhat0": mean(st, "psnr_head_xhat0") for st in sets},
+        **(
+            {
+                "manga_psnr_head": mean("manga", "psnr_head"),
+                "manga_psnr_head_vs_orig": mean("manga", "psnr_head_vs_orig"),
+                "n_page_train": len(page_train),
+                "n_page_rollouts": n_page_rollouts,
+            }
+            if page_eval
+            else {}
+        ),
         "eval_history": history,
         "per_image": rows,
     }
