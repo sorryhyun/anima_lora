@@ -1,7 +1,10 @@
 # Pixel readout head — a light pixel decoder on the frozen DiT's last features
 
 Status: PROPOSAL. Probe 1 (linear readout) done on anima-base, 2026-11-18; nothing trained past it.
-Probe code and results: `bench/pixel_readout/`.
+Probe code and results: `bench/pixel_readout/`. P2 `convnext_1119_0835` ran 2026-11-19: test 26.50 dB against P1's 26.28, text 21.58 against
+21.61, sheets close to P1's; `gradprobe_1119_0914` ruled out clipping and the layer-scale init
+(`bench/pixel_readout/README.md`).
+If P2 reads well, the line moves into `project/anima_turbo/` (the user, 2026-11-19).
 
 ## TL;DR
 
@@ -132,7 +135,28 @@ show), read at σ ∈ {0.06, 0.5, 0.9} against VAE(x̂₀).
 Separate proposals once P2–P4 read out: (a) GAN on the head (FastFrames uses DINOv3 ViT-S/16
 heads at layers 4/8/12 with a relativistic loss and R1/R2; the turbo line's disc code is in git
 history); (b) arm D with the reader NLL through the head, its D0 cost probe rerun against the
-VAE-window path.
+VAE-window path; (c) a ResShift refiner in place of the GAN (below).
+
+What the target is. FastFrames' reconstruction stage regresses the VAE decode of a sampled
+rollout (App. C, Eq. 4): no ground-truth pixels exist for it, so the VAE is its ceiling. Only
+the GAN stage reaches past it, through an unpaired discriminator on 10K real videos, with the
+VAE-target reconstruction loss kept on. Our P2 is teacher-forced from cached latents, so each
+training pair has its real image (`post_image_dataset/resized/`): a paired real-pixel target is
+available here without a GAN. Generated images (P3) have no such pair.
+
+ResShift, the finished SR sidecar (`project/finished/sr/`: ×2 / ×4 1-step RSD students, input
+`lq` = LR pixels), connects in three places:
+
+- **Chain swap, no training.** Head output in place of the VAE decode ahead of ResShift ×2.
+  Forward only, minutes. Read: whether ResShift sharpens P1/P2's flat-region grain into texture
+  that the VAE → ResShift path does not show (same images, side by side).
+- **Head at 2× (32×32 per token).** Decode and ×2 in one readout. Under L1 / MSE a 1024-tier
+  feature has no 2048 detail to regress, so this alone gives a blurred mean; it needs (a) or
+  the refiner below.
+- **ResShift refiner as the P5 lever.** Head output as the residual-shift start, a 1-step
+  refiner to the VAE decode or to the real pixels, compared against (a) as "head + GAN" vs
+  "head + ResShift 1-step". The SR line placed its ×2 ceiling in the teacher and the VQ-f4
+  reconstruction floor (`project/finished/sr/STATUS.md`); the same backbone carries that floor.
 
 ## Not claimed
 

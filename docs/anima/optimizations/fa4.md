@@ -6,7 +6,7 @@ This doc records why `attn_mode = "flash4"` and `trim_crossattn_kv` were removed
 
 Two bundled features that shared a single dependency on FA4's `return_lse=True` path:
 
-1. FA4 forward kernel. `flash_attn.cute.flash_attn_func` from a patched SM120 fork (`sorryhyun/flash-attention-sm120-fix`, based on `sisgrad`'s `dz/sm120_tma_optimized` branch). The stock `flash-attn` v4 does not ship SM120 (consumer Blackwell) kernels, so we pulled in a fork to get FA4 running on RTX 50-series cards at all.
+1. FA4 forward kernel. `flash_attn.cute.flash_attn_func` from a patched SM120 fork. The stock `flash-attn` v4 does not ship SM120 (consumer Blackwell) kernels, so FA4 on RTX 50-series cards needed one.
 2. Cross-attention KV trim (`trim_crossattn_kv`). Qwen3 text encoder outputs are zero-padded to 512 tokens, but real captions only fill 30–80. The trim path sliced the padded KV down to a bucketed length (`[64, 128, 256, 512]`), ran attention on the trimmed tensor, and then used FA4's returned log-sum-exp to apply a closed-form correction that rebuilt the contribution of the removed zero keys (they act as attention sinks in the pretrained softmax — dropping them without correction produces black images):
 
    ```
@@ -58,7 +58,7 @@ The FA4 import and dispatch branch were deleted, not commented out. What remains
 `--attn_mode` choices in `library/anima/training.py`, and a raise on
 `attn_mode == "flash4"` in `train.py`. Reviving means:
 
-1. Dependency. Add FA4 back; on consumer Blackwell this still needs the SM120 fork (`sorryhyun/flash-attention-sm120-fix`).
+1. Dependency. Add FA4 back; on consumer Blackwell this needs an FA4 build with SM120 kernels.
 2. Attention dispatch. Re-add the import and the `flash4` branch in `networks/attention_dispatch.py`, wrapping the kernel in `@torch.compiler.disable` (its DLPack pointer access breaks fake-tensor tracing).
 3. Train path. Replace the `train.py` raise with a check against `_flash_attn_4_func_raw is not None`, and restore the `--attn_mode` choice.
 4. KV trim (optional). Reintroduce from scratch: a `trim_crossattn_kv` flag + CLI arg, the per-sample `crossattn_seqlens` / `max_crossattn_seqlen` pass-through in `library/training/{text_conds,forward_kwargs}.py` and `train.py`, a `crossattn_full_len` field on `AttentionParams`, and the slice + LSE-sigmoid correction gated on `attn_mode == "flash4"` in `library/anima/models.py`. The measured win was tiny, so reviving FA4 without the trim (full 512-length KV) is the saner default. The original trim is in pre-2026-05 git history.
