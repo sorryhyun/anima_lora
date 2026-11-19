@@ -398,3 +398,16 @@ Question: does the page mix take out the soft small text, screentone and the gre
 without losing colour? Read: test / text / manga PSNR (vs VAE(x0) and VAE(x̂0)) beside
 `replay_1119_1225` and `mangaup_1119_1152`, manga sheets (original | VAE | head), labelled; the
 user's read decides.
+
+Result (`results/20261119-1304-pagemix_1119_1242/` (local)), ≈ 22 min, 0.65 s / rollout, 667
+page rollouts:
+
+| rollout 400 / 800 / 1200 / 1600 / 2000 | vs VAE(x0) | vs VAE(x̂0) |
+|---|---|---|
+| test (30) | 31.50 / 32.36 / 34.10 / 34.67 / 34.83 | 32.41 / 33.65 / 36.32 / 37.31 / 37.64 |
+| text (8) | 27.14 / 28.20 / 29.06 / 29.49 / 29.65 | 28.11 / 29.64 / 31.01 / 31.72 / 32.02 |
+| manga (10) | 25.95 / 26.69 / 27.61 / 28.00 / 28.15 | 27.20 / 28.40 / 30.01 / 30.75 / 31.05 |
+
+Per image vs replay: test +0.69 … +2.24 (30 / 30 up), text +1.69 … +2.26 (8 / 8). Manga vs
+`mangaup` (head `1106`): mean 26.64 → 28.15, Manga109-s 4 / 4 up (hitocrawl rows in `mangaup` carry no artist name); head vs original 25.07 → 26.17. Spread
+unknown. Tone check and the user's verdict (P3 passed): `project/pixel_decoder/reports/pagemix_2026_11_19.md`.

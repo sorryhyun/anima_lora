@@ -29,10 +29,11 @@ the VAE decode, 30 held-out images / 8 text images, one seed, spread unknown:
 | no skip + one 2× upsample stage (`convnext_1119_1106`) | 33.64 | 28.04 |
 | VAE decode of the DiT's own x̂0 (`ceiling_1119_0920`) | 37.00 | 32.02 |
 | fp32 stream + head compile + replay buffer, 900 rollouts (`replay_1119_1225`) | 33.35 | 27.68 |
+| + target VAE(x̂0), manga pages 0.33, 2,000 rollouts (`pagemix_1119_1242`) | 34.83 | 29.65 |
 
-The current head is `bench/pixel_readout/results/20261119-1236-replay_1119_1225/head.safetensors`
+The current head is `bench/pixel_readout/results/20261119-1304-pagemix_1119_1242/head.safetensors`
 (local): 24.9M parameters, no skip, two ConvNeXt blocks at token resolution and one after a 2×
-upsample, 11 minutes of training. The first P2 head carried P1's linear as a skip and did not train past it
+upsample, 22 minutes of training. The first P2 head carried P1's linear as a skip and did not train past it
 (`reports/p2_skip_2026_11_19.md`). The user's verdict on P2 (2026-11-19): "대 합격"; the
 training method is settled.
 
@@ -43,6 +44,7 @@ generalizes; dense fine strokes (screentone, hatching) are what is left. A 2× u
 (`convnext_1119_1106`) took test / text to 33.64 / 28.04 and is in the recipe. The fp32 stream,
 a compiled head and a replay buffer (`replay_1119_1225`, `reports/replay_recipe_2026_11_19.md`)
 read 33.35 / 27.68 in 44 % of the time; the user read the renders as level and the recipe took
-it. In progress: P3b, manga pages in the mix with target VAE(x̂0) (`pagemix_1119_1242`). Not
-yet trained: any σ other than the last one (the head reads colour 28.52 at the Spectrum
+it. P3b (`pagemix_1119_1242`, `reports/pagemix_2026_11_19.md`): manga pages in the mix with
+target VAE(x̂0); manga eval 28.15 against `mangaup`'s 26.64, tone level with the VAE. The user's
+verdict (2026-11-19): P3 passed; speed lines slightly soft under zoom. Not yet trained: any σ other than the last one (the head reads colour 28.52 at the Spectrum
 sampler's σ 0.10, `e2e_1119_1209`).

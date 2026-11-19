@@ -38,6 +38,15 @@ interpretation. P3 continues as the training strategy for manga and greyscale (I
 slightly better (attributed to the fp32 stream). Adopted 2026-11-19. Same report: decode cost
 on the Spectrum sampler (`e2e_1119_1209`) and the rollout profile.
 
+### P3b — manga pages in the mix, target VAE(x̂0)
+
+`pagemix_1119_1242` (`reports/pagemix_2026_11_19.md`): the replay recipe with `--target xhat0`,
+pages at share 0.33, 2,000 rollouts. Test 34.83 / text 29.65 / manga 28.15 against VAE(x0)
+(replay 33.35 / 27.68; `mangaup` manga 26.64); 30 / 30 test and 8 / 8 text images up; tone level
+with the VAE. Target, rollout count and pages changed together. The user's verdict
+(2026-11-19): "거의 구분 안되는 정도고 그나마 강조선이 살짝 흐린정도네. p3은 통과라고 봐도
+될거같아." P3 passed.
+
 ## Recipe (settled unless a run says otherwise)
 
 - fp32 DiT stream (`--stream fp32`), head training forward compiled under `--compile`, replay
@@ -53,28 +62,14 @@ on the Spectrum sampler (`e2e_1119_1209`) and the rollout profile.
 - One 2× upsample stage before the third block (`--up 1`, the user's arm): `convnext_1119_1106`
   test 33.64 / text 28.04 against `0938`'s 32.93 / 27.45, 38 / 38 images up, same speed, 24.9M
   parameters; spread unknown. Adopted 2026-11-19 (Claude's call, sheets sent, standing unless
-  flagged). Current head: `results/20261119-1236-replay_1119_1225/head.safetensors` (local).
-
-## In progress
-
-### P3b — training strategy for manga and greyscale
-
-`pagemix_1119_1242` (queued 2026-11-19, the user's call): the replay recipe with target
-VAE(x̂0) (x̂0 = x_t − σ·v from the rollout's own forward) and the page mix at share 0.33, 2,000
-rollouts (32,000 updates). The no-page arm was dropped by the user: target, rollout count and
-pages change together against `replay_1119_1225`, and the reading is not held to a separated
-comparison.
-
-- Pages: `post_image_dataset/pixel_pages/` (local; `build_pages.py`, 3,000 train pages, 1,500
+  flagged).
+- Target VAE(x̂0) (x̂0 = x_t − σ·v from the rollout's own forward) and manga pages at share 0.33,
+  2,000 rollouts (`pagemix_1119_1242`, P3 passed on the user's read). Pages:
+  `post_image_dataset/pixel_pages/` (local; `build_pages.py`, 3,000 train pages, 1,500
   Manga109-s + 1,500 hitocrawl JA, seed 0, ~4,100 tokens, one fixed tag caption `monochrome,
-  greyscale, comic, speech bubble, japanese text`; plus 10 eval pages with original pixels, from
-  the 4 Manga109 titles and 6 hitocrawl artists held out in `manga_1119_1052`). `smoke_pages`
-  matched `manga_1119_1052`'s VAE numbers on the eval pages within 0.1 dB.
-- Read: test / text / manga PSNR against VAE(x0) and VAE(x̂0) beside `replay_1119_1225` and
-  `mangaup_1119_1152`; manga sheets (original | VAE | head), labelled; the user's read decides.
-- Not in this run: the P3a generations (6 mono, 26 colour) as a regression read; a separate
-  `p3_generated.py` pass on the new head.
-- In reserve: training on sampled final latents (P3a did not break on generated images).
+  greyscale, comic, speech bubble, japanese text`; 10 eval pages with original pixels).
+- Current head: `bench/pixel_readout/results/20261119-1304-pagemix_1119_1242/head.safetensors`
+  (local).
 
 ## Next
 
@@ -99,19 +94,22 @@ head's tap exists there too, as a forecast. Consequences for the design:
 ### 2. P5 — pixel losses through the head
 
 GAN on the head, arm D's reader NLL through the head,
-or a ResShift refiner. Separate proposals once P3's manga arms and P4 read out.
+or a ResShift refiner. Separate proposals once P4 reads out.
 
 ## Open
 
-- A longer run on the settled recipe: `0938` was still rising when its schedule ended
-  (+0.29 dB on test over the last 600 rollouts); `pagemix_1119_1242` runs 32,000 updates.
+- Speed lines (강조선) slightly soft, footnote-size glyphs blur, under zoom only (the user's read
+  and Claude's on `pagemix_1119_1242`).
+- The P3a generations (6 mono, 26 colour) not re-run on the pagemix head (`p3_generated.py`).
+- Training on sampled final latents: in reserve (P3a did not break on generated images).
 - The DiT GEMMs run under bf16 autocast (the stream is fp32 since `replay_1119_1225`); whether
   that rounding costs readout PSNR is unchecked.
 - No spread for any trained head: one seed per run. A seed twin of the recipe is owed before a
   gap under about 1 dB is read as a gain. P3's seed-to-seed gap of one prompt (mean 1.98 dB) is
   content variation between images, not a run spread.
-- Grey tint on mono generations (Claude's read on `p3_1119_1056`): check whether the manga mix
-  removes it before treating it on its own.
+- Grey tint on mono generations (Claude's read on `p3_1119_1056`): on teacher-forced greyscale
+  pages the pagemix head adds about 0.5 level of chroma over the VAE (`reports/pagemix_2026_11_19.md`);
+  generated mono images are not re-checked.
 - MOSS: nothing until the Anima phases read out.
 - RGBA (the user, 2026-11-19: an open item only). An alpha channel on the head's output is
   cheap to add, and labels can come from real RGBA cutouts composited onto random backgrounds
