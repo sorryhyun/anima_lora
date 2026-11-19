@@ -12,13 +12,21 @@ ways, each timed with a CUDA sync and its peak VRAM over the resident DiT record
 - ``vae_disk``: the single-prompt path of ``inference.py`` — VAE loaded from disk per image.
 - ``vae_resident``: decode only, VAE already on the card (reference).
 
-Every arm ends with the pixels on the CPU in fp32. The head was trained at σ 0.0577 (50-step
-grid); this grid's last σ is 0.1, so the head's PSNR against VAE(x_final) is recorded too.
+Every arm ends with the pixels on the CPU in fp32. The head's PSNR against VAE(x_final) is
+recorded too.
+
+``--adapter`` runs the sampler with a LoRA-family adapter as hooks (after the fp32 stream
+change, as the head was trained); with ``--no_spectrum --infer_steps 4 --guidance_scale 1``
+that is the turbo path (``make test-turbo``: Euler 4 steps, CFG 1, one forward per step).
 
 Usage::
 
     make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/e2e_speed.py \
         --compile --label e2e_mmdd_hhmm"
+    # turbo 4-step
+    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/e2e_speed.py \
+        --compile --adapter models/loras/anima_turbo_4step.safetensors --no_spectrum \
+        --infer_steps 4 --guidance_scale 1.0 --label e2e_turbo_mmdd_hhmm"
 """
 
 from __future__ import annotations
@@ -41,7 +49,7 @@ from bench._anima import (
     build_anima,
 )
 from bench._common import make_run_dir, start_heartbeat, write_result
-from bench.pixel_readout.convnext_head import lat_patches, load_head
+from bench.pixel_readout.convnext_head import attach_adapter, lat_patches, load_head
 from bench.pixel_readout.linear_probe import PATCH, psnr
 from bench.pixel_readout.p3_generated import PROMPTS
 from library.anima.vocab_pack import default_vocab_pack
@@ -55,7 +63,7 @@ from library.inference.text import prepare_text_inputs
 from library.models import qwen_vae
 from scripts.tasks.inference import _spectrum_flags
 
-HEAD_RUN = "bench/pixel_readout/results/20261119-1151-convnext_1119_1106"
+HEAD_RUN = "bench/pixel_readout/results/20261119-1527-mixr_1119_1455"
 MB = 1 << 20
 
 
@@ -87,11 +95,22 @@ def main():
     p.add_argument("--guidance_scale", type=float, default=4.0)
     p.add_argument("--vae_chunk_size", type=int, default=64)
     p.add_argument("--only", nargs="*", default=None, help="prompt names (smoke)")
+    p.add_argument("--adapter", default=None, help="LoRA-family adapter (hooks)")
+    p.add_argument(
+        "--no_spectrum", action="store_true", help="plain Euler (turbo: no Spectrum)"
+    )
+    p.add_argument(
+        "--stream",
+        choices=["fp32", "bf16"],
+        default="fp32",
+        help="DiT residual stream; fp32 is inference.py's default and the head's",
+    )
     args = p.parse_args()
     start_heartbeat(label="e2e")
     device = torch.device(args.device)
     prompts = [x for x in PROMPTS if not args.only or x[0] in args.only]
     g = args.guidance_scale
+    n_calls = 1 if g == 1.0 else 2
 
     _, sigmas = get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
     sigma_last = float(sigmas[-2])
@@ -99,6 +118,12 @@ def main():
     compile_blocks, args.compile = args.compile, False
     bundle = build_anima(args, adapter=None, train_mode=False)
     anima = bundle.anima
+    if args.stream == "fp32":
+        from library.anima.stream import stream_fp32_
+
+        stream_fp32_(anima)
+    if args.adapter:
+        attach_adapter(anima, args.adapter, device)
     _attach_vocab_pack_if_set(anima, default_vocab_pack())
     if compile_blocks:
         toks = sorted({(h // PATCH) * (w // PATCH) for _, _, (h, w) in prompts})
@@ -198,7 +223,8 @@ def main():
         "--dit", str(args.dit), "--vae", str(args.vae),
         "--text_encoder", str(args.text_encoder), "--save_path", "unused",
         "--infer_steps", str(args.infer_steps), "--flow_shift", str(args.flow_shift),
-        "--guidance_scale", str(g), "--sampler", "euler", *_spectrum_flags(),
+        "--guidance_scale", str(g), "--sampler", "euler",
+        *([] if args.no_spectrum else _spectrum_flags()),
     ]  # fmt: skip
 
     def render(k, seed):
@@ -229,7 +255,7 @@ def main():
             continue
         seen.add(hw)
         final = render(k, 1000)
-        cond, unc = calls
+        cond, unc = calls if n_calls == 2 else (calls[0], calls[0])
         decode_all(final, cond["x"].float().squeeze(2), cond["f"], unc["f"])
         print(f"warmup {hw} done", flush=True)
 
@@ -240,10 +266,10 @@ def main():
         torch.cuda.reset_peak_memory_stats()
         final, dit_s = sync_time(lambda: render(k, args.seed))
         dit_peak = (torch.cuda.max_memory_allocated() - base) / MB
-        assert len(calls) == 2 and abs(calls[0]["t"] - sigma_last) < 1e-4, [
+        assert len(calls) == n_calls and abs(calls[0]["t"] - sigma_last) < 1e-4, [
             c["t"] for c in calls
         ]
-        cond, unc = calls
+        cond, unc = calls if n_calls == 2 else (calls[0], calls[0])
         x_t = cond["x"].float().squeeze(2)
         res = decode_all(final, x_t, cond["f"], unc["f"])
         row = {

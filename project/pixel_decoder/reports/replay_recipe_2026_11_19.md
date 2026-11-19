@@ -33,7 +33,7 @@ expected; P4 carries it.
 
 On this sampler the decode is 2–11 % of an image, so the head's speed matters little here; its
 use is per-step previews (P4), pixel losses beside the DiT, a turbo sampler where the DiT share
-shrinks (`../promotion_maybe.md`, an estimate) and MOSS, where the fp32 VAE decode does not fit
+shrinks (measured since: VAE swap 15 % on turbo, `release_2026_11_19.md`) and MOSS, where the fp32 VAE decode does not fit
 beside the DiT. The decode-time VRAM drop (1.38 → 0.24 GB) does not lower the overall peak at
 1 MP, which DiT sampling sets.
 

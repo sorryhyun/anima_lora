@@ -14,11 +14,14 @@ then promotion of the model core into `library/`, then the P5 topics.
 
 ### 1. Release
 
-- The head: `mixr_1119_1455` (P4, the user's verdict).
-- Before the card is written (`promotion_maybe.md`): a turbo e2e run (`e2e_speed.py` with the
-  turbo LoRA, 4 steps, CFG 1) for the decode share the card claims, now an estimate; the
-  card's quality lines re-read on the release head.
-- Upload to the Hub on the user's word; repo and card text are the user's call.
+- Done 2026-11-19: `mixr_1119_1455` uploaded to the private repo `sorryhyun/anima-pixel-head`
+  (the user: private first, they edit the card later). Card source `deploy/README.md`; decode
+  cost on turbo and Spectrum and the upload record in `reports/release_2026_11_19.md` (turbo:
+  VAE swap 15 % of DiT + decode, head 7 ms).
+- Left to the user: the card text, making the repo public.
+- Open: the head's turbo point was trained with the Hub turbo repo's
+  `old/anima_turbo_4step.safetensors`; v3 and v4 are not read. A `p3_generated.py` run with
+  `--adapter` on v3 / v4 answers it (minutes).
 
 ### 2. Promotion — the model core into `library/`
 
