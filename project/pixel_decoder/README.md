@@ -17,7 +17,9 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
 - Code and per-run records: `bench/pixel_readout/` (`linear_probe.py` P1, `convnext_head.py`
   head training, `e2e_speed.py`, `rollout_profile.py`, `render_sheets.py`, `ceiling_probe.py`, `overfit_probe.py`, `grad_probe.py`;
   its `README.md` maps the scripts; run records are in `reports/`). Results:
-  `bench/pixel_readout/results/` (local).
+  `bench/pixel_readout/results/` (local); on 2026-11-19 the concluded runs' dirs were deleted, their numbers stay in
+  `reports/`; the heads code or docs name (readout_1118_2219, convnext_1119_0835 / 0938, pagemix, mixr) kept
+  without sheets; realr / x2real and their reads kept whole.
 
 State (2026-11-19): P1 – P4 complete, with the release, the promotion into `library/` and the
 ComfyUI node (the user: "p4는 완료된걸로 갱신하고 커밋하자"). Next: the P5 topics (`plan.md`).
