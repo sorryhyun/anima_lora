@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Automatic fixes for the KO ``OCR:`` labels from the v6 reads of ``ko_v6_read.py``.
+"""Automatic fixes for the KO ``OCR:`` labels from a reader's reads (``ko_read.py``).
 
 * **Line breaks**: a label with no line break whose characters (whitespace removed) equal
   the read's, where the read has breaks, takes the read's breaks; the label's own
@@ -106,7 +106,9 @@ def main():
     for r in e.head(12).itertuples():
         print(f"  {r.id}  {r.edge!r}  label {r.text[:40]!r}")
     out = a.reads.with_name(a.reads.stem + "_flags.parquet")
-    df[["source", "id", "read", "conf", "edge"]].to_parquet(out, index=False)
+    if "reader" not in df:
+        df["reader"] = "v6"  # reads from before ko_read.py named the reader
+    df[["source", "id", "read", "conf", "edge", "reader"]].to_parquet(out, index=False)
     print(f"[flags] → {out}")
 
 

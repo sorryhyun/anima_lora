@@ -26,8 +26,11 @@ logprob first by default.
 Every row is listed; the page filters on the longest spaceless Hangul run (the gelnote
 teacher's dropped spacing passes the whitespace-blind agreement, ``pseudo_label.py``) and
 sorts by it, by "no line break, longest first", or by ``suspicion`` (``suspicion``: the
-label's line count against the crop's shape, kana / hanja, long spaceless runs — no reader
-confidence is stored for either source).
+label's line count against the crop's shape, kana / hanja, long spaceless runs). With
+``--flags`` (``ko_read.py`` → ``ko_label_fix.py``) every kozh and hito row also shows a
+reader's read and confidence, and the "disagrees" sort lists the rows whose label the read
+does not match (whitespace-blind), lowest confidence first. Re-read with each new run so
+that sort follows the latest reader.
 
     python project/finished/ocr_reader/probes/ko_label_review.py --out ~/ko_label_review
 """
@@ -115,8 +118,8 @@ header .pager { margin:0; }
     <option value="lp">lowest logprob first (hito)</option>
     <option value="sfx">SFX-marked only</option>
     <option value="nolf">no line break, longest first</option>
-    <option value="edge">edge text (label beyond v6's read)</option>
-    <option value="dis">v6 disagrees, lowest confidence first</option>
+    <option value="edge">edge text (label beyond __READER__'s read)</option>
+    <option value="dis">__READER__ disagrees, lowest confidence first</option>
     <option value="run">longest run first</option>
     <option value="id">id</option><option value="todo">unreviewed first</option></select></label>
   <label><input type="checkbox" id="donelast"> reviewed last</label>
@@ -183,7 +186,7 @@ function rows() {
   else if (k === "lp") r = r.slice().sort((a, b) => (a.lp ?? 0) - (b.lp ?? 0) || a.id.localeCompare(b.id));
   else if (k === "sus") r = r.slice().sort((a, b) => b.sus - a.sus || a.id.localeCompare(b.id));
   else if (k === "edge") r = r.filter(x => x.edge).sort((a, b) => b.edge.length - a.edge.length);
-  else if (k === "dis") r = r.filter(x => x.v6 != null && x.v6.replace(/\s/g, "") !== x.text.replace(/\s/g, ""))
+  else if (k === "dis") r = r.filter(x => x.rd != null && x.rd.replace(/\s/g, "") !== x.text.replace(/\s/g, ""))
                              .sort((a, b) => a.conf - b.conf);
   else if (k === "nolf") r = r.slice().sort((a, b) => (a.lf - b.lf) || (b.len - a.len));
   else if (k === "run") r = r.slice().sort((a, b) => b.run - a.run || a.id.localeCompare(b.id));
@@ -219,7 +222,7 @@ function render() {
         ${x.page ? `· <a href="${x.page}" target="_blank">page</a>` : ""} box ${x.box.join(",")}</div>
       <div class="orig">${marked(x.text, +minIn.value || 0)}</div>
       ${x.note ? `<div class="meta">${esc(x.note)}</div>` : ""}
-      ${x.v6 != null ? `<div class="meta">v6 (${x.conf.toFixed(2)}): ${esc(x.v6).replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
+      ${x.rd != null ? `<div class="meta">__READER__ (${x.conf.toFixed(2)}): ${esc(x.rd || "—").replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
       ${x.twin_img ? `<div class="twin"><img loading="lazy" src="${x.twin_img}"><div class="meta">twin (${esc(x.twin_lang)}) v4: ${esc(x.twin || "—").replace(/\n/g, " ⏎ ")}</div></div>` : ""}
       <textarea rows="${Math.max(2, x.text.split("\n").length + 1)}"></textarea>
       <div class="btns"><button class="okb">✓ ok</button><button class="drb">✗ drop row</button>
@@ -325,9 +328,21 @@ def suspicion(t: str, w: int, h: int, lang: str = "ko") -> tuple[float, str]:
     return round(s, 2), " · ".join(why)
 
 
-def hito_rows(d: Path) -> dict[str, list[dict]]:
+def read_fields(f) -> dict:
+    """The flags row's read, confidence and edge text (``rd = None``: no read)."""
+    if f is None:
+        return dict(rd=None, conf=0.0, edge="")
+    return dict(
+        rd=f.read,
+        conf=round(float(f.conf), 3) if f.conf == f.conf else 0.0,
+        edge=f.edge if f.edge else "",
+    )
+
+
+def hito_rows(d: Path, flags: dict) -> dict[str, list[dict]]:
     """``manifest_pseudo_hito_v4`` as two sources (``hito_v4_ja`` / ``hito_v4_ko``), each
-    row with its twin crop, the twin's v4 read and the read's logprob."""
+    row with its twin crop, the twin's v4 read and the read's logprob, and the flags
+    reader's read when ``flags`` holds the row."""
     path = d / "manifest_pseudo_hito_v4.parquet"
     if not path.exists():
         return {}
@@ -362,9 +377,7 @@ def hito_rows(d: Path) -> dict[str, list[dict]]:
                 lf=int("\n" in r.text),
                 len=len(r.text.replace("\n", "").replace(" ", "")),
                 status="",
-                v6=None,
-                conf=0.0,
-                edge="",
+                **read_fields(flags.get((f"hito_v4_{side}", r.id))),
                 lp=lp,
                 twin=reads.get((rid, twin_side), {}).get("read"),
                 twin_lang=twin_side,
@@ -550,7 +563,8 @@ def main():
     ap.add_argument(
         "--flags",
         type=Path,
-        help="ko_label_fix.py's <reads>_flags.parquet: v6 read, confidence, edge text per row",
+        help="ko_label_fix.py's <reads>_flags.parquet: a reader's read, confidence, edge "
+        "text per row (the reader's name from its `reader` column)",
     )
     ap.add_argument(
         "--ref_n",
@@ -572,9 +586,12 @@ def main():
     sw = (
         pd.read_parquet(d / "manifest_pseudo_swaprelax_v5.parquet").set_index("id").path
     )
-    flags = {}
+    flags, reader = {}, "reader"
     if a.flags:
-        for f in pd.read_parquet(a.flags).itertuples():
+        fl = pd.read_parquet(a.flags)
+        # flags from before ko_read.py named the reader are v6's
+        reader = str(fl.reader.iloc[0]) if "reader" in fl else "v6"
+        for f in fl.itertuples():
             flags[(f.source, f.id)] = f
     data = {}
     for src in ("gelnote_ko", "swaprelax_v5"):
@@ -601,11 +618,7 @@ def main():
                     lf=int("\n" in r.text),
                     len=len(r.text.replace("\n", "").replace(" ", "")),
                     status=status,
-                    v6=f.read if f is not None else None,
-                    conf=round(float(f.conf), 3)
-                    if f is not None and f.conf == f.conf
-                    else 0.0,
-                    edge=f.edge if f is not None and f.edge else "",
+                    **read_fields(f),
                     img=(d / r.path).as_uri(),
                     page=Path(page).as_uri(),
                     box=[int(v) for v in box],
@@ -613,14 +626,16 @@ def main():
             )
         data[src] = out
         print(f"[review] {src}: {len(out)} rows", flush=True)
-    data.update(hito_rows(d))
+    data.update(hito_rows(d, flags))
     data.update(odd_dot_rows(d))
     data.update(linebreak_rows(d))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     a.out.mkdir(parents=True, exist_ok=True)
-    html = PAGE.replace("__DATA__", json.dumps(data, ensure_ascii=False)).replace(
-        "__MINRUN__", json.dumps({s: a.min_run for s in data})
+    html = (
+        PAGE.replace("__READER__", reader)
+        .replace("__DATA__", json.dumps(data, ensure_ascii=False))
+        .replace("__MINRUN__", json.dumps({s: a.min_run for s in data}))
     )
     (a.out / "index.html").write_text(html, encoding="utf-8")
     print(f"[review] → {a.out / 'index.html'}", flush=True)
