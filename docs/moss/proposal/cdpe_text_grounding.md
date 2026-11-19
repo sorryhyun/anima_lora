@@ -1,27 +1,58 @@
 # MOSS: grounding prompt tokens in RoPE space (CDPE, after SpaG-DiT)
 
 Status: proposal, 2026-11-16. A training-only form on position clauses (and boxed text lines) is built and ran twice
-([First run](#first-run-training-only-on-position-clauses-2026-11-16)); the rest is not built. Source: the NeurIPS 2026 poster
-of SpaG-DiT ("Enhancing Spatial Grounding for Diffusion Transformers", Westlake / Alibaba
-Yuvion, poster 153058). No preprint was found, so δ, the multi-token rule, and the
-train / inference handling below are inferred from the poster figures.
+([First run](#first-run-training-only-on-position-clauses-2026-11-16)); the rest is not built. Source: SpaG-DiT
+("Enhancing Spatial Grounding for Diffusion Transformers", Westlake / Alibaba Yuvion, NeurIPS 2026),
+camera-ready paper and supplementary material, read 2026-11-19. Code is announced at
+`github.com/Alibaba-VELLDEPTH/SPaG-DiT` and not yet released. The design below was first drawn
+from the poster (poster 153058). Where the paper differs from that reading, the section below follows the paper.
 
-## What SpaG-DiT does (as read from the poster)
+## What SpaG-DiT does (paper + supplementary)
 
-- **Base model: Qwen-Image.** Its MSRoPE places text tokens on the diagonal `(n, n)`, after
-  the image grid.
-- **VLM-GG.** A VLM gives each grounded span (a scene-text word, a novel concept) a
-  normalised position. The poster's example is `"جميع": [0.31, 0.14]`. That position is
-  quantised to a 3×3 grid, offset `O = (O_x, O_y) ∈ {-1, 0, 1}²`.
-- **CDPE.** Ungrounded tokens keep their diagonal position. A grounded token moves from
-  `(n, n)` by `g(n, O)` into its cell around a symmetric midpoint anchor `(m, m)`, which the
-  poster calls a "bounded, sign-symmetric perturbation". The poster rejects two alternatives:
-  - a plain offset, which "perturbs the diagonal monotonically";
-  - image coordinates for text, which "breaks the text sequence".
-- **Training-time only.** Inference is plain t2i with no offsets. The attention figure shows
-  grounded tokens attending to their own region. The poster claims faster learning of
-  multilingual scene text (Hindi, Arabic, JA, KO, Bengali) and of novel concepts. It reports
-  GenEval 84.52 → 85.95 against SFT, with Pos 77 → 78, at 512², no best-of-N.
+- **Base model: Qwen-Image.** Its MSRoPE places text tokens on the diagonal, after the image
+  grid; image positions are centred on 0.
+- **Spatial priors are continuous.** Each grounded token `i` gets `P(i) = (x*_i, y*_i)` in
+  image-centred patch-grid coordinates (x right, y down, image spans `[−W/2, W/2] × [−H/2, H/2]`,
+  patch centres at half-integers on an even grid). No normalisation to `[0, 1]` and **no 3×3
+  quantisation**; the poster's `"جميع": [0.31, 0.14]` is an illustration in Fig. S1 only. Tokens
+  without a prior get `(0, 0)`.
+- **Which tokens.** "Each text token to be rendered or bound". MultiLingual captions are Gemini
+  prose with the OCR strings in quotes (`In the upper right corner …, the Korean text "…"`); the
+  tokens inside the quotes take the OCR box. COCO is re-captioned so that each annotated object's
+  class name appears once in quotes (`a "person" … a "surfboard"`), and those tokens take the bbox.
+  The position words themselves are not moved.
+- **Prior sources (S2).** EasyOCR boxes (MultiLingual), COCO boxes (GenEval training), and
+  **VLM-GG** when no annotation exists: the attention of each text token over the image patches
+  in the N-th decoder layer of Qwen2.5-VL, fed the training image and caption; the prior is
+  its attention-weighted centroid (Eq. S1), mapped to the DiT's patch units if the grids differ.
+- **CDPE (Eq. 4).** `g(i) = (t_base + i + m + [λ_y ŷ_i], t_base + i + m + [λ_x x̂_i])` with
+  `m = −t_base + ⌊L/2⌋` and `[·]` truncation toward zero. Every text token's diagonal is shifted
+  by `m`, grounded or not, at training and inference. "Bounded" = the coordinates lie inside the
+  grid; "sign-symmetric" = `[−z] = −[z]`. λ values are given in neither the paper nor the
+  supplementary. As printed, the reference index is `i + ⌊L/2⌋`, which is not centred on 0
+  (possibly a sign slip; it does not matter on MOSS).
+- **Two rejected alternatives (Eqs. 1–2).** OPE = the diagonal plus the offset; IPE = image
+  coordinates alone, dropping `i`.
+- **Training-time only (Alg. S1).** Inference is plain t2i with `(0, 0)` everywhere.
+- **Setup.** LoRA rank 256, α 256, LR 5e-5, batch 2, BF16, short side 512 with 10 aspect
+  buckets; 50k MultiLingual images, comparisons at 25k / 75k steps; H100.
+
+Results:
+
+| read | vanilla SFT | SpaG-DiT | other |
+|---|---|---|---|
+| MultiLingual, 5 scripts, Sen.ACC / NED (Table 1) | 0.105 / 0.284 | 0.174 / 0.433 | |
+| Korean ablation, Sen.ACC (Table 4) | 0.408 | CDPE 0.655 | IPE 0.646, OPE 0.630 |
+| Korean, prior source, Sen.ACC (Table S1) | 0.408 | OCR boxes 0.655 | VLM-GG 0.611 |
+| GenEval overall / position, 512², no best-of-N (Table 2) | 84.52 / 77 | 85.95 / 78 | |
+| Creature, human accuracy, 145 samples (Table 3) | 69.0 % | 75.9 % | |
+
+- The PE form moves Sen.ACC by 0.01–0.025, against +0.24 for having positions at all.
+- Attention-centroid priors keep about 85 % of the OCR-box gain.
+- No error bars; one run per arm.
+
+In the paper's terms, MOSS's text tokens are IPE on `(h, w)` with the sequence kept on `f`:
+CDPE's two goals, without the diagonal shift.
 
 ## Why MOSS fits better than Qwen-Image
 
@@ -56,7 +87,7 @@ Worked example: swap_text, `318615_0056_ko`, page 1024 × 1456, grid 64 × 91.
 The bbox is `abs_centralized yxyx` with centre y = 174, x = −224.5 px, which is
 `(h, w) ≈ (+10.9, −14.0)`.
 
-| tokens | now `(f, h, w)` | CDPE 3×3 (poster) | CDPE continuous |
+| tokens | now `(f, h, w)` | 3×3 cell (clause form) | box centre (paper's form) |
 |---|---|---|---|
 | JSON structure, `"label"`, `"bbox"` digits | (i, 0, 0) | same | same |
 | `키` `리` `노` `힘` `내` `라` | (i, 0, 0) | (i, 0·δ, −1·δ) | (i, 10.9, −14.0) |
@@ -75,19 +106,24 @@ inference mismatch. This applies to every prompt that carries image positions:
   (character, object, text) grounds its `caption` / `text` tokens. Today the bbox reaches
   the model only as digits. This proposal gives it a geometric channel.
 - **Thin position clauses** (`On the left, akita neru, …`). These carry coarse positions
-  only, so they would use the poster's 3×3 offsets (left / centre / right × top / middle /
-  bottom).
+  only, so they use 3×3 cell centres (left / centre / right × top / middle / bottom). The
+  paper's priors are continuous; the cells are what these captions can name.
 
 ## Open choices
 
-- **Scale.** True cell coordinates, or a shrunk δ (the poster's "bounded" offsets). Base
-  only ever saw text at `(0, 0)`, and a displacement of 14 cells rotates the low bands by
-  several radians.
+- **Scale.** The paper uses true patch coordinates times λ, with λ unpublished. Base only
+  ever saw text at `(0, 0)`, and a displacement of 14 cells rotates the low bands by several
+  radians.
 - **Multi-line spans.** One centre per item, or split the bbox's height across lines
   (`키리노` above `힘내라`).
-- **Token extent.** The text value only, or also the item's `caption` / `label` tokens.
+- **Token extent.** The text value only, or also the item's `caption` / `label` tokens. The
+  paper moves only the quoted tokens (the string, the class name) and leaves the position words
+  at `(0, 0)`; `clause_hw` moves the whole clause, its `On the left,` header included.
 - **Spatial extent.** Each token gets the box centre, or tokens spread along the line's
-  width. The poster uses one offset per span.
+  width. OCR boxes give one centre per box; VLM-GG gives each token its own centroid.
+- **Prior source for captions without positions.** VLM-GG-style attention centroids would give
+  tags a position where no clause or box names one (40 of 106 ama captions carry no clause).
+  Table S1 puts attention priors at about 85 % of the OCR-box gain.
 
 ## Plan
 
@@ -96,7 +132,7 @@ inference mismatch. This applies to every prompt that carries image positions:
 - Arms:
   1. plain;
   2. CDPE continuous;
-  3. CDPE 3×3;
+  3. 3×3 cell centres;
   4. **jitter**: the same offsets permuted across items;
   5. **equal-norm random** offsets.
 - The jitter and random arms are required. Position probes on MOSS sit on a floor of
@@ -122,7 +158,7 @@ layout and read placement.
 
 ## First run: training-only on position clauses (2026-11-16)
 
-The poster's own setting instead of P0 / P1: coarse positions, offsets during training only,
+The paper's setting instead of P0 / P1: coarse positions, offsets during training only,
 plain prompts at inference. `TrainRequest.clause_hw` (0 = off) moves the tokens of each position
 clause (`On the top right, …`) to their 3×3 cell's centre, a third of the grid side per cell times
 `clause_hw`, in the blocks' RoPE. The text refiner keeps `(0, 0)`: no adapter reaches it. Text
