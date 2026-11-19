@@ -1,7 +1,7 @@
 # Plan (2026-11-19)
 
 Phases are the proposal's (`proposal.md`); this file holds their order, what is settled and what
-is open. Each run's header and numbers live in `bench/pixel_readout/README.md`.
+is open. Each run's design and numbers live in `reports/`.
 
 ## Done
 
@@ -47,6 +47,33 @@ with the VAE. Target, rollout count and pages changed together. The user's verdi
 (2026-11-19): "거의 구분 안되는 정도고 그나마 강조선이 살짝 흐린정도네. p3은 통과라고 봐도
 될거같아." P3 passed.
 
+### P4 — the head on the shipped decode points
+
+`reports/p4_t2_2026_11_19.md`. Targets (the user, 2026-11-19), from `get_timesteps_sigmas` and
+the `scripts/tasks/inference.py` flags (Euler, shift 3; Spectrum `stop_caching_step` 27, so the
+last step is an actual forward):
+
+| target | DiT | steps / CFG | last forward σ |
+|---|---|---|---|
+| T1 `make test SPECTRUM=1` | base (+ user LoRA) | 28 / 4 | 0.100 |
+| T2 `make test-turbo` | base + turbo LoRA (adaLN trained) | 4 / 1 | 0.500 |
+| T3 Spectrum 30 steps | base (+ user LoRA) | 30 / 4 | 0.0938 |
+| `pagemix_1119_1242` trained at | base | teacher-forced | 0.0577 |
+
+The head reads the last forward's features (input of `final_layer.linear`, adaLN-modulated by t)
+and x_t; x_final = x_t − σ_last·v is that forward's x̂0. FastFrames trains its head at one fixed
+step, the two-step student's last (App. C, Fig. 2), so P4 trains per target rather than one head
+over σ; the σ-mixed single-head arm of the first design was dropped.
+
+T2: `t2probe_1119_1328` (pagemix head on 32 turbo rollouts) 13.73 colour / 14.16 mono. Arm A
+`t2a_1119_1337` (warm start from pagemix, teacher-forced at σ 0.5 with the turbo LoRA, 500
+rollouts, ≈ 7 min): 34.58 / 27.85 on the same rollouts, level with its teacher-forced 34.35 /
+27.67 (−0.36 … +0.92 per image), so rollout training (arm B) was not run. The user's verdict
+(2026-11-19): "생각보다 거의 비슷한데??? 뭐냐 일단 p4도 성공한걸로 기록하자." P4 passed.
+T2 head: `bench/pixel_readout/results/20261119-1343-t2a_1119_1337/head.safetensors` (local).
+
+T1 / T3: not trained. `e2e_1119_1209` (head `1106`) read colour 28.52 / mono 20.89 at T1.
+
 ## Recipe (settled unless a run says otherwise)
 
 - fp32 DiT stream (`--stream fp32`), head training forward compiled under `--compile`, replay
@@ -73,23 +100,14 @@ with the VAE. Target, rollout count and pages changed together. The user's verdi
 
 ## Next
 
-### 1. P4 — σ-conditioned head
+### 1. P4 follow-ups
 
-Needed by cjk_rl arm D and turbo: σ over [0, 1], target
-VAE(x̂0) at that σ, read at σ ∈ {0.06, 0.5, 0.9}.
-
-Designed around the Spectrum schedule (the user, 2026-11-19). `make test SPECTRUM=1` (28 steps,
-shift 3, warmup 7, window 2 + 0.25, stop-caching 27) runs 16 actual forwards, at σ 1.0 … 0.917
-(steps 0–6), 0.882, 0.844, 0.80, 0.75, 0.66, 0.545, 0.395, 0.187, 0.10. The 12 cached steps
-(σ 0.90 … 0.265) never run the blocks: `final_layer` reads a Chebyshev-forecast feature, so the
-head's tap exists there too, as a forecast. Consequences for the design:
-
-- The read set includes the shipped grid's last σ, 0.10. The P2 head is trained at 0.0577 only;
-  on the Spectrum sampler it reads colour 28.52 / mono 20.89 against P3a's 30.90 / 22.51
-  (`e2e_1119_1209`), a regression the user called expected.
-- Read on actual-forward features and, separately, on forecast features at the cached steps; a
-  head that holds on forecasts gives a preview at every step for the cost of the head alone.
-- Whether to train on forecast features is decided by that read, not up front.
+- The T2 head on standard base renders (28 steps, CFG 4, σ_last 0.10), beside the pagemix head
+  (`t2base_1119_1349`, running): does the turbo-trained head carry back to the base DiT?
+- T1 / T3 head if the read above leaves a gap: the pagemix head warm-started at σ 0.10 (one
+  head for both, σ 0.0938 / 0.100), as arm A did for T2.
+- Spectrum's cached steps (σ 0.90 … 0.265) read a Chebyshev-forecast feature at the tap; a head
+  on forecasts would preview every step. Deferred (cjk_rl arm D wants σ over [0, 1]).
 
 ### 2. P5 — pixel losses through the head
 

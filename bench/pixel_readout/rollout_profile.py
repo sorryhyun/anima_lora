@@ -23,6 +23,7 @@ import time
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
 
+from bench.pixel_readout._compile import compile_blocks_isolated
 from bench._anima import add_common_args, add_model_args, build_anima
 from bench._common import make_run_dir, start_heartbeat, write_result
 from bench.pixel_readout.convnext_head import (
@@ -79,7 +80,7 @@ def main():
 
         stream_fp32_(anima)
     if compile_blocks:
-        anima.compile_blocks(dynamic_seq=True, seq_bands=bands)
+        compile_blocks_isolated(anima, bands)
     tap: dict = {}
     anima.final_layer.linear.register_forward_pre_hook(
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())

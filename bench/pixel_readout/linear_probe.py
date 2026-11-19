@@ -37,6 +37,7 @@ import torch.nn.functional as F
 from PIL import Image, ImageDraw
 from safetensors.torch import save_file
 
+from bench.pixel_readout._compile import compile_blocks_isolated
 from bench._anima import add_common_args, add_model_args, build_anima
 from bench._common import make_run_dir, start_heartbeat, write_result
 from library.env import resolve_under_home
@@ -205,7 +206,7 @@ def main():
     args.compile = compile_blocks
     anima = bundle.anima
     if compile_blocks:
-        anima.compile_blocks(dynamic_seq=True)
+        compile_blocks_isolated(anima)
     tap: dict[str, torch.Tensor] = {}
     anima.final_layer.linear.register_forward_pre_hook(
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())

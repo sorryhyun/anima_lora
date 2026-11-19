@@ -1,7 +1,7 @@
 # Promotion notes (maybe) — the pixel head as a turbo decoder
 
 Draft material for a Hugging Face card, should the head ship as a decoder for turbo inference.
-Not a record; the records are `bench/pixel_readout/README.md` and `reports/`.
+Not a record; the records are in `reports/`.
 
 ## Measured (`e2e_1119_1209`, 2026-11-19)
 

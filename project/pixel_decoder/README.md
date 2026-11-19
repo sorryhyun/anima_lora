@@ -14,7 +14,7 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
   turbo decoder (measured decode cost, turbo share estimated).
 - Code and per-run records: `bench/pixel_readout/` (`linear_probe.py` P1, `convnext_head.py`
   head training, `e2e_speed.py`, `rollout_profile.py`, `render_sheets.py`, `ceiling_probe.py`, `overfit_probe.py`, `grad_probe.py`;
-  its `README.md` holds every run's settings and numbers). Results:
+  its `README.md` maps the scripts; run records are in `reports/`). Results:
   `bench/pixel_readout/results/` (local).
 
 State (2026-11-19): P1 and P2 done on anima-base, teacher-forced at σ 0.0577. Test PSNR against
@@ -46,5 +46,8 @@ a compiled head and a replay buffer (`replay_1119_1225`, `reports/replay_recipe_
 read 33.35 / 27.68 in 44 % of the time; the user read the renders as level and the recipe took
 it. P3b (`pagemix_1119_1242`, `reports/pagemix_2026_11_19.md`): manga pages in the mix with
 target VAE(x̂0); manga eval 28.15 against `mangaup`'s 26.64, tone level with the VAE. The user's
-verdict (2026-11-19): P3 passed; speed lines slightly soft under zoom. Not yet trained: any σ other than the last one (the head reads colour 28.52 at the Spectrum
-sampler's σ 0.10, `e2e_1119_1209`).
+verdict (2026-11-19): P3 passed; speed lines slightly soft under zoom. P4
+(`reports/p4_t2_2026_11_19.md`): a head warm-started from pagemix and trained 7 minutes at turbo's
+σ 0.5 reads turbo 4-step rollouts at 34.58 colour / 27.85 mono (13.73 / 14.16 before); the user's
+verdict: P4 passed. Not yet trained: Spectrum's σ 0.10 (T1 / T3; the `1106` head read colour
+28.52 there, `e2e_1119_1209`).

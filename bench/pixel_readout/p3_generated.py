@@ -14,23 +14,35 @@ the decode of what the sampler produced (FastFrames' target). Three head reads p
   the P2 train/test setting on generated content.
 
 ``--adapter`` runs every prompt twice, multiplier 0 (base) then 1 (LoRA); the head stays
-the base-trained one. ``cfg_check`` is the relative error of x_t − σ·(v_u + g(v_c − v_u))
-against the sampler's x_final, which confirms the combine is plain CFG.
+the base-trained one (``--arms lora`` skips the base pass). ``cfg_check`` is the relative
+error of x_t − σ·(v_u + g(v_c − v_u)) against the sampler's x_final, which confirms the
+combine is plain CFG. At ``--guidance_scale 1`` the sampler runs cond only and ``cfg`` =
+``cond``.
+
+``tf`` is read against two targets: VAE(x_final) (``psnr_tf``) and VAE(x̂0) of its own
+forward, x_tf − σ·v_tf (``psnr_tf_xhat0``, what the head is trained on). At σ_last 0.06
+the two nearly coincide; at turbo's σ_last 0.5 they do not.
 
 Usage::
 
     make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/p3_generated.py \
         --compile --adapter output/ckpt/anima_merged15.safetensors --label p3_mmdd_hhmm"
+    # T2, turbo 4-step (shift 3, CFG 1, last forward σ 0.5):
+    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/p3_generated.py \
+        --compile --adapter models/loras/anima_turbo_4step.safetensors --arms lora \
+        --infer_steps 4 --guidance_scale 1.0 --head_run <run> --label t2probe_mmdd_hhmm"
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
 
+from bench.pixel_readout._compile import compile_blocks_isolated
 from bench._anima import (
     DEFAULT_NEG,
     DEFAULT_PROMPT,
@@ -41,6 +53,7 @@ from bench._anima import (
 )
 from bench._common import make_run_dir, start_heartbeat, write_result
 from bench.pixel_readout.convnext_head import (
+    attach_adapter,
     load_head,
     densest_window,
     lat_patches,
@@ -152,7 +165,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_model_args(p, text_encoder=False)
     add_common_args(p)
-    p.add_argument("--head_run", default=HEAD_RUN)
+    p.add_argument(
+        "--head_run",
+        nargs="+",
+        default=[HEAD_RUN],
+        help="one or more heads (path or label); each reads the same renders",
+    )
     p.add_argument("--adapter", default=None)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1])
     p.add_argument("--only", nargs="*", default=None, help="prompt names (smoke)")
@@ -160,6 +178,16 @@ def main():
     p.add_argument("--infer_steps", type=int, default=50)
     p.add_argument("--flow_shift", type=float, default=3.0)
     p.add_argument("--guidance_scale", type=float, default=3.5)
+    p.add_argument(
+        "--arms", nargs="+", default=["base", "lora"], choices=["base", "lora"]
+    )
+    p.add_argument(
+        "--stream",
+        choices=["fp32", "bf16"],
+        default="fp32",
+        help="DiT residual stream; fp32 is inference.py's default and the head's since "
+        "replay_1119_1225",
+    )
     args = p.parse_args()
     start_heartbeat(label="p3")
     device = torch.device(args.device)
@@ -171,14 +199,18 @@ def main():
         args.vae, device="cpu", dtype=torch.bfloat16, eval=True, vae_2d=True
     ).to(device)
     compile_blocks, args.compile = args.compile, False
-    bundle = build_anima(args, adapter=args.adapter, train_mode=False)
-    anima, network = bundle.anima, bundle.network
+    anima = build_anima(args, adapter=None, train_mode=False).anima
+    if args.stream == "fp32":
+        from library.anima.stream import stream_fp32_
+
+        stream_fp32_(anima)
+    network = attach_adapter(anima, args.adapter, device) if args.adapter else None
     # the prompt side tokenizes with the base.toml vocab pack (as `make test`); the
     # DiT needs the pack rows or a CJK prompt indexes past the stock T5 table
     _attach_vocab_pack_if_set(anima, default_vocab_pack())
     if compile_blocks:
         toks = sorted({(h // PATCH) * (w // PATCH) for _, _, (h, w) in prompts})
-        anima.compile_blocks(dynamic_seq=True, seq_bands=[(toks[0], toks[-1])])
+        compile_blocks_isolated(anima, [(toks[0], toks[-1])])
 
     # --- taps: every forward appends (t, x_in, feature, v); reset when t changes ---
     calls: list[dict] = []
@@ -198,9 +230,14 @@ def main():
         lambda _m, inp: calls[-1].__setitem__("f", inp[0].detach())
     )
 
-    head = load_head(args.head_run, anima.final_layer.hidden_size, device)
+    heads = {
+        Path(str(r)).name.split("-")[-1]: load_head(
+            r, anima.final_layer.hidden_size, device
+        )
+        for r in args.head_run
+    }
 
-    def read(f, x_t):
+    def read(head, f, x_t):
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
             return head(f[0, 0].float(), lat_patches(x_t).float()).float().clamp(-1, 1)
 
@@ -231,7 +268,9 @@ def main():
     torch.cuda.empty_cache()
 
     run_dir = make_run_dir("pixel_readout", label=args.label)
-    arms = ["base"] + (["lora"] if network is not None else [])
+    arms = [a for a in args.arms if a == "base" or network is not None]
+    assert arms, "--arms lora needs --adapter"
+    n_calls = 2 if args.guidance_scale != 1.0 else 1
     rows, artifacts = [], []
     for arm in arms:
         if network is not None:
@@ -243,10 +282,10 @@ def main():
                     gen_base + ["--image_size", str(h), str(w), "--seed", str(seed)]
                 )
                 final = generate_body(gargs, anima, ctx, ctx_null, device, seed)
-                assert len(calls) == 2 and abs(calls[0]["t"] - sigma_last) < 1e-4, [
-                    c["t"] for c in calls
-                ]
-                cond, unc = calls
+                assert (
+                    len(calls) == n_calls and abs(calls[0]["t"] - sigma_last) < 1e-4
+                ), [c["t"] for c in calls]
+                cond, unc = calls if n_calls == 2 else (calls[0], calls[0])
                 x_t = cond["x"].float().squeeze(2)  # (1, C, h, w)
                 g = args.guidance_scale
                 v_cfg = unc["v"].float() + g * (cond["v"].float() - unc["v"].float())
@@ -257,8 +296,7 @@ def main():
 
                 with torch.no_grad():
                     tgt = vae.decode_to_pixels(fin)[0].float()
-                pred_cfg = read(f_cfg, x_t)
-                pred_cond = read(cond["f"].float(), x_t)
+                f_cond = cond["f"].float()
 
                 # teacher-forced on the generated latent (P2 setting)
                 gn = torch.Generator(device=device).manual_seed(
@@ -276,46 +314,70 @@ def main():
                             1, 1, *fin.shape[-2:], dtype=torch.bfloat16, device=device
                         ),
                     )
-                pred_tf = read(calls[0]["f"].float(), x_tf)
+                f_tf = calls[0]["f"].float()
+                x0_tf = x_tf - sigma_last * calls[0]["v"].float().squeeze(2)
                 calls.clear()
+                with torch.no_grad():
+                    tgt_tf = vae.decode_to_pixels(x0_tf)[0].float()
 
-                row = {
-                    "arm": arm,
-                    "name": name,
-                    "seed": seed,
-                    "size": [h, w],
-                    "psnr_cfg": psnr(pred_cfg, tgt),
-                    "psnr_cond": psnr(pred_cond, tgt),
-                    "psnr_tf": psnr(pred_tf, tgt),
-                    "cfg_check": cfg_check,
-                }
-                rows.append(row)
-                print(
-                    f"  {arm} {name} s{seed}: cfg {row['psnr_cfg']:.2f}  cond "
-                    f"{row['psnr_cond']:.2f}  tf {row['psnr_tf']:.2f}  chk {cfg_check:.1e}",
-                    flush=True,
-                )
+                cols = [("VAE decode", tgt)]
+                for hname, head in heads.items():
+                    pred_cfg = read(head, f_cfg, x_t)
+                    pred_cond = read(head, f_cond, x_t)
+                    pred_tf = read(head, f_tf, x_tf)
+                    row = {
+                        "arm": arm,
+                        "head": hname,
+                        "name": name,
+                        "seed": seed,
+                        "size": [h, w],
+                        "psnr_cfg": psnr(pred_cfg, tgt),
+                        "psnr_cond": psnr(pred_cond, tgt),
+                        "psnr_tf": psnr(pred_tf, tgt),
+                        "psnr_tf_xhat0": psnr(pred_tf, tgt_tf),
+                        "psnr_xhat0_tf_vs_final": psnr(tgt_tf, tgt),
+                        "cfg_check": cfg_check,
+                    }
+                    rows.append(row)
+                    print(
+                        f"  {arm} {hname} {name} s{seed}: cfg {row['psnr_cfg']:.2f}  "
+                        f"cond {row['psnr_cond']:.2f}  tf {row['psnr_tf']:.2f} (own x̂0 "
+                        f"{row['psnr_tf_xhat0']:.2f})  chk {cfg_check:.1e}",
+                        flush=True,
+                    )
+                    if len(heads) > 1:
+                        cols.append((hname, pred_cfg))
+                    elif n_calls == 2:
+                        cols += [
+                            ("head, CFG feature", pred_cfg),
+                            ("head, cond feature", pred_cond),
+                        ]
+                    else:
+                        cols.append(("head", pred_cond))
                 fn = f"sheet_{arm}_{k:02d}_{name}_s{seed}.png"
                 sheet(
-                    [
-                        ("VAE decode", tgt),
-                        ("head, CFG feature", pred_cfg),
-                        ("head, cond feature", pred_cond),
-                    ],
+                    cols,
                     run_dir / fn,
                     at=densest_window(tgt, 384),
                 )
                 artifacts.append(fn)
 
     summary = {}
-    for arm in arms:
-        rs = [r for r in rows if r["arm"] == arm]
-        summary[arm] = {
+    for arm, hname in ((a, hn) for a in arms for hn in heads):
+        rs = [r for r in rows if r["arm"] == arm and r["head"] == hname]
+        key_ = f"{arm}/{hname}"
+        summary[key_] = {
             key: sum(r[key] for r in rs) / len(rs)
-            for key in ("psnr_cfg", "psnr_cond", "psnr_tf")
+            for key in (
+                "psnr_cfg",
+                "psnr_cond",
+                "psnr_tf",
+                "psnr_tf_xhat0",
+                "psnr_xhat0_tf_vs_final",
+            )
         }
-        summary[arm]["cfg_check_max"] = max(r["cfg_check"] for r in rs)
-        print(f"{arm}: {summary[arm]}", flush=True)
+        summary[key_]["cfg_check_max"] = max(r["cfg_check"] for r in rs)
+        print(f"{key_}: {summary[key_]}", flush=True)
     out = write_result(
         run_dir,
         script=__file__,

@@ -48,6 +48,7 @@ from PIL import Image, ImageDraw
 from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
+from bench.pixel_readout._compile import compile_blocks_isolated
 from bench._anima import (
     DEFAULT_TEXT_ENCODER,
     add_common_args,
@@ -73,7 +74,8 @@ from library.io.cache import (
 )
 from library.models import qwen_vae
 
-P1_RUN = "bench/pixel_readout/results/20261118-2221-readout_1118_2219"
+RESULTS = "bench/pixel_readout/results"
+P1_RUN = f"{RESULTS}/20261118-2221-readout_1118_2219"
 TEXT_ARTISTS = (  # most "Japanese text" captions in post_image_dataset/resized
     "sincos",
     "suujiniku",
@@ -173,9 +175,22 @@ class PixelHead(nn.Module):
         return from_patches(tok.reshape(gh * gw, -1).float(), gh, gw)
 
 
+def resolve_run(run: str | Path) -> Path:
+    """A results directory, or a bare label → the newest ``results/*-<label>``."""
+    path = Path(resolve_under_home(str(run)))
+    if path.is_dir():
+        return path
+    hits = sorted(Path(resolve_under_home(RESULTS)).glob(f"*-{run}"))
+    if not hits:
+        raise FileNotFoundError(
+            f"no run {run} (neither a path nor a label in {RESULTS})"
+        )
+    return hits[-1]
+
+
 def load_head(run: str | Path, d_feat: int, device) -> "PixelHead":
     """A trained head from ``<run>/head.safetensors`` (shape from its metadata)."""
-    path = Path(resolve_under_home(str(run))) / "head.safetensors"
+    path = resolve_run(run) / "head.safetensors"
     with safe_open(str(path), "pt") as fh:
         meta = fh.metadata()
     head = PixelHead(
@@ -188,6 +203,24 @@ def load_head(run: str | Path, d_feat: int, device) -> "PixelHead":
     ).to(device)
     head.load_state_dict(load_file(str(path)))
     return head.eval()
+
+
+def attach_adapter(anima, path: str, device):
+    """A LoRA-family adapter as hooks on a built DiT (``set_multiplier`` switches it).
+
+    Call after ``stream_fp32_``: each hook captures its module's forward when it is
+    applied, so the reverse order would keep the bf16 linears under the adapter.
+    ``inference.py`` merges a plain LoRA before the stream change instead; same function."""
+    from networks.lora_anima.factory import create_network_from_weights
+
+    path = str(resolve_under_home(path))
+    network, _ = create_network_from_weights(
+        1.0, path, None, None, anima, for_inference=True
+    )
+    network.apply_to([], anima, apply_text_encoder=False, apply_unet=True)
+    print(f"adapter {path}: {network.load_weights(path)}", flush=True)
+    network.to(device=device, dtype=torch.bfloat16).requires_grad_(False)
+    return network
 
 
 def rec_loss(pred, tgt):
@@ -360,6 +393,20 @@ def main():
     p.add_argument("--eval_every", type=int, default=600, help="rollouts")
     p.add_argument("--infer_steps", type=int, default=50)
     p.add_argument("--flow_shift", type=float, default=3.0)
+    p.add_argument(
+        "--sigma",
+        type=float,
+        default=None,
+        help="train and read at this σ instead of the grid's last (turbo 4-step: 0.5)",
+    )
+    p.add_argument(
+        "--adapter",
+        default=None,
+        help="LoRA-family adapter on the frozen DiT (hooks, after the stream change)",
+    )
+    p.add_argument(
+        "--init", default=None, help="start the head from <run>/head.safetensors"
+    )
     p.add_argument("--n_sheets", type=int, default=12)
     args = p.parse_args()
     start_heartbeat(label="convnext")
@@ -403,7 +450,7 @@ def main():
         [token_count(ci) for ci in train + test + text] + page_tokens
     )
     _, sigmas = get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
-    sigma_last = float(sigmas[-2])
+    sigma_last = float(sigmas[-2]) if args.sigma is None else args.sigma
     print(
         f"train {len(train)}  test {len(test)} ({', '.join(test_artists)})  "
         f"text {len(text)}  pages {len(page_train)} / eval {len(page_eval)}  "
@@ -422,8 +469,10 @@ def main():
         from library.anima.stream import stream_fp32_
 
         stream_fp32_(anima)
+    if args.adapter:
+        attach_adapter(anima, args.adapter, device)
     if compile_blocks:
-        anima.compile_blocks(dynamic_seq=True, seq_bands=seq_bands)
+        compile_blocks_isolated(anima, seq_bands)
     tap: dict[str, torch.Tensor] = {}
     anima.final_layer.linear.register_forward_pre_hook(
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())
@@ -486,6 +535,11 @@ def main():
     with torch.no_grad():
         head.linear.weight.copy_(w1[:, :D])
         head.linear.bias.copy_(w1[:, D])
+    if args.init:
+        head.load_state_dict(
+            load_file(str(resolve_run(args.init) / "head.safetensors"))
+        )
+        print(f"head init from {args.init}", flush=True)
     n_params = sum(p.numel() for p in head.parameters())
     print(f"head {n_params / 1e6:.1f}M params", flush=True)
     # training forward only; evals and sheets stay eager (rollout_profile: −15 % per update)
@@ -700,6 +754,8 @@ def main():
             "sigma": f"{sigma_last}",
             "stream": args.stream,
             "replay": str(args.replay),
+            "adapter": args.adapter or "",
+            "init": args.init or "",
         },
     )
     artifacts.append("head.safetensors")

@@ -32,6 +32,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
 
 import networks.spectrum  # noqa: F401  (registers the Spectrum runner)
+from bench.pixel_readout._compile import compile_blocks_isolated
 from bench._anima import (
     DEFAULT_NEG,
     DEFAULT_TEXT_ENCODER,
@@ -101,7 +102,7 @@ def main():
     _attach_vocab_pack_if_set(anima, default_vocab_pack())
     if compile_blocks:
         toks = sorted({(h // PATCH) * (w // PATCH) for _, _, (h, w) in prompts})
-        anima.compile_blocks(dynamic_seq=True, seq_bands=[(toks[0], toks[-1])])
+        compile_blocks_isolated(anima, [(toks[0], toks[-1])])
 
     calls: list[dict] = []
 
