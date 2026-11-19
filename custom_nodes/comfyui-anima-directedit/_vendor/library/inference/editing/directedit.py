@@ -2,32 +2,20 @@
 
 Two-pass training-free editor for flow-matching DiTs:
 
-1. **Inversion** (clean -> noise): step backward through the same Euler ODE
-   the generator runs forward, querying v_θ at each step's input. Record
-   per-step residuals ``ΔZ_i = Z_inv[i+1] − Z_inv[i]`` — these are the
-   "anchor" the paper uses to reconstruct the source exactly instead of
-   trying to rectify the inversion path itself.
+1. **Inversion** (clean -> noise): step backward through the Euler ODE and
+   record per-step residuals ``ΔZ_i = Z_inv[i+1] − Z_inv[i]``, the anchor
+   that reconstructs the source instead of rectifying the inversion path.
 
-2. **Editing** (noise -> clean): standard generation loop, but every model
-   call is queried at ``Z[i] + ΔZ[i]`` instead of ``Z[i]``. The cross-attn
-   prompt is the edit target ψ_tar; the residual ΔZ pins the trajectory to
-   the source. For ``t_inj > 0`` we also run a parallel src stream with
-   ψ_src and inject its self-attn V into the tar stream for the first
-   ``t_inj`` steps (paper Eq. 13). Mask blending (paper Eq. 12) is only the
-   anchor-side half (``edit_forward``'s ``mask``).
+2. **Editing** (noise -> clean): the generation loop with every model call
+   queried at ``Z[i] + ΔZ[i]`` and the cross-attn prompt set to ψ_tar; ΔZ pins
+   the trajectory to the source. With ``t_inj > 0`` the src stream's self-attn
+   V is injected into the tar stream for the first ``t_inj`` steps (paper
+   Eq. 13). Of Eq. 12 mask blending only the anchor-side half is implemented.
 
-Anima conventions used:
-  * sigmas[0] = 1 (pure noise), sigmas[T] = 0 (clean), per
-    ``library/inference/sampling.py::get_timesteps_sigmas``.
-  * Latents: 5D ``[B, C, 1, H/8, W/8]`` (frame dim of 1 — image, not video).
-  * The model's call signature matches what ``generate_body`` uses:
-    ``anima(latents, t_expand, embed, padding_mask=...)`` where ``embed`` is
-    already-preprocessed crossattn (post-T5, 512-padded).
-
-This module is self-contained: ``invert`` and ``edit_forward`` accept the
-already-loaded ``Anima`` model and pre-encoded ``ψ_src`` / ``ψ_tar`` embeds,
-so the calling script (``scripts/edit.py``) can reuse the existing TE/VAE/DiT
-loaders from ``library.inference.{models,text}``.
+Conventions: sigmas[0] = 1 (noise), sigmas[T] = 0 (clean); latents are 5D
+``[B, C, 1, H/8, W/8]``; ``embed`` is preprocessed crossattn (512-padded).
+``invert`` / ``edit_forward`` take a loaded ``Anima`` and pre-encoded embeds
+(driven by ``scripts/edit.py``).
 """
 
 from __future__ import annotations
@@ -66,10 +54,8 @@ def _v_pred(
 ) -> torch.Tensor:
     """One model forward (with optional CFG). Returns velocity prediction.
 
-    ``smc_cfg_state`` (optional) routes the cond/uncond combine through
-    α-adaptive Sliding-Mode Control. No-op when CFG is disabled (single
-    forward, no residual). Caller must reuse the same state across steps for
-    e_prev continuity; ``invert()`` deliberately does not pass it.
+    ``smc_cfg_state`` routes the combine through SMC-CFG; reuse one state
+    across steps for e_prev continuity. ``invert()`` does not pass it.
     """
     t_expand = sigma.expand(latents.shape[0]).to(latents.device, dtype=torch.bfloat16)
     noise_pred = anima(latents, t_expand, embed, padding_mask=padding_mask)
@@ -85,17 +71,11 @@ def _v_pred(
 class _VInjectionState:
     """Row-indexed self-attn V swap inside a single batched forward.
 
-    Author's reference (``DirectEdit/controller/attn_norm_ctrl_sd35.py:362``)
-    runs all branches through one transformer call and swaps V in-place by
-    row index — ``value[h//2:]`` operates on the cond half, with cond_tar's
-    V replaced by cond_src's V before the dispatcher.
-
-    Anima port: caller stacks ``[neg_tar, cond_src, cond_tar]`` (3 rows when
-    CFG > 1) or ``[cond_src, cond_tar]`` (2 rows when CFG = 1) and sets
-    ``src_row`` / ``tar_row`` before each forward. The hook then does
-    ``v[tar_row] = v[src_row]`` on the configured blocks. Both ``None``
-    disables the swap (no-op pass-through), used for steps ``i >= t_inj``
-    when no injection is active.
+    As in the author's reference, all branches share one transformer call. The
+    caller stacks ``[neg_tar, cond_src, cond_tar]`` (CFG > 1) or
+    ``[cond_src, cond_tar]`` (CFG = 1) and sets ``src_row`` / ``tar_row``; the
+    hook does ``v[tar_row] = v[src_row]`` on the configured blocks. Both
+    ``None`` = pass-through.
     """
 
     def __init__(self, block_indices: Set[int]) -> None:
@@ -124,17 +104,13 @@ class _VInjectionState:
 def _make_patched_self_attn_forward(attn, block_idx: int, state: _VInjectionState):
     """Build a replacement ``Attention.forward`` that routes V through ``state.hook``.
 
-    Two backends share this code path with different forward signatures:
-    ``library/anima/models.py::Attention`` (standalone CLI, dispatches via
-    ``attention_dispatch.dispatch_attention``) and
-    ``comfy/comfy/ldm/cosmos/predict2.py::Attention`` (ComfyUI, dispatches via
-    ``self.compute_attention``). Detected via ``compute_attention``
-    (comfy-only) so the patched function's signature matches the call site —
+    ``library/anima/models.py::Attention`` and ComfyUI's
+    ``comfy/ldm/cosmos/predict2.py::Attention`` have different forward
+    signatures; ``compute_attention`` (comfy-only) picks the matching one, as
     the wrong one raises ``TypeError`` on the first edit step.
     """
     compute_qkv = attn.compute_qkv
 
-    # Comfy cosmos Attention path.
     if hasattr(attn, "compute_attention"):
         compute_attention = attn.compute_attention
 
@@ -149,7 +125,6 @@ def _make_patched_self_attn_forward(attn, block_idx: int, state: _VInjectionStat
 
         return patched_comfy
 
-    # Library Anima Attention path.
     output_proj = attn.output_proj
     output_dropout = attn.output_dropout
     dispatcher = anima_models.attention_dispatch.dispatch_attention
@@ -176,12 +151,10 @@ def _make_patched_self_attn_forward(attn, block_idx: int, state: _VInjectionStat
 def _v_injection_scope(anima: anima_models.Anima, block_indices: Set[int]):
     """Monkey-patch ``self_attn.forward`` on selected blocks for the scope.
 
-    Yields the shared ``_VInjectionState``; outer code toggles
-    ``state.mode`` per src/tar pass.
+    Yields the shared ``_VInjectionState``; the caller sets rows per forward.
     """
     state = _VInjectionState(block_indices)
-    # track pre-existing instance-level `forward` so restore can `del` rather
-    # than leave a stray instance attribute behind across scopes
+    # restore `del`s the instance attribute unless one existed before
     patched: list[tuple[torch.nn.Module, bool, object]] = []
     for idx, block in enumerate(anima.blocks):
         if idx not in block_indices:
@@ -190,8 +163,6 @@ def _v_injection_scope(anima: anima_models.Anima, block_indices: Set[int]):
         had_instance_forward = "forward" in attn.__dict__
         prior = attn.__dict__.get("forward")
         patched.append((attn, had_instance_forward, prior))
-        # instance attribute shadows the class method; nn.Module __call__
-        # resolves self.forward via normal attribute lookup
         attn.forward = _make_patched_self_attn_forward(attn, idx, state)
     try:
         yield state
@@ -242,24 +213,16 @@ def invert(
       * ``delta_z``: length T, ``delta_z[i] = z_inv[i+1] − z_inv[i]`` — the
         anchor residuals ``edit_forward`` consumes.
 
-    Step (paper §3.2 in our index):
+    Step (paper §3.2 in our index), for ``i = T-1 .. 0``:
         ``z_inv[i] = z_inv[i+1] + (sigmas[i] − sigmas[i+1]) · v_θ(z_inv[i+1], σ=sigmas[i])``
-    for ``i = T-1 .. 0``. GOTCHA: v_θ is queried at the **destination** σ
-    (``sigmas[i]``), not the input σ — at the first iteration the input is
-    clean (σ=0), and querying at the input σ would feed σ=0 exactly, outside
-    the model's trained range and the singular point of the sinusoidal
-    ``t_embedder``. Matches the author's reference
-    (``flow_direct_correction_inv_sd35.py:184, 200-208``). See
-    ``_archive/proposals/directedit_gaps.md#gap-3``.
+    v_θ is queried at the destination σ (``sigmas[i]``): the first input is
+    clean, and σ=0 is outside the trained range and the singular point of the
+    sinusoidal ``t_embedder``. Matches the author's reference.
 
-    CFG during inversion is usually a wash (no negative concept to push away
-    from); default ``guidance_scale=1.0`` skips it.
-
-    ``traj_recorder`` (optional): a
-    :class:`library.inference.traj_stats.TrajStatsRecorder` observing the
-    inversion trajectory, passive — ``z_inv``/``delta_z`` are identical
-    with it on or off (pinned by ``tests/test_traj_stats.py``). Sigma is
-    passed as the 0-d tensor (never ``float()`` — stream-sync trap).
+    Default ``guidance_scale=1.0`` skips CFG (no negative concept to push from).
+    ``traj_recorder`` is a passive
+    :class:`~library.inference.traj_stats.TrajStatsRecorder`, fed the 0-d σ
+    tensor (``float()`` would sync the stream).
     """
     device = z_clean.device
     T = sigmas.shape[0] - 1
@@ -272,7 +235,7 @@ def invert(
 
     iterator = tqdm(range(T - 1, -1, -1), desc="DirectEdit inversion", total=T)
     for step_idx, i in enumerate(iterator, start=1):
-        # query v_θ at the destination σ (sigmas[i]), not the input's — see docstring
+        # destination σ (docstring)
         sigma_in = sigmas[i].to(device)
         v = _v_pred(
             anima,
@@ -321,13 +284,9 @@ def edit_forward(
         ``z[i+1] = z[i] − (sigmas[i] − sigmas[i+1]) · v_i # standard Euler step``
 
     For ``t_inj > 0`` (paper Eq. 13) the first ``t_inj`` steps stack src and
-    tar into a single batched forward and swap V by row index inside the
-    patched ``self_attn`` (CFG>1: 3 rows ``[neg_tar, cond_src, cond_tar]``,
-    hook copies ``v[1]->v[2]``; CFG=1: 2 rows ``[cond_src, cond_tar]``, hook
-    copies ``v[0]->v[1]``). Matches the author's reference
-    (``DirectEdit/controller/attn_norm_ctrl_sd35.py:362``); two separate
-    forwards with a mode-toggle cache leak src V into the uncond branch
-    (Gap 2, ``_archive/proposals/directedit_gaps.md``).
+    tar into one batched forward and swap V by row index (see
+    :class:`_VInjectionState`). Two separate forwards with a cached V would
+    leak src V into the uncond branch.
 
     Args:
       z_init: should be ``z_inv[0]`` from ``invert(...)`` for the residual
@@ -335,27 +294,19 @@ def edit_forward(
       embed_src: required when ``t_inj > 0`` (drives the cond_src row).
       t_inj: number of early steps to run the batched src+tar V-swap forward.
         ``0`` skips the src branch entirely (pure ΔZ-anchored edit).
-      t_inj_blocks: block indices to swap V at. Default ``None`` -> all
-        blocks except the final one (SD3.5-style default).
-      z_inv: full inverted trajectory from ``invert(...)`` (length ``T+1``).
-        **Required when ``t_inj > 0``** — the batched-forward shape has no
-        parallel Euler-evolved src branch, so src is GT-rebased to
-        ``z_inv[i]`` at every injection step.
-      mask: paper Eq. 12, anchor-side half — a latent-space mask
-        (broadcastable to ``delta_z[i]``, 1 = edit region) that DROPS the Δz
-        anchor inside the edit region (the anchor is a per-step pull back to
-        source, so a global anchor would suppress the edit even where other
-        preservation mechanisms released the region). The full background-lock
-        latent BLEND remains future work.
-      anchor_scale: global multiplier λ on the Δz residuals (1.0 = full
-        anchor, 0.0 = unanchored generation from the inverted init). The
-        continuous composition↔edit dial for whole-image edits with no region
-        mask — a global anchor at λ=1 suppresses them. Composes with ``mask``
-        (regional release applies on top of the scaled residual).
+      t_inj_blocks: block indices to swap V at; ``None`` = all but the last.
+      z_inv: the inverted trajectory (length ``T+1``). Required when
+        ``t_inj > 0``: there is no Euler-evolved src branch, so src is rebased
+        to ``z_inv[i]`` at every injection step.
+      mask: Eq. 12 anchor-side half, a latent mask (1 = edit region) that
+        drops the Δz anchor there; the anchor pulls toward the source and
+        would otherwise suppress the edit.
+      anchor_scale: global λ on Δz (1.0 = full anchor, 0.0 = unanchored from
+        the inverted init); the dial for whole-image edits, which a full
+        anchor suppresses. Composes with ``mask``.
 
-    Note: the src row always runs at CFG=1 (no neg_src in the batch) — Paper
-    Algorithm 1 doesn't CFG the src branch, and a CFG-mixed V would conflate
-    ψ_src with the negative concept.
+    The src row always runs at CFG=1 (as in paper Algorithm 1): a CFG-mixed V
+    would conflate ψ_src with the negative concept.
     """
     device = z_init.device
     T = sigmas.shape[0] - 1
@@ -437,21 +388,18 @@ def edit_forward(
             coeff = (sigmas[i] - sigmas[i + 1]).to(device, dtype=torch.float32)
 
             if i < t_inj:
-                # GT-rebase src to the inverted trajectory at this σ, dropping
-                # drift that would otherwise corrupt the captured V (matches
-                # author's `prev_sample_src = gt_source_latent`)
+                # rebase src to the inverted trajectory so drift doesn't
+                # corrupt the captured V
                 z_src_i = z_inv[i].to(device=device, dtype=torch.bfloat16)
                 z_hat_src = (z_src_i.float() + d).to(torch.bfloat16)
 
                 if has_cfg:
-                    # 3 rows: [neg_tar, cond_src, cond_tar]; hook swaps v[2]<-v[1]
-                    # so cond_tar's attn is computed against cond_src's V, while
-                    # neg_tar (row 0) stays untouched
+                    # [neg_tar, cond_src, cond_tar]; hook sets v[2] = v[1]
                     latents = torch.cat([z_hat_tar, z_hat_src, z_hat_tar], dim=0)
                     embeds = torch.cat([embed_neg, embed_src, embed_tar], dim=0)
                     state.set_rows(src_row=1, tar_row=2)
                 else:
-                    # 2 rows: [cond_src, cond_tar], no CFG so neg row drops out
+                    # [cond_src, cond_tar]
                     latents = torch.cat([z_hat_src, z_hat_tar], dim=0)
                     embeds = torch.cat([embed_src, embed_tar], dim=0)
                     state.set_rows(src_row=0, tar_row=1)
@@ -473,8 +421,7 @@ def edit_forward(
                 else:
                     v_tar = noise_pred[1:2]
             else:
-                # past t_inj: standard forward on tar only; state.src_row/
-                # tar_row are None so the patched-attn hook is a pass-through
+                # past t_inj: tar only; rows are None so the hook passes through
                 pad = _padding_mask_for(z_hat_tar)
                 v_tar = _v_pred(
                     anima,
