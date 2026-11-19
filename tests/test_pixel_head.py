@@ -1,6 +1,7 @@
 """Pixel head (library/anima/pixel_head.py): load from metadata, output shape per token
 grid, the tap's CFG combine and step bookkeeping, the trained-σ check. CPU only."""
 
+import pytest
 import torch
 import torch.nn as nn
 from safetensors.torch import save_file
@@ -9,7 +10,9 @@ from library.anima.pixel_head import (
     DEFAULT_SIGMA_RANGES,
     PATCH,
     PixelHead,
+    PixelHeadX2,
     PixelTap,
+    head_scales,
     lat_patches,
     load_pixel_head,
     out_of_range,
@@ -108,6 +111,48 @@ def test_tap_decode_shape():
     pixels = tap.decode(head, 1.0)
     assert pixels.shape == (2, 3, 64, 48)
     assert pixels.abs().max() <= 1.0
+
+
+def _x2_file(tmp_path) -> tuple[PixelHeadX2, object]:
+    torch.manual_seed(1)
+    head = PixelHeadX2(_head(up=1), depth2=2, width2=4).eval()
+    path = tmp_path / "head_x2.safetensors"
+    meta = {"width": "16", "depth": "3", "up": "1", "skip": "0", "x2_depth": "2"}
+    save_file(
+        {k: v.contiguous() for k, v in head.state_dict().items()}, str(path), meta
+    )
+    return head, path
+
+
+def test_x2_load_and_scales(tmp_path):
+    head, path = _x2_file(tmp_path)
+    loaded = load_pixel_head(path)
+    assert isinstance(loaded, PixelHeadX2) and head_scales(loaded) == (1, 2)
+    assert loaded.up2_proj.out_features == 16  # width2 read off the weight
+    gh, gw = 3, 5
+    f, lat = torch.randn(gh, gw, D_FEAT), torch.randn(gh, gw, 64)
+    with torch.no_grad():
+        x1, x2 = loaded(f, lat)
+        assert x1.shape == (3, gh * PATCH, gw * PATCH)
+        assert x2.shape == (3, 2 * gh * PATCH, 2 * gw * PATCH)
+        assert torch.equal(loaded(f, lat, scale=1), x1)
+        assert torch.equal(loaded(f, lat, scale=2), x2)
+        assert torch.equal(head(f, lat)[1], x2)
+
+
+def test_tap_decode_x2_and_x1_refusal(tmp_path):
+    _, path = _x2_file(tmp_path)
+    x2_head = load_pixel_head(path)
+    dit = _ToyDiT()
+    tap = PixelTap(dit)
+    x = torch.randn(2, 16, 1, 8, 6)  # 4×3 tokens
+    dit(x, torch.tensor([0.1, 0.1]), feature=torch.randn(2, 1, 4, 3, D_FEAT))
+    assert tap.decode(x2_head, 1.0, scale=2).shape == (2, 3, 128, 96)
+    assert tap.decode(x2_head, 1.0, scale=1).shape == (2, 3, 64, 48)
+    x1_head = _head(up=1).eval()
+    assert head_scales(x1_head) == (1,)
+    with pytest.raises(ValueError, match="×2 head file"):
+        tap.decode(x1_head, 1.0, scale=2)
 
 
 def test_sigma_ranges():

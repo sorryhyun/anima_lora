@@ -7,7 +7,8 @@ and the batch path call :func:`ensure_pixel_decoder` before sampling and
 
 The head is read only where it was trained (its ``sigma`` stamp: base DiT at shift-3
 Euler 20 … 50 steps, the 4-step turbo LoRA at σ 0.5). Elsewhere it still decodes and a
-warning goes to the log.
+warning goes to the log. ``--pixel_scale 2`` reads a ×2 head file's 2× output: the saved
+image is twice ``--image_size``.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import torch
 
 from library.anima.pixel_head import (
     PixelTap,
+    head_scales,
     load_pixel_head,
     out_of_range,
     resolve_pixel_head_path,
@@ -28,12 +30,24 @@ logger = logging.getLogger(__name__)
 
 
 class PixelDecoder:
-    def __init__(self, anima, path: str | None, device):
+    def __init__(self, anima, path: str | None, device, scale: int = 1):
         resolved = resolve_pixel_head_path(path)
         self.path = str(resolved)
         self.head = load_pixel_head(resolved, device=device)
+        if scale not in head_scales(self.head):
+            raise SystemExit(
+                f"--pixel_scale {scale}: {self.path} has the ×1 output only (no "
+                "x2_depth stamp); pass a ×2 head file with --pixel_head."
+            )
+        self.scale = scale
         self.tap = PixelTap(anima)
-        logger.info(f"pixel head: {self.path} (trained σ {self.head.sigma_ranges})")
+        adapter = self.head.meta.get("adapter")
+        logger.info(
+            f"pixel head: {self.path} (scales {head_scales(self.head)}, decoding ×{scale}; "
+            f"trained σ {self.head.sigma_ranges}"
+            + (f"; turbo point on {adapter}" if adapter else "")
+            + ")"
+        )
 
 
 def wants_pixel_head(args: argparse.Namespace) -> bool:
@@ -43,6 +57,11 @@ def wants_pixel_head(args: argparse.Namespace) -> bool:
 def check_pixel_head_args(args: argparse.Namespace) -> None:
     """Settings the tap cannot read at all (not range warnings: those come at decode)."""
     if not wants_pixel_head(args):
+        if getattr(args, "pixel_scale", 1) != 1:
+            logger.warning(
+                "--pixel_scale reads the pixel head's output; with --decoder vae it does "
+                "nothing."
+            )
         return
     if getattr(args, "tiled_diffusion", False):
         raise SystemExit(
@@ -57,9 +76,17 @@ def ensure_pixel_decoder(
     if not wants_pixel_head(args):
         return None
     dec = getattr(anima, "_pixel_decoder", None)
+    scale = getattr(args, "pixel_scale", 1) or 1
     if dec is None:
-        dec = PixelDecoder(anima, getattr(args, "pixel_head", None), device)
+        dec = PixelDecoder(anima, getattr(args, "pixel_head", None), device, scale)
         anima._pixel_decoder = dec
+    elif dec.scale != scale:
+        if scale not in head_scales(dec.head):
+            raise SystemExit(
+                f"--pixel_scale {scale}: {dec.path} has the ×1 output only; pass a ×2 "
+                "head file with --pixel_head."
+            )
+        dec.scale = scale
     dec.tap.reset()
     return dec
 
@@ -88,11 +115,12 @@ def _warn_settings(args: argparse.Namespace, dec: PixelDecoder) -> None:
 
 
 def pixel_decode(args: argparse.Namespace, anima) -> torch.Tensor:
-    """Pixels (B, 3, H, W), fp32 on the CPU, in [-1, 1], from the last sampling."""
+    """Pixels (B, 3, s·H, s·W), fp32 on the CPU, in [-1, 1], from the last sampling
+    (s = ``--pixel_scale``)."""
     dec: PixelDecoder | None = getattr(anima, "_pixel_decoder", None)
     if dec is None:
         raise RuntimeError("pixel_decode: ensure_pixel_decoder was not called")
     _warn_settings(args, dec)
-    pixels = dec.tap.decode(dec.head, args.guidance_scale).cpu()
+    pixels = dec.tap.decode(dec.head, args.guidance_scale, dec.scale).cpu()
     dec.tap.reset()
     return pixels

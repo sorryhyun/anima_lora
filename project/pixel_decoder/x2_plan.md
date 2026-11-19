@@ -198,6 +198,31 @@ labelled) and the numbers above against `x2lt_1119_2013` and the chain; then ren
 `p3_generated.py` reads ×1 heads only and needs a ×2 path for this. The user's read decides;
 bars: spread unknown.
 
+### Deployment progress (2026-11-19 23:10)
+
+The user, after the briefing: "배포 1, 2, 3의 1번은 진행하고, 3의 2/3/4번은 일단은 결과 나오면 하자".
+Done while run 2 trained, before the read:
+
+- Library: `PixelHeadX2` and `head_scales` in `library/anima/pixel_head.py` (the bench imports
+  them back); `load_pixel_head` builds it for a file stamped `x2_depth`, `width2` read off
+  `up2_proj.weight`; `PixelTap.decode(…, scale)`; `--pixel_scale`, `PIXEL_SCALE=`,
+  `GenerationRequest(pixel_scale=…)`; a ×1 file refuses scale 2 at load; the load log line
+  names the scales and the `adapter` stamp. Façade `anima_lora.models.PixelHeadX2`. Tests:
+  `tests/test_pixel_head.py` (×2 round trip, scale 1 / 2 shapes, ×1 refusal), 9 pass on CPU.
+  `docs/anima/inference/pixel_head.md` has a ×2 section. Not done: the catalog row (waits on
+  one file or two), the daemon checks on base / turbo / `--int8`.
+- Bench: `p3_generated.py --x2` (the render read above: `VAE → ResShift ×2 | ×2 head` sheets,
+  dB / LPIPS / dark lift against the chain, ×1 against the VAE, times);
+  `e2e_speed.py --scale 2` (adds a `chain` arm); `comfy_e2e.py --scale 2`.
+- Node: `AnimaPixelDecode` has an optional `scale` input (saved workflows still load);
+  `_vendor/pixel_head.py` regenerated; README ×2 section without a file name; version 0.2.0 in
+  `pyproject.toml`. Not committed, published or pushed: no ×2 file exists to point at.
+  `make vendor-sync` also rewrote `_vendor/` files in the Spectrum and Adapter node repos
+  (library drift unrelated to the head; left as is).
+- Hub: `old/anima_pixel_head.safetensors` = `mixr_1119_1455` (sha256 27b3f0dc…, same as the
+  current main file). The main file is not replaced yet: which file replaces it (run 1's ×1 or
+  run 2's) waits on run 2's ×1 meters. The repo is public.
+
 ### Deployment: library
 
 Claude's draft, after the read passes. It follows the ×1 promotion (`plan.md` §2).

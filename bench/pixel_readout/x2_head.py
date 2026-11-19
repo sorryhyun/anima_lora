@@ -42,7 +42,6 @@ from pathlib import Path
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image, ImageDraw
 from safetensors import safe_open
@@ -69,8 +68,7 @@ from bench.pixel_readout.convnext_head import (
 )
 from bench.pixel_readout.linear_probe import PATCH, pick_samples, psnr, to_pil
 from library.anima.pixel_head import (
-    ConvNeXtBlock,
-    PixelHead,
+    PixelHeadX2,
     lat_patches,
     load_pixel_head,
 )
@@ -89,59 +87,6 @@ TEACHER_REPO = "../comfy/custom_nodes/comfyui-distilled-resshift"
 TEACHER_DIR = "../comfy/models/resshift"
 TEACHER_FILE = "rsd_student_18k.safetensors"  # Hub sorryhyun/Distilled-ResShift-2x
 VQGAN_FILE = "autoencoder_vq_f4.pth"
-
-
-# --------------------------------------------------------------------------- head
-
-
-class PixelHeadX2(nn.Module):
-    """A ``PixelHead`` (``up`` = 1) plus one more 2× stage → (×1 image, ×2 image)."""
-
-    def __init__(
-        self,
-        base: PixelHead,
-        depth2: int = 2,
-        ls_init: float = 1.0,
-        width2: int | None = None,
-    ):
-        super().__init__()
-        assert base.up and not base.use_skip, "base head: one upsample stage, no skip"
-        self.base = base
-        w = base.out.in_features
-        w2 = width2 or w // 2
-        self.patch2 = base.patch  # 8 output px per 4-px position = 2× the base
-        self.up2_norm = nn.LayerNorm(w, eps=1e-6)
-        self.up2_proj = nn.Linear(w, 4 * w2)
-        self.up2_blocks = nn.ModuleList(
-            ConvNeXtBlock(w2, ls_init) for _ in range(depth2)
-        )
-        self.norm2 = nn.LayerNorm(w2, eps=1e-6)
-        self.out2 = nn.Linear(w2, self.patch2 * self.patch2 * 3)
-
-    @staticmethod
-    def _unpatch(tok: torch.Tensor, p: int) -> torch.Tensor:
-        n, m = tok.shape[:2]
-        return tok.view(n, m, p, p, 3).permute(4, 0, 2, 1, 3).reshape(3, n * p, m * p)
-
-    def forward(self, f, lat):  # f (gh, gw, D), lat (gh, gw, 64)
-        b = self.base
-        h = (b.proj(f) + b.lat_embed(lat)).permute(2, 0, 1)[None]
-        for blk in b.blocks:
-            h = blk(h)
-        u = b.up_proj(b.up_norm(h.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
-        h = F.pixel_shuffle(u, 2)  # (1, w, 2gh, 2gw)
-        for blk in b.up_blocks:
-            h = blk(h)
-        h1 = b.norm_out(h[0].permute(1, 2, 0))
-        u = self.up2_proj(self.up2_norm(h.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
-        g = F.pixel_shuffle(u, 2)  # (1, w/2, 4gh, 4gw)
-        for blk in self.up2_blocks:
-            g = blk(g)
-        h2 = self.norm2(g[0].permute(1, 2, 0))
-        with torch.autocast(h.device.type, enabled=False):  # output layers in fp32
-            x1 = self._unpatch(b.out(h1.float()), b.patch)
-            x2 = self._unpatch(self.out2(h2.float()), self.patch2)
-        return x1, x2
 
 
 # --------------------------------------------------------------------------- teacher

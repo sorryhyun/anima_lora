@@ -8,7 +8,7 @@
 | ``default_checkpoints`` / ``DefaultCheckpoints`` | ``library.env`` |
 | ``str_to_dtype`` | ``library.runtime.device`` |
 | ``VocabPack`` / ``load_vocab_pack`` / ``attach_vocab_pack`` | ``library.anima.vocab_pack`` |
-| ``PixelHead`` / ``load_pixel_head`` / ``PixelTap`` | ``library.anima.pixel_head`` |
+| ``PixelHead`` / ``PixelHeadX2`` / ``load_pixel_head`` / ``PixelTap`` | ``library.anima.pixel_head`` |
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ attach(
         # pixel head: the DiT's last features → RGB in place of the VAE;
         # GenerationRequest(decoder="pixel_head") is the request-driven path.
         "PixelHead": "library.anima.pixel_head",
+        "PixelHeadX2": "library.anima.pixel_head",
         "load_pixel_head": "library.anima.pixel_head",
         "PixelTap": "library.anima.pixel_head",
     },

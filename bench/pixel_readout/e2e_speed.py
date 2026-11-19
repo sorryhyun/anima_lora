@@ -15,6 +15,11 @@ ways, each timed with a CUDA sync and its peak VRAM over the resident DiT record
 Every arm ends with the pixels on the CPU in fp32. The head's PSNR against VAE(x_final) is
 recorded too.
 
+``--scale 2`` reads a ×2 head (``--head_run`` an ``x2_head.py`` run or a
+``head_x2.safetensors``): the ``head`` arm decodes at ×2, and a ``chain`` arm times what it
+replaces, the resident VAE then the released ResShift ×2 student (``x2_head.load_teacher``,
+resident). The PSNR is the head's ×2 against the chain's output.
+
 ``--adapter`` runs the sampler with a LoRA-family adapter as hooks (after the fp32 stream
 change, as the head was trained); with ``--no_spectrum --infer_steps 4 --guidance_scale 1``
 that is the turbo path (``make test-turbo``: Euler 4 steps, CFG 1, one forward per step).
@@ -27,6 +32,9 @@ Usage::
     make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/e2e_speed.py \
         --compile --adapter models/loras/anima_turbo_4step.safetensors --no_spectrum \
         --infer_steps 4 --guidance_scale 1.0 --label e2e_turbo_mmdd_hhmm"
+    # ×2 head against VAE → ResShift ×2
+    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/e2e_speed.py \
+        --compile --scale 2 --head_run <x2 run> --label e2e_x2_mmdd_hhmm"
 """
 
 from __future__ import annotations
@@ -35,6 +43,7 @@ import argparse
 import os
 import statistics
 import time
+from pathlib import Path
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
@@ -49,9 +58,15 @@ from bench._anima import (
     build_anima,
 )
 from bench._common import make_run_dir, start_heartbeat, write_result
-from bench.pixel_readout.convnext_head import attach_adapter, lat_patches, load_head
+from bench.pixel_readout.convnext_head import (
+    attach_adapter,
+    lat_patches,
+    load_head,
+    resolve_run,
+)
 from bench.pixel_readout.linear_probe import PATCH, psnr
 from bench.pixel_readout.p3_generated import PROMPTS
+from library.anima.pixel_head import PixelHeadX2, load_pixel_head
 from library.anima.vocab_pack import default_vocab_pack
 from library.anima.weights import _attach_vocab_pack_if_set
 from library.env import resolve_under_home
@@ -105,6 +120,13 @@ def main():
         default="fp32",
         help="DiT residual stream; fp32 is inference.py's default and the head's",
     )
+    p.add_argument(
+        "--scale",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="2: a ×2 head against VAE → ResShift ×2 (module docstring)",
+    )
     args = p.parse_args()
     start_heartbeat(label="e2e")
     device = torch.device(args.device)
@@ -142,7 +164,24 @@ def main():
         lambda _m, inp: calls and calls[-1].__setitem__("f", inp[0].detach())
     )
 
-    head = load_head(args.head_run, anima.final_layer.hidden_size, device)
+    if args.scale == 2:
+        hr = str(args.head_run)
+        path = (
+            Path(resolve_under_home(hr))
+            if hr.endswith(".safetensors")
+            else resolve_run(hr) / "head_x2.safetensors"
+        )
+        head = load_pixel_head(path, device, anima.final_layer.hidden_size)
+        assert isinstance(head, PixelHeadX2), f"{path}: not a ×2 head (no x2_depth)"
+        from bench.pixel_readout.x2_head import TEACHER_DIR, TEACHER_REPO, load_teacher
+
+        up2 = load_teacher(
+            Path(resolve_under_home(TEACHER_REPO)),
+            Path(resolve_under_home(TEACHER_DIR)),
+            device,
+        )
+    else:
+        head = load_head(args.head_run, anima.final_layer.hidden_size, device)
     head_mb = sum(t.numel() * t.element_size() for t in head.state_dict().values()) / MB
 
     vae_kw = dict(
@@ -170,7 +209,10 @@ def main():
         def run():
             f = f_u.float() + g * (f_c.float() - f_u.float())
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                img = head(f[0, 0], lat_patches(x_t).float())
+                if args.scale == 2:
+                    img = head(f[0, 0], lat_patches(x_t).float(), scale=2)
+                else:
+                    img = head(f[0, 0], lat_patches(x_t).float())
             return img.float().clamp(-1, 1).cpu()
 
         return run
@@ -239,12 +281,25 @@ def main():
     def decode_all(final, x_t, f_c, f_u):
         lat = final.float().reshape(x_t.shape)
         out = {}
-        for name, fn in (
+        arms = [
             ("head", arm_head(f_c, f_u, x_t)),
             ("vae_resident", lambda: decode(vae_gpu, lat)),
             ("vae_swap", arm_swap(lat)),
             ("vae_disk", arm_disk(lat)),
-        ):
+        ]
+        if args.scale == 2:
+            arms.append(
+                (
+                    "chain",
+                    lambda: (
+                        up2(decode(vae_gpu, lat).to(device), args.seed)
+                        .float()
+                        .clamp(-1, 1)
+                        .cpu()
+                    ),
+                )
+            )
+        for name, fn in arms:
             out[name] = peak_over(fn)
         return out
 
@@ -278,7 +333,9 @@ def main():
             "te_s": te_s[k],
             "dit_s": dit_s,
             "dit_peak_mb": dit_peak,
-            "psnr_head_vs_vae": psnr(res["head"][0], res["vae_resident"][0]),
+            "psnr_head_vs_vae": psnr(
+                res["head"][0], res["chain" if args.scale == 2 else "vae_resident"][0]
+            ),
         }
         for arm, (_, dt, pk) in res.items():
             row[f"{arm}_s"] = dt
@@ -288,7 +345,9 @@ def main():
         print(
             f"  {name} {h}x{w}: dit {dit_s:.2f}s  head {row['head_s'] * 1e3:.0f}ms "
             f"swap {row['vae_swap_s']:.2f}s disk {row['vae_disk_s']:.2f}s "
-            f"resident {row['vae_resident_s']:.2f}s  psnr {row['psnr_head_vs_vae']:.2f}",
+            f"resident {row['vae_resident_s']:.2f}s"
+            + (f" chain {row['chain_s']:.2f}s" if args.scale == 2 else "")
+            + f"  psnr {row['psnr_head_vs_vae']:.2f}",
             flush=True,
         )
 

@@ -13,8 +13,16 @@ P3's 16 prompts at their ~1 MP sizes; one warmup render + both decodes per (stre
 dropped. The Adapter Loader's fp32 stream (the head's training features); ``--streams
 fp32,bf16`` adds ComfyUI's own bf16 forward. Head vs VAE PSNR on the same latent.
 
+``--scale 2``: the chain VAE Decode → ResShift SR Upscale (the ×2 student at the node's
+defaults, ``ComfyUI-Distilled-ResShift``) against Anima Pixel Decode at ``scale`` 2, with a ×2
+head file; PSNR and VGG-LPIPS of the head against the chain. ``--lora`` / ``--pixel_head``
+take a path outside ComfyUI's folders (the turbo point of the ×2 heads is v4_longer).
+
     make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/comfy_e2e.py \
         --label comfy_turbo_mmdd_hhmm"
+    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/comfy_e2e.py \
+        --scale 2 --lora output/ckpt/release/anima_turbo_4step_v4_longer.safetensors \
+        --pixel_head <run>/head_x2.safetensors --label comfy_x2_mmdd_hhmm"
 """
 
 from __future__ import annotations
@@ -24,6 +32,7 @@ import asyncio
 import statistics
 import sys
 import time
+from pathlib import Path
 
 from library.env import resolve_under_home
 
@@ -33,10 +42,11 @@ NODE_PACKS = (
     "comfyui-anima-blockcompile",
     "comfyui-anima-pixel-decoder",
 )
+RESSHIFT_PACK = "comfyui-distilled-resshift"
 MB = 1 << 20
 
 
-def start_comfy(flags: list[str]):
+def start_comfy(flags: list[str], packs=NODE_PACKS):
     """Import ComfyUI's ``main.py`` with its own argv: the app's module-level setup runs
     (args, logging, dynamic VRAM, model patcher class), the server does not start."""
     sys.path.insert(0, str(COMFY))
@@ -50,7 +60,7 @@ def start_comfy(flags: list[str]):
     main.apply_custom_paths()
     import nodes
 
-    for pack in NODE_PACKS:
+    for pack in packs:
         ok = asyncio.run(nodes.load_custom_node(str(COMFY / "custom_nodes" / pack)))
         assert ok, f"custom node {pack} failed to load"
     return main, nodes
@@ -63,6 +73,18 @@ def main_():
     p.add_argument("--vae", default="qwen_image_vae.safetensors")
     p.add_argument("--lora", default="anima_turbo_4step.safetensors")
     p.add_argument("--head", default="anima_pixel_head.safetensors")
+    p.add_argument(
+        "--pixel_head",
+        default=None,
+        help="a head file by path (outside models/pixel_heads/); overrides --head",
+    )
+    p.add_argument(
+        "--scale",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="2: VAE Decode → ResShift ×2 against Anima Pixel Decode at scale 2",
+    )
     p.add_argument("--streams", default="fp32")
     p.add_argument("--steps", type=int, default=4)
     p.add_argument("--cfg", type=float, default=1.0)
@@ -76,12 +98,15 @@ def main_():
     )
     p.add_argument("--save_images", type=int, default=16, help="first N, first stream")
     p.add_argument(
-        "--comfy_args", default="", help="extra ComfyUI CLI flags, e.g. '--use-flash-attention'"
+        "--comfy_args",
+        default="",
+        help="extra ComfyUI CLI flags, e.g. '--use-flash-attention'",
     )
     p.add_argument("--label", default=None)
     args = p.parse_args()
 
-    comfy_main, nodes = start_comfy(args.comfy_args.split())
+    packs = NODE_PACKS + ((RESSHIFT_PACK,) if args.scale == 2 else ())
+    comfy_main, nodes = start_comfy(args.comfy_args.split(), packs)
     import comfy.memory_management
     import comfy.model_management
     import folder_paths
@@ -94,11 +119,27 @@ def main_():
 
     start_heartbeat(label="comfy_e2e")
     folder_paths.add_model_folder_path("loras", str(resolve_under_home("models/loras")))
+
+    def by_path(folder: str, name: str) -> str:
+        """A file given by path → its folder registered under ``folder``, the basename."""
+        path = Path(resolve_under_home(name))
+        if "/" not in name or not path.is_file():
+            return name
+        folder_paths.add_model_folder_path(folder, str(path.parent))
+        return path.name
+
+    args.lora = by_path("loras", args.lora)
+    if args.pixel_head:
+        args.head = by_path("pixel_heads", args.pixel_head)
     mapping = nodes.NODE_CLASS_MAPPINGS
     run_dir = make_run_dir("pixel_readout", label=args.label)
     prompts = [x for x in PROMPTS if not args.only or x[0] in args.only]
-    if args.tags:  # "masterpiece, …, safe. Prose" → "masterpiece, …, safe, <tags>. Prose"
-        prompts = [(n, t.replace(". ", f", {args.tags}. ", 1), hw) for n, t, hw in prompts]
+    if (
+        args.tags
+    ):  # "masterpiece, …, safe. Prose" → "masterpiece, …, safe, <tags>. Prose"
+        prompts = [
+            (n, t.replace(". ", f", {args.tags}. ", 1), hw) for n, t, hw in prompts
+        ]
     device = comfy.model_management.get_torch_device()
 
     def sync_time(fn):
@@ -122,6 +163,40 @@ def main_():
         conds[name] = c
     vae_decode = nodes.VAEDecode()
     pixel_decode = mapping["AnimaPixelDecode"]()
+    scale = str(args.scale)
+    lp = rsd = up = None
+    if args.scale == 2:
+        import lpips
+
+        rsd = mapping["ResShiftLoader"]().load(
+            "x2", "rsd_student_18k.safetensors", "bf16"
+        )
+        rsd = rsd[0]
+        up = mapping["ResShiftUpscale"]()
+        lp = lpips.LPIPS(net="vgg", verbose=False).to(device).eval()
+
+    def vae_path(out):
+        """VAE Decode, then (×2) ResShift SR Upscale at the node's defaults."""
+        (img,) = vae_decode.decode(vae, out)
+        if up is not None:
+            (img,) = up.upscale(rsd, img, args.seed, 512, 64, 4, True)
+        return img
+
+    def head_path(out):
+        return pixel_decode.decode(tapped, out, args.head, scale)[0]
+
+    @torch.no_grad()
+    def lpips_img(a, b, tile: int = 768) -> float:
+        """Area-weighted mean over ``tile``-px tiles of (3, H, W) images in [-1, 1]."""
+        a, b = a.to(device), b.to(device)
+        h, w = a.shape[-2:]
+        tot = 0.0
+        for y in range(0, h, tile):
+            for x in range(0, w, tile):
+                ta = a[None, :, y : y + tile, x : x + tile]
+                tb = b[None, :, y : y + tile, x : x + tile]
+                tot += lp(ta, tb).mean().item() * ta.shape[-2] * ta.shape[-1]
+        return tot / (h * w)
 
     def latent(h, w):
         return {"samples": torch.zeros(1, 16, 1, h // 8, w // 8)}
@@ -151,8 +226,8 @@ def main_():
             seen.add((h, w))
             out = sample(tapped, name, h, w, 1000)
             sample(model, name, h, w, 1000)
-            vae_decode.decode(vae, out)
-            pixel_decode.decode(tapped, out, args.head)
+            vae_path(out)
+            head_path(out)
             print(f"[{stream}] warmup {h}x{w} done", flush=True)
 
         rows = []
@@ -161,10 +236,8 @@ def main_():
             out, dit_s, dit_mb = sync_time(
                 lambda: sample(tapped, name, h, w, args.seed)
             )
-            (img_v,), vae_s, vae_mb = sync_time(lambda: vae_decode.decode(vae, out))
-            (img_h,), head_s, head_mb = sync_time(
-                lambda: pixel_decode.decode(tapped, out, args.head)
-            )
+            img_v, vae_s, vae_mb = sync_time(lambda: vae_path(out))
+            img_h, head_s, head_mb = sync_time(lambda: head_path(out))
             row = {
                 "name": name,
                 "size": [h, w],
@@ -180,6 +253,8 @@ def main_():
                 "total_head_s": dit_s + head_s,
                 "psnr_head_vs_vae": psnr(to_pm1(img_h), to_pm1(img_v)),
             }
+            if lp is not None:
+                row["lpips_head_vs_vae"] = lpips_img(to_pm1(img_h), to_pm1(img_v))
             rows.append(row)
             if si == 0 and k < args.save_images:
                 to_pil(to_pm1(img_v)).save(run_dir / f"{name}_vae.png")
@@ -187,10 +262,15 @@ def main_():
             print(
                 f"[{stream}] {name} {h}x{w}: sample {plain_s:.3f}s (tapped {dit_s:.3f}s)  "
                 f"vae {vae_s * 1e3:.0f}ms  head {head_s * 1e3:.0f}ms  "
-                f"psnr {row['psnr_head_vs_vae']:.2f}",
+                f"psnr {row['psnr_head_vs_vae']:.2f}"
+                + (f"  lpips {row['lpips_head_vs_vae']:.4f}" if lp is not None else ""),
                 flush=True,
             )
-        keys = [k for k in rows[0] if k.endswith(("_s", "_mb")) or k.startswith("psnr")]
+        keys = [
+            k
+            for k in rows[0]
+            if k.endswith(("_s", "_mb")) or k.startswith(("psnr", "lpips"))
+        ]
         summary = {
             k: {
                 "median": statistics.median(r[k] for r in rows),
@@ -216,6 +296,10 @@ def main_():
             if comfy_main.args.use_flash_attention
             else "comfy default",
             "device": comfy.model_management.get_torch_device_name(device),
+            "scale": args.scale,
+            "vae_path": "VAE Decode → ResShift ×2 (rsd_student_18k, node defaults)"
+            if args.scale == 2
+            else "VAE Decode",
             "streams": results,
         },
         label=args.label,

@@ -32,19 +32,35 @@ VAE decode of the same latent (one seed, 16 prompts, `project/pixel_decoder/repo
 Decode time ~7 ms per ~1 MP image against 141 ms (VAE resident), 176 ms (VAE moved to the card
 and back) or ~850 ms (VAE loaded from disk). On turbo the VAE is 15 % of DiT + decode.
 
+## ×2 output
+
+A ×2 head file (metadata `x2_depth`) carries a second 2× stage after the head's own: one
+readout writes a 32×32 RGB patch per token, so a 1024-tier render leaves the head at 2048.
+The same file decodes at ×1 too.
+
+```bash
+make test PIXEL=1 PIXEL_SCALE=2 PIXEL_HEAD=<head_x2.safetensors>
+python inference.py … --decoder pixel_head --pixel_scale 2 --pixel_head <file>
+```
+
+The saved image is twice `--image_size`. A ×1 file refuses `--pixel_scale 2` at load. The ×2
+stage was trained on the released ResShift ×2 student's upscale of the VAE decode, so the
+level to read it against is VAE → ResShift ×2 (3.16 s per image), not a real 2× image. No ×2
+file is in the catalog yet: the ×2 preview is in progress (`project/pixel_decoder/x2_plan.md`).
+
 ## ComfyUI
 
 The node pack `ComfyUI-Anima-PixelDecoder` (`comfyui-anima-pixel-decoder` under
 `../comfy/custom_nodes/`): **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or
 Spectrum), **Anima Pixel Decode** (tapped MODEL, the sampler's LATENT, head file) in place of VAE
-Decode. The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
+Decode; its `scale` input (1 / 2) reads a ×2 head file's 2× output. The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
 `pixel_head`. Run the DiT on the fp32 stream (Anima Adapter Loader `stream = fp32`), as the head
 was trained. Turbo in ComfyUI 0.43: 1.127 s per image with VAE Decode, 1.005 s with the head
 (`bench/pixel_readout/comfy_e2e.py`, `project/pixel_decoder/reports/comfy_node_2026_11_19.md`).
 
 ## How it works
 
-`library/anima/pixel_head.py` holds the module (`PixelHead`, `load_pixel_head`) and
+`library/anima/pixel_head.py` holds the modules (`PixelHead`, `PixelHeadX2`, `load_pixel_head`) and
 `PixelTap`: a forward pre-hook on the DiT opens a record (σ, x_t) per forward, a pre-hook on
 `final_layer.linear` fills its feature, and a new σ clears the records. After sampling the
 records hold the last step: one forward at CFG 1, cond then uncond under CFG, combined as

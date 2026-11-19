@@ -11,6 +11,8 @@ Pieces:
 
 - :class:`PixelHead` / :func:`load_pixel_head` — the module and a loader that reads the
   shape from the file's metadata (``width``, ``depth``, ``up``, ``skip``).
+- :class:`PixelHeadX2` — a ``PixelHead`` plus a second 2× stage (files stamped
+  ``x2_depth``): one file decodes at ×1 and ×2 (32×32 output pixels per token).
 - :class:`PixelTap` — forward hooks on a built DiT that keep the last actual forward's
   (σ, x_t, feature) per CFG branch; :meth:`PixelTap.decode` runs the head on them.
 - :func:`out_of_range` — whether a decode point lies outside the σ ranges the head was
@@ -146,6 +148,73 @@ class PixelHead(nn.Module):
         return from_patches(tok.reshape(gh * gw, -1).float(), gh, gw)
 
 
+class PixelHeadX2(nn.Module):
+    """A ``PixelHead`` (``up`` = 1, no skip) plus a second 2× stage → (×1 image, ×2 image).
+
+    The second stage: LayerNorm + per-position linear ``w`` → 4 × ``width2``, pixel
+    shuffle, ``depth2`` ConvNeXt blocks at 4-px spacing, and a linear writing an 8×8 RGB
+    patch per position, i.e. 32×32 output pixels per DiT token. The ×1 output is the base
+    head's, so one file decodes at either scale. ``forward(…, scale=1 | 2)`` runs only the
+    stages that scale needs; ``scale=None`` returns both (training)."""
+
+    def __init__(
+        self,
+        base: PixelHead,
+        depth2: int = 2,
+        ls_init: float = 1.0,
+        width2: int | None = None,
+    ):
+        super().__init__()
+        assert base.up and not base.use_skip, "base head: one upsample stage, no skip"
+        self.base = base
+        w = base.out.in_features
+        w2 = width2 or w // 2
+        self.patch2 = base.patch  # 8 output px per 4-px position = 2× the base
+        self.up2_norm = nn.LayerNorm(w, eps=1e-6)
+        self.up2_proj = nn.Linear(w, 4 * w2)
+        self.up2_blocks = nn.ModuleList(
+            ConvNeXtBlock(w2, ls_init) for _ in range(depth2)
+        )
+        self.norm2 = nn.LayerNorm(w2, eps=1e-6)
+        self.out2 = nn.Linear(w2, self.patch2 * self.patch2 * 3)
+
+    @staticmethod
+    def _unpatch(tok: torch.Tensor, p: int) -> torch.Tensor:
+        n, m = tok.shape[:2]
+        return tok.view(n, m, p, p, 3).permute(4, 0, 2, 1, 3).reshape(3, n * p, m * p)
+
+    def forward(self, f, lat, scale: int | None = None):
+        """f (gh, gw, D), lat (gh, gw, 64) → (×1, ×2) images, or one of them."""
+        b = self.base
+        h = (b.proj(f) + b.lat_embed(lat)).permute(2, 0, 1)[None]
+        for blk in b.blocks:
+            h = blk(h)
+        u = b.up_proj(b.up_norm(h.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
+        h = F.pixel_shuffle(u, 2)  # (1, w, 2gh, 2gw)
+        for blk in b.up_blocks:
+            h = blk(h)
+        x1 = x2 = None
+        if scale != 2:
+            h1 = b.norm_out(h[0].permute(1, 2, 0))
+            with torch.autocast(h.device.type, enabled=False):  # output layer in fp32
+                x1 = self._unpatch(b.out(h1.float()), b.patch)
+            if scale == 1:
+                return x1
+        u = self.up2_proj(self.up2_norm(h.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
+        g = F.pixel_shuffle(u, 2)  # (1, w/2, 4gh, 4gw)
+        for blk in self.up2_blocks:
+            g = blk(g)
+        h2 = self.norm2(g[0].permute(1, 2, 0))
+        with torch.autocast(h.device.type, enabled=False):
+            x2 = self._unpatch(self.out2(h2.float()), self.patch2)
+        return x2 if scale == 2 else (x1, x2)
+
+
+def head_scales(head: nn.Module) -> tuple[int, ...]:
+    """The output scales a loaded head can decode: (1,) or (1, 2)."""
+    return (1, 2) if isinstance(head, PixelHeadX2) else (1,)
+
+
 def parse_sigma_ranges(stamp: str | None) -> tuple[tuple[float, float], ...]:
     """``"0.0577-0.1364,0.5"`` → ((0.0577, 0.1364), (0.5, 0.5)); empty → the defaults."""
     if not stamp:
@@ -159,19 +228,27 @@ def parse_sigma_ranges(stamp: str | None) -> tuple[tuple[float, float], ...]:
 
 def load_pixel_head(
     path: str | Path, device="cpu", d_feat: int | None = None
-) -> PixelHead:
+) -> PixelHead | PixelHeadX2:
     """A trained head from a ``.safetensors`` file, shape from its metadata.
 
+    A file stamped ``x2_depth`` (keys ``base.*``, ``up2_*``, ``out2.*``) loads as a
+    :class:`PixelHeadX2`, which decodes at ×1 and ×2; any other as a :class:`PixelHead`.
     ``d_feat`` defaults to the stored ``proj.weight``'s input width (2048 on Anima). The
-    trained σ ranges ride along as ``head.sigma_ranges``."""
+    trained σ ranges ride along as ``head.sigma_ranges``, the rest of the stamp as
+    ``head.meta``."""
     from safetensors import safe_open
     from safetensors.torch import load_file
 
     path = Path(path)
+    x2 = False
     with safe_open(str(path), "pt") as fh:
         meta = fh.metadata() or {}
+        x2 = "x2_depth" in meta
+        pre = "base." if x2 else ""
         if d_feat is None:
-            d_feat = int(fh.get_slice("proj.weight").get_shape()[1])
+            d_feat = int(fh.get_slice(f"{pre}proj.weight").get_shape()[1])
+        if x2:
+            width2 = int(fh.get_slice("up2_proj.weight").get_shape()[0]) // 4
     head = PixelHead(
         d_feat,
         LAT_PATCH_DIM,
@@ -180,8 +257,11 @@ def load_pixel_head(
         use_skip=meta.get("skip", "1") == "1",
         up=int(meta.get("up", "0")),
     )
+    if x2:
+        head = PixelHeadX2(head, int(meta["x2_depth"]), width2=width2)
     head.load_state_dict(load_file(str(path)))
     head.sigma_ranges = parse_sigma_ranges(meta.get("sigma"))
+    head.meta = dict(meta)
     return head.to(device).eval()
 
 
@@ -278,8 +358,20 @@ class PixelTap:
         return f_u + guidance_scale * (f_c - f_u), calls[0]["x"]
 
     @torch.no_grad()
-    def decode(self, head: PixelHead, guidance_scale: float) -> torch.Tensor:
-        """Pixels (B, 3, H, W) fp32 on the head's device, clamped to [-1, 1]."""
+    def decode(
+        self, head: PixelHead | PixelHeadX2, guidance_scale: float, scale: int = 1
+    ) -> torch.Tensor:
+        """Pixels (B, 3, scale·H, scale·W) fp32 on the head's device, clamped to
+        [-1, 1]. ``scale=2`` needs a ×2 head file (:class:`PixelHeadX2`)."""
+        if scale not in head_scales(head):
+            raise ValueError(
+                f"pixel head: scale {scale} needs a ×2 head file (stamped x2_depth); "
+                "this file has the ×1 output only"
+            )
+        if isinstance(head, PixelHeadX2):
+            fwd = lambda f, lat: head(f, lat, scale=scale)  # noqa: E731
+        else:
+            fwd = head
         f, x_t = self.feature(guidance_scale)
         dev = next(head.parameters()).device
         f = f.to(dev)
@@ -291,5 +383,5 @@ class PixelTap:
         out = []
         with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=dev.type == "cuda"):
             for b in range(f.shape[0]):
-                out.append(head(f[b], lat_patches(x_t[b])).float())
+                out.append(fwd(f[b], lat_patches(x_t[b])).float())
         return torch.stack(out).clamp(-1, 1)

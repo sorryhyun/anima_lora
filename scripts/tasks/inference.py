@@ -36,12 +36,15 @@ def _mod_flags() -> list[str]:
 
 
 def _pixel_flags() -> list[str]:
-    """``PIXEL=1`` → ``--decoder pixel_head`` (+ ``--pixel_head`` from ``PIXEL_HEAD=``)."""
+    """``PIXEL=1`` → ``--decoder pixel_head`` (+ ``--pixel_head`` from ``PIXEL_HEAD=``,
+    ``--pixel_scale`` from ``PIXEL_SCALE=``)."""
     if not _env_truthy("PIXEL"):
         return []
     flags = ["--decoder", "pixel_head"]
     if head := os.environ.get("PIXEL_HEAD", "").strip():
         flags += ["--pixel_head", head]
+    if scale := os.environ.get("PIXEL_SCALE", "").strip():
+        flags += ["--pixel_scale", scale]
     return flags
 
 
@@ -71,7 +74,8 @@ def _base_test_args(*, lora_default: bool = True) -> list[str]:
     - ``INT8=1`` appends ``--int8`` (the int8 base, LoRAs as hooks).
     - ``STREAM=bf16|fp32`` appends ``--stream`` (fp32 by default).
     - ``PIXEL=1`` appends ``--decoder pixel_head`` (decode with the pixel head, no
-      VAE); ``PIXEL_HEAD=<file>`` points it at another head. Also on ``test-turbo``.
+      VAE); ``PIXEL_HEAD=<file>`` points it at another head, ``PIXEL_SCALE=2`` reads
+      a ×2 head's 2× output. Also on ``test-turbo``.
     """
     args = list(INFERENCE_BASE)
     nolora_env = os.environ.get("NOLORA")

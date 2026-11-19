@@ -37,6 +37,15 @@ def build_parser() -> argparse.ArgumentParser:
         "first use).",
     )
     parser.add_argument(
+        "--pixel_scale",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="With --decoder pixel_head: 2 decodes and 2× upscales in one readout "
+        "(the saved image is 2× --image_size). Needs a ×2 head file (stamped "
+        "x2_depth); a ×1 file refuses it.",
+    )
+    parser.add_argument(
         "--vae_chunk_size",
         type=int,
         default=None,

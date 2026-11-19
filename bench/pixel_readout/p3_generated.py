@@ -23,6 +23,13 @@ combine is plain CFG. At ``--guidance_scale 1`` the sampler runs cond only and `
 forward, x_tf − σ·v_tf (``psnr_tf_xhat0``, what the head is trained on). At σ_last 0.06
 the two nearly coincide; at turbo's σ_last 0.5 they do not.
 
+``--x2``: ×2 heads (``head_x2.safetensors`` of an ``x2_head.py`` run, or a file path) read
+through the library tap's path (the CFG feature, ``PixelHeadX2``). The reference is the
+chain the head replaces, the released ResShift ×2 student on VAE(x_final); per image:
+×2 against it (dB, LPIPS, whole-image and dark-pixel luma), ×1 against VAE(x_final), and
+the time of VAE decode + ResShift against the head's ×2 readout. Sheets: two columns
+``VAE → ResShift ×2 | ×2 head``, full image and a 768-px crop at native pixels.
+
 Usage::
 
     make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/p3_generated.py \
@@ -31,12 +38,18 @@ Usage::
     make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/p3_generated.py \
         --compile --adapter models/loras/anima_turbo_4step.safetensors --arms lora \
         --infer_steps 4 --guidance_scale 1.0 --head_run <run> --label t2probe_mmdd_hhmm"
+    # ×2 read, base 28 steps CFG 4 (turbo: --adapter …v4_longer --arms lora
+    # --infer_steps 4 --guidance_scale 1.0):
+    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/p3_generated.py \
+        --compile --x2 --head_run <x2 run> --arms base --infer_steps 28 \
+        --guidance_scale 4.0 --label x2gen_mmdd_hhmm"
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import time
 from pathlib import Path
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
@@ -55,11 +68,21 @@ from bench._common import make_run_dir, start_heartbeat, write_result
 from bench.pixel_readout.convnext_head import (
     attach_adapter,
     load_head,
+    resolve_run,
     densest_window,
     lat_patches,
     sheet,
 )
 from bench.pixel_readout.linear_probe import PATCH, psnr
+from bench.pixel_readout.x2_head import (
+    TEACHER_DIR,
+    TEACHER_REPO,
+    bicubic2,
+    load_teacher,
+    pair_sheet,
+    tone_stats,
+)
+from library.anima.pixel_head import PixelHeadX2, load_pixel_head
 from library.anima.vocab_pack import default_vocab_pack
 from library.anima.weights import _attach_vocab_pack_if_set
 from library.env import resolve_under_home
@@ -194,6 +217,13 @@ def main():
         help="render on the int8 base (inference.py --int8: GPTQ forward copies beside "
         "the DiT); the heads were trained on the bf16 GEMMs",
     )
+    p.add_argument(
+        "--x2",
+        action="store_true",
+        help="×2 heads (head_x2.safetensors) read against VAE → ResShift ×2 (see the "
+        "module docstring)",
+    )
+    p.add_argument("--crop", type=int, default=768, help="--x2 sheet crop, ×2 pixels")
     args = p.parse_args()
     start_heartbeat(label="p3")
     device = torch.device(args.device)
@@ -244,12 +274,52 @@ def main():
         lambda _m, inp: calls[-1].__setitem__("f", inp[0].detach())
     )
 
-    heads = {
-        Path(str(r)).name.split("-")[-1]: load_head(
-            r, anima.final_layer.hidden_size, device
+    def head_name(r) -> str:
+        r = Path(str(r))
+        return (r.parent.name if r.suffix == ".safetensors" else r.name).split("-")[-1]
+
+    def load_x2(r):
+        r = str(r)
+        path = Path(resolve_under_home(r)) if r.endswith(".safetensors") else None
+        path = path or resolve_run(r) / "head_x2.safetensors"
+        head = load_pixel_head(path, device, anima.final_layer.hidden_size)
+        assert isinstance(head, PixelHeadX2), f"{path}: not a ×2 head (no x2_depth)"
+        return head
+
+    if args.x2:
+        heads = {head_name(r): load_x2(r) for r in args.head_run}
+        up2 = load_teacher(
+            Path(resolve_under_home(TEACHER_REPO)),
+            Path(resolve_under_home(TEACHER_DIR)),
+            device,
         )
-        for r in args.head_run
-    }
+        import lpips
+
+        lp = lpips.LPIPS(net="vgg", verbose=False).to(device).eval()
+
+        @torch.no_grad()
+        def lpips_img(a: torch.Tensor, b: torch.Tensor, tile: int = 768) -> float:
+            h, w = a.shape[-2:]
+            tot = 0.0
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                for y in range(0, h, tile):
+                    for x in range(0, w, tile):
+                        ta = a[None, :, y : y + tile, x : x + tile].float()
+                        tb = b[None, :, y : y + tile, x : x + tile].float()
+                        tot += lp(ta, tb).mean().item() * ta.shape[-2] * ta.shape[-1]
+            return tot / (h * w)
+
+        def timed(fn):
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            out = fn()
+            torch.cuda.synchronize()
+            return out, (time.perf_counter() - t0) * 1e3
+    else:
+        heads = {
+            head_name(r): load_head(r, anima.final_layer.hidden_size, device)
+            for r in args.head_run
+        }
 
     def read(head, f, x_t):
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
@@ -309,8 +379,72 @@ def main():
                 f_cfg = unc["f"].float() + g * (cond["f"].float() - unc["f"].float())
 
                 with torch.no_grad():
-                    tgt = vae.decode_to_pixels(fin)[0].float()
+                    tgt, ms_vae = (
+                        timed(lambda: vae.decode_to_pixels(fin)[0].float())
+                        if args.x2
+                        else (vae.decode_to_pixels(fin)[0].float(), None)
+                    )
                 f_cond = cond["f"].float()
+
+                if args.x2:
+                    calls.clear()
+                    t2, ms_teacher = timed(lambda: up2(tgt.clamp(-1, 1), seed))
+                    cx, cy = densest_window(t2, args.crop)
+                    cols = [("VAE -> ResShift x2", t2)]
+                    for hname, head in heads.items():
+                        lat_p = lat_patches(x_t).float()
+
+                        def run_head(head=head, lat_p=lat_p):
+                            with (
+                                torch.no_grad(),
+                                torch.autocast("cuda", dtype=torch.bfloat16),
+                            ):
+                                return head(f_cfg[0, 0].float(), lat_p, scale=2)
+
+                        run_head()  # warm
+                        x2_img, ms_head = timed(run_head)
+                        x2_img = x2_img.float().clamp(-1, 1)
+                        with (
+                            torch.no_grad(),
+                            torch.autocast("cuda", dtype=torch.bfloat16),
+                        ):
+                            x1_img = head(f_cfg[0, 0].float(), lat_p, scale=1)
+                        lum, dark = tone_stats(x2_img, t2)
+                        row = {
+                            "arm": arm,
+                            "head": hname,
+                            "name": name,
+                            "seed": seed,
+                            "size": [h, w],
+                            "psnr_x2": psnr(x2_img, t2),
+                            "lpips_x2": lpips_img(x2_img, t2),
+                            "luma_x2": lum,
+                            "dark_x2": dark,
+                            "psnr_x1": psnr(x1_img.float().clamp(-1, 1), tgt),
+                            "psnr_bicubic": psnr(bicubic2(tgt), t2),
+                            "ms_vae": ms_vae,
+                            "ms_teacher": ms_teacher,
+                            "ms_head_x2": ms_head,
+                            "cfg_check": cfg_check,
+                        }
+                        rows.append(row)
+                        print(
+                            f"  {arm} {hname} {name} s{seed}: ×2 {row['psnr_x2']:.2f} "
+                            f"lpips {row['lpips_x2']:.4f} dark {dark if dark is None else round(dark, 1)}"
+                            f"  ×1 {row['psnr_x1']:.2f}  bicubic {row['psnr_bicubic']:.2f}  "
+                            f"ms vae {ms_vae:.0f} + rs {ms_teacher:.0f} vs head "
+                            f"{ms_head:.1f}",
+                            flush=True,
+                        )
+                        cols.append((f"x2 head {hname}", x2_img))
+                    for tag, at in (
+                        ("full", None),
+                        ("crop", (cx, cy, args.crop)),
+                    ):
+                        fn = f"x2_{arm}_{k:02d}_{name}_s{seed}_{tag}.png"
+                        pair_sheet(cols, run_dir / fn, at=at)
+                        artifacts.append(fn)
+                    continue
 
                 # teacher-forced on the generated latent (P2 setting)
                 gn = torch.Generator(device=device).manual_seed(
@@ -377,19 +511,34 @@ def main():
                 artifacts.append(fn)
 
     summary = {}
+    keys = (
+        (
+            "psnr_x2",
+            "lpips_x2",
+            "luma_x2",
+            "dark_x2",
+            "psnr_x1",
+            "psnr_bicubic",
+            "ms_vae",
+            "ms_teacher",
+            "ms_head_x2",
+        )
+        if args.x2
+        else (
+            "psnr_cfg",
+            "psnr_cond",
+            "psnr_tf",
+            "psnr_tf_xhat0",
+            "psnr_xhat0_tf_vs_final",
+        )
+    )
     for arm, hname in ((a, hn) for a in arms for hn in heads):
         rs = [r for r in rows if r["arm"] == arm and r["head"] == hname]
         key_ = f"{arm}/{hname}"
-        summary[key_] = {
-            key: sum(r[key] for r in rs) / len(rs)
-            for key in (
-                "psnr_cfg",
-                "psnr_cond",
-                "psnr_tf",
-                "psnr_tf_xhat0",
-                "psnr_xhat0_tf_vs_final",
-            )
-        }
+        summary[key_] = {}
+        for key in keys:
+            vals = [r[key] for r in rs if r[key] is not None]
+            summary[key_][key] = sum(vals) / len(vals) if vals else None
         summary[key_]["cfg_check_max"] = max(r["cfg_check"] for r in rs)
         print(f"{key_}: {summary[key_]}", flush=True)
     out = write_result(

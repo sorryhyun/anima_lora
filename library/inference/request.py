@@ -72,9 +72,11 @@ class GenerationRequest:
     dit: Optional[str] = None
     vae: Optional[str] = None
     # ``pixel_head`` decodes with the pixel head (library.anima.pixel_head) instead
-    # of the VAE; ``pixel_head`` names the file (default: the catalog row).
+    # of the VAE; ``pixel_head`` names the file (default: the catalog row);
+    # ``pixel_scale`` 2 reads a ×2 head file's 2× output.
     decoder: Optional[str] = None  # ``vae`` | ``pixel_head``
     pixel_head: Optional[str] = None
+    pixel_scale: Optional[int] = None  # 1 | 2
     text_encoder: Optional[str] = None
     device: Optional[str] = None
     attn_mode: str = "torch"
@@ -120,6 +122,8 @@ class GenerationRequest:
             argv += ["--decoder", self.decoder]
         if self.pixel_head is not None:
             argv += ["--pixel_head", self.pixel_head]
+        if self.pixel_scale is not None:
+            argv += ["--pixel_scale", str(self.pixel_scale)]
         if self.device is not None:
             argv += ["--device", self.device]
         if self.vae_chunk_size is not None:
