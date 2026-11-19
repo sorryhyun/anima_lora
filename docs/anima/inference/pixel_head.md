@@ -24,10 +24,14 @@ The head was trained at fixed decode points, stamped as `sigma` in the file's me
 | anima-base | shift-3 Euler, 20 … 50 steps (Spectrum included) | 0.058 … 0.136 |
 | anima-base + turbo LoRA | 4 steps, CFG 1 | 0.5 |
 
-At any other last-step σ it still decodes and logs a warning; no refusal. Measured against the
-VAE decode of the same latent (one seed, 16 prompts, `project/pixel_decoder/reports/`): turbo
-35.4 dB, base 28 steps + Spectrum 33.0 dB. The turbo point was trained on the Hub turbo repo's
-`old/anima_turbo_4step.safetensors`; v3 and v4 read about 3 dB lower (31.5 / 31.4).
+At any other last-step σ it still decodes and logs a warning; no refusal. The current head
+(`realr_1119_2200`, since 2026-11-19) was trained on the original image with LPIPS at the base
+points and on VAE(x̂0) at the turbo point, with the turbo LoRA
+`anima_turbo_4step_v4_longer.safetensors`; it reads 33.75 dB / LPIPS 0.081 against the original
+on held-out test images at σ 0.0577 (`project/pixel_decoder/reports/real_target_2026_11_19.md`).
+The previous head (`old/anima_pixel_head.safetensors` on the Hub, VAE(x̂0) target, turbo point
+on the turbo repo's `old/` file) read turbo 35.4 dB and base 28 steps + Spectrum 33.0 dB against
+the VAE decode; the numbers below are that head's.
 
 Decode time ~7 ms per ~1 MP image against 141 ms (VAE resident), 176 ms (VAE moved to the card
 and back) or ~850 ms (VAE loaded from disk). On turbo the VAE is 15 % of DiT + decode.

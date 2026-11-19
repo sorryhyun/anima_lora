@@ -138,11 +138,15 @@ Arms and open questions stay in `../x2_plan.md`.
   (sha256 9c3e2ce2…); the card's Use section has one line naming it a test file that will be
   replaced.
 - Node 0.2.0 published to the registry and pushed to GitHub (`ebbc77b`).
+- The user (23:55): "hub 메인 파일은 이번에 학습한걸로 교체해도 될듯". Hub commit ed9da688:
+  `anima_pixel_head.safetensors` = run 1 `realr_1119_2200` (sha256 2b9d24cf…); card Target and
+  turbo lines rewritten for it, with a note that the benchmarks, samples and held-out reads are the
+  previous head's. Local `models/vae/anima_pixel_head.safetensors` replaced by the same file;
+  `docs/anima/inference/pixel_head.md` and the node README's turbo line updated.
 
 ### Interpretation
 
 - The node loads a head by file name from `models/pixel_heads/`, so a later ×2 file replaces the
   test file without a node release, as the user asked.
-- Not done: the main file's replacement by run 1 and the card's numbers for it (the card
-  describes `mixr_1119_1455`); a catalog row for the ×2 file; daemon checks of
+- Not done: the card's benchmark, sample and held-out numbers for run 1's head; a catalog row for the ×2 file; daemon checks of
   `inference.py --pixel_scale 2` on base / turbo / `--int8`.
