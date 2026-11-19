@@ -94,6 +94,7 @@ Measured beside it: textured regions 1 – 2.5 levels darker than the VAE in lin
 The head as the differentiable decode for losses that train the DiT or a LoRA: cjk_rl arm D
 (reader NLL through the head, its D0 cost probe rerun against the VAE-window path), a GAN or
 refiner term for the turbo student.
+Idea and first probe (PixelGen-style LPIPS through the head; DWD, arXiv:2611.22287, the same family as our head): `idea.md`.
 
 ### A head at every step
 

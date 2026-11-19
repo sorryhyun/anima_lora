@@ -62,8 +62,9 @@ submodule).
   (no features). `--cfgpp` / `--smc_cfg` warn: the feature is combined as plain CFG.
 - A Spectrum cached last step warns: the head reads the last actual forward. The `make test`
   Spectrum flags end on an actual forward.
-- The int8 DiT (`--int8`) and other LoRAs are untested; P3 read a merged style LoRA at the
-  base level.
+- On the int8 DiT (`--int8`) the head reads at the bf16 level: base 28 steps 32.32 dB against
+  32.44, turbo 34.60 against 34.61 (32 renders each, one run). Other LoRAs are untested; P3 read
+  a merged style LoRA at the base level.
 
 Structure, training and the ×2 work: [../experimental/pixel_decoder.md](../experimental/pixel_decoder.md).
 Training, evals and probes: `bench/pixel_readout/`; the project record:

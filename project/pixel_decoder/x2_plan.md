@@ -84,7 +84,7 @@ reference levels (bicubic 31.86 / 28.25, second draw 46.65 / 40.36, 2 test / 8 t
 Outcome: soft, and ×1 under the parent; the capacity and frozen-base branches were both read by
 the fit probes (above). No user verdict was asked on arm A's sheets beyond the tone read.
 
-## Arms 1 + 2 together — tone term and LPIPS (running: `x2lt_1119_2013`)
+## Arms 1 + 2 together — tone term and LPIPS (`x2lt_1119_2013`, done)
 
 The user (2026-11-19): "1, 2 같이 적용해도 될듯? lpips나 tone term 모두 이미 resshift든 moss든
 검증된거라. 다만 hyperparameter만 가볍게 보고 본 학습 돌리자".
@@ -131,6 +131,130 @@ Read: the full run's two-column crops `chain | ×2 head` (`--chain`), test 12 / 
 both points, labelled; numbers beside them: dB, LPIPS and dark lift against the teacher, the ×1
 output against the parent. The user's read decides. Bars: spread unknown.
 Cost: sweep 3 × ~11 min, full run ~40 min.
+
+Outcome, `x2lt_1119_2013` (λ_lpips 0.1, λ_dc 1.0, 1,000 rollouts, 1.39 s per rollout, peak
+9.2 GB; head 11.8 ms on 80 × 52 tokens). Against the teacher, test 12 / text 8 / manga 4:
+
+| | dB | LPIPS | dark lift | ×1 against VAE(x̂0) |
+|---|---|---|---|---|
+| ×2 head, base σ 0.097 | 29.83 / 26.84 / 26.10 | 0.134 / 0.161 / 0.172 | +13.4 / +11.4 / +6.4 | 36.21 / 31.48 / 31.55 |
+| chain, base | 33.71 / 29.55 / 28.17 | 0.152 / 0.100 / 0.100 | +5.7 / +4.9 / +3.8 | |
+| ×2 head, turbo σ 0.5 | 29.09 / 26.15 / 25.80 | 0.135 / 0.165 / 0.174 | +12.9 / +11.3 / +7.0 | 34.87 / 30.40 / 30.58 |
+| chain, turbo | 32.66 / 28.24 / 27.57 | 0.148 / 0.109 / 0.105 | +5.9 / +5.7 / +4.2 | |
+
+Bicubic: 29.82 / 28.25 / 27.00 (base), 29.28 / 27.93 / 27.01 (turbo). Claude's read, labelled,
+two crops (`base_s0_09705_test_00`, `…_text_01`): the ×2 head's dark regions (hair, a bow) are
+lighter than the chain's and its lines softer; the glyphs are legible in both. The user has not
+read this run's crops.
+
+Interpretation: LPIPS against the teacher went under the chain's on the test set and stayed far
+above it on text and manga; the tone term at 1.0 did not hold the dark pixels (+13 against arm
+A's +10), and PSNR fell to bicubic's level. Arm 3 (GAN) stays the next arm on sharpness.
+
+## ×2 preview — release plan (2026-11-19)
+
+### Facts
+
+- The user, on replacing the release head with the real-target head
+  (`reports/real_target_2026_11_19.md`): "릴리스 헤드를 바꿔도 되긴 하는데 흠... x2 preview 느낌으로
+  릴리스하는건 어때? x2를 12ms만으로 만드는건 꽤 매력적이라". Then: "본런이랑 x2 스테이지 돌리고,
+  라이브러리랑 comfyui 노드 배포는 x2_plan.md 에 적어놓자".
+- The user, asked whether `mixr_1119_1455` stays as the default beside a preview file: "본런
+  결과 보고 정하지 뭐 옆에 두기보단 교체하는 느낌으로 가자". The new head replaces the release head
+  (`anima_pixel_head` in the catalog, the Hub file, the node's default) once the user has read
+  run 1; it is not shipped beside it.
+- The new head: ×1 on the real-target recipe with the turbo point on
+  `anima_turbo_4step_v4_longer`, and the ×2 stage on it.
+- Open until the read: whether the replacement is run 1's ×1 file with the ×2 file as a second,
+  preview file, or run 2's one file for both scales. `x2a_1119_1802` moved the ×1 output about
+  1 dB while the ×2 stage trained; run 2's ×1 meters against run 1's say which.
+- Run 1, `realr_1119_2200` (×1): `real_1119_2106` with `--rollouts` 1000 → 3000, nothing else
+  changed (`--init mixr_1119_1455`, points `0.0577-0.1364:real 0.5:adapter`, `--lambda_lpips
+  0.05`, adapter v4_longer). About 45 min.
+- Run 2, `x2real_1119_2242` (×2 stage): `x2lt_1119_2013` with
+  `--init` → run 1's head and `--adapter` → v4_longer, plus `--points 0.0577-0.1364:real` and
+  `--lambda_lpips_x1 0.05`: the ×1 output's loss at the base points is run 1's (the original
+  image + LPIPS) instead of VAE(x̂0). The ×2 target is unchanged: the teacher on VAE(x̂0). About
+  40 min. `x2_head.py` gained the `:real` tag, `--lambda_lpips_x1` and ×1-against-original
+  meters; `smoke_x2real_1119_2205` (20 rollouts on `real_1119_2106`) checks the path first.
+- What run 2 cannot separate from `x2lt_1119_2013`: the base head, the adapter and the ×1 loss
+  all change.
+
+### Interpretation
+
+- Without the ×1 change, run 2's ×1 term would pull the base head back onto VAE(x̂0) and undo
+  what the user read on run 1's recipe.
+- The ×1 output aims at the original and the ×2 output at the teacher's upscale of VAE(x̂0), two
+  slightly different images; at the base points they are about 35 dB apart (VAE(x̂0) against the
+  original, σ 0.058), so the two outputs of one file may differ in tone. A ×2 target on the
+  original (the master at 2×, 1,518 images) is arm 4 below and not in the preview.
+
+### Read before deployment
+
+Claude's draft. The run's own crops `chain | ×2 head` (test 12 / text 8 / manga 4, both points,
+labelled) and the numbers above against `x2lt_1119_2013` and the chain; then renders through the
+×2 head, which no run has made yet: P3's 16 prompts on base 28 steps CFG 4 and on v4_longer
+4 steps, `VAE → ResShift ×2 | ×2 head`, with end-to-end time (the teacher is 3.16 s per image).
+`p3_generated.py` reads ×1 heads only and needs a ×2 path for this. The user's read decides;
+bars: spread unknown.
+
+### Deployment: library
+
+Claude's draft, after the read passes. It follows the ×1 promotion (`plan.md` §2).
+
+- `library/anima/pixel_head.py`: `PixelHeadX2` moves in from `bench/pixel_readout/x2_head.py`
+  (the bench script imports it back). `load_pixel_head` returns it for a file stamped
+  `x2_depth` (keys `base.*`, `up2_*`, `out2.*`; `d_feat` from `base.proj.weight`), with the σ
+  ranges as now. `PixelTap.decode(head, guidance_scale, scale=1 | 2)`: a ×2 file gives either
+  output, a ×1 file refuses `scale=2` with the reason in the message.
+- `inference.py --decoder pixel_head --pixel_scale 2` (`library/inference/pixel_decoder.py`),
+  `PIXEL=1 PIXEL_SCALE=2` on `test-*` and `test-turbo`, `GenerationRequest(pixel_scale=…)`. The
+  saved image is 2× `--image_size`; `save_decoded` and the PNG metadata are checked for an
+  assumed size.
+- Catalog: `anima_pixel_head` points at the replacement. If the ×2 file ships as a second file,
+  a row `anima_pixel_head_x2` (`models/vae/`, fetched on first use), pack `anima-pixel-head-x2`,
+  GUI pack strings in four languages, and `--pixel_scale 2` without `--pixel_head` resolves to
+  it; if one file serves both scales, no new row. `docs/anima/inference/pixel_head.md` and the
+  card's numbers (turbo point, σ table, PSNR against the VAE) are re-read on the new head: it no
+  longer regresses onto the VAE decode, so "dB against the VAE" drops by construction.
+- Warnings as for ×1 (σ outside the stamp, a Spectrum cached last step, `--cfgpp` /
+  `--smc_cfg`); the file's `adapter` stamp (v4_longer) goes into the log line at load.
+- Façade: `anima_lora.models.PixelHeadX2`.
+- Tier 2: `e2e_speed.py --scale 2` (head against VAE decode → ResShift ×2), a CPU test in
+  `tests/test_pixel_head.py` (loader round trip, output shapes ×1 and ×2, the ×1-file refusal),
+  a ×2 section in `docs/anima/inference/pixel_head.md`; `docs/anima/experimental/pixel_decoder.md`
+  updated from "in progress".
+- One check through the daemon as for ×1: base 28 steps CFG 4 and turbo, the ×2 PNG against
+  ResShift ×2 of the VAE decode of the saved latent; and one on `--int8`
+  (`reports/int8_cond_2026_11_19.md` read ×1 only).
+
+### Deployment: ComfyUI node
+
+Claude's draft. Repo `~/ComfyUI-Anima-PixelDecoder` (GitHub `sorryhyun/ComfyUI-Anima-PixelDecoder`,
+registry `comfyui-anima-pixel-decoder`, 0.1.0 now); publish flow in the `custom-nodes` skill.
+
+- `make vendor-sync` rewrites `_vendor/pixel_head.py` from the library (`build_pixel_vendor`);
+  no hand copy.
+- `AnimaPixelDecode` takes `scale` (1 / 2). 2 needs a ×2 head file and returns the IMAGE at 2×
+  the latent's pixel size; with a ×1 file it raises with the reason. `AnimaPixelHeadTap` is
+  unchanged (same tap, same features).
+- Head files stay in `models/pixel_heads/` (or a VAE folder under a name containing
+  `pixel_head`); the README names the ×2 file and that it also decodes ×1.
+- `bench/pixel_readout/comfy_e2e.py --scale 2`: turbo (v4_longer) in ComfyUI, VAE Decode →
+  the ResShift ×2 node against Anima Pixel Decode at scale 2, time and PSNR / LPIPS; record in
+  `reports/`. Still not run in ComfyUI from 0.1.0: the Spectrum KSampler, the base DiT at CFG 4.
+- Version 0.2.0: README (a ×2 sample beside the ×1 ones), `pyproject.toml`, registry publish,
+  GitHub push.
+
+### Deployment: Hub
+
+Claude's draft. `sorryhyun/anima-pixel-decoder` (the user edits the card): the replacement
+under the release head's file name, with `mixr_1119_1455` kept under `old/` (it is the head
+for the Hub turbo repo's `old/` file); the ×2 file as `anima_pixel_head_x2_preview.safetensors`
+if it ships separately; and a "×2 preview" card section stating what the file holds (×1 on the original-image target + LPIPS, ×2 stage on the
+ResShift ×2 student's output, turbo point trained on `anima_turbo_4step_v4_longer`), the
+measured time, and the limits read at that point (tone of dark regions, line softness). Upload
+on the user's word.
 
 ## Next arms
 

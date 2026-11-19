@@ -62,6 +62,7 @@ from bench.pixel_readout.convnext_head import (
     densest_window,
     page_token_count,
     pick_text,
+    real_pixels,
     rec_loss,
     resolve_run,
     token_count,
@@ -294,6 +295,13 @@ def main():
     )
     p.add_argument("--dc_block", type=int, default=32, help="dc_loss block, ×2 px")
     p.add_argument(
+        "--lambda_lpips_x1",
+        type=float,
+        default=0.0,
+        help="VGG-LPIPS on the ×1 output at the :real points (convnext_head.py's "
+        "--lambda_lpips, the base head's own recipe)",
+    )
+    p.add_argument(
         "--lpips_crop",
         type=int,
         default=0,
@@ -334,9 +342,11 @@ def main():
         "--points",
         nargs="+",
         default=None,
-        metavar="SIGMA[-SIGMA][:adapter]",
+        metavar="SIGMA[-SIGMA][:adapter][:real]",
         help="decode points, in turn per rollout (convnext_head.py's form); a LO-HI "
-        "range trains on uniform σ and is read at its midpoint",
+        "range trains on uniform σ and is read at its midpoint. :real trains that "
+        "point's ×1 output against the original image (with --lambda_lpips_x1), as the "
+        "base head was; the ×2 target stays the teacher on VAE(x̂0)",
     )
     p.add_argument(
         "--chain",
@@ -390,19 +400,24 @@ def main():
     )
     _, sigmas = get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
     sigma_last = float(sigmas[-2])
-    train_points: list[tuple[float, float, bool]] = [(sigma_last, sigma_last, False)]
+    train_points: list[tuple[float, float, bool, bool]] = [
+        (sigma_last, sigma_last, False, False)
+    ]
     points: list[tuple[str, float, bool]] = [
         (f"base_s{sigma_last:.4g}", sigma_last, False)
     ]
     if args.points:
         train_points, points = [], []
         for spec in args.points:
-            s, _, tag = spec.partition(":")
-            assert tag in ("", "adapter"), f"--points {spec}: SIGMA or SIGMA:adapter"
+            s, *tags = spec.split(":")
+            assert set(tags) <= {"adapter", "real"}, (
+                f"--points {spec}: SIGMA[:adapter][:real]"
+            )
+            tag = "adapter" in tags
             assert not tag or args.adapter, f"--points {spec} needs --adapter"
             lo, _, hi = s.partition("-")
             lo, hi = float(lo), float(hi or lo)
-            train_points.append((lo, hi, bool(tag)))
+            train_points.append((lo, hi, tag, "real" in tags))
             mid = (lo + hi) / 2
             points.append((f"{'lora' if tag else 'base'}_s{mid:.4g}", mid, bool(tag)))
     sig_rng = random.Random(args.seed + 4)
@@ -608,6 +623,15 @@ def main():
         flush=True,
     )
 
+    def okey(item) -> str:
+        return str(item) if isinstance(item, Path) else item.npz_path
+
+    # the ×1 output is also read against the image each latent was encoded from
+    origs = {
+        okey(it): (real_pixels(it).float() / 127.5 - 1).to(torch.float16)
+        for it, _ in held_items
+    }
+
     @torch.no_grad()
     def predict(f, lat):
         with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -619,9 +643,12 @@ def main():
         VAE(x̂0), 2×2-mean of ×2 vs VAE(x̂0)."""
         head.eval()
         out: dict[str, list] = {}
-        for _, key, f, lat, img, t2, *_ in held_feats:
+        for item, key, f, lat, img, t2, *_ in held_feats:
             x1, x2 = predict(f, lat)
             img, t2 = img.to(device).float(), t2.to(device).float()
+            o = origs[okey(item)].to(device).float()
+            out.setdefault(f"{key}_x1_orig", []).append(psnr(x1, o))
+            out.setdefault(f"{key}_x1_lpips_orig", []).append(lpips_img(x1, o))
             lum, dark = tone_stats(x2, t2)
             out.setdefault(f"{key}_x2", []).append(psnr(x2, t2))
             out.setdefault(f"{key}_x2_lpips", []).append(lpips_img(x2, t2))
@@ -636,6 +663,7 @@ def main():
         return "  ".join(
             f"{k} ×2 {ev[k + '_x2']:.2f} lpips {ev[k + '_x2_lpips']:.4f} "
             f"dark {ev[k + '_x2_dark'] or 0:+.2f} ×1 {ev[k + '_x1']:.2f} "
+            f"(orig {ev[k + '_x1_orig']:.2f} lpips {ev[k + '_x1_lpips_orig']:.4f}) "
             f"down {ev[k + '_down']:.2f}"
             for k in sets
         )
@@ -652,8 +680,10 @@ def main():
         weights["lpips"] = args.lambda_lpips
     if use_dc:
         weights["dc"] = args.lambda_dc
+    if args.lambda_lpips_x1 > 0:
+        weights["lpips1"] = args.lambda_lpips_x1
 
-    def loss_terms(bf, blat, b1, b2, bmar, model=None, lp_fn=None):
+    def loss_terms(bf, blat, b1, b2, bmar, breal=False, model=None, lp_fn=None):
         with torch.autocast("cuda", dtype=torch.bfloat16):
             x1, x2 = (model or head_train)(bf, blat)
         p2, t2_ = crop_margin(x2, bmar, 2 * PATCH), b2.float()
@@ -678,6 +708,18 @@ def main():
                 )
         if use_dc:
             out["dc"] = dc_loss(p2, t2_, args.dc_block)
+        if breal and args.lambda_lpips_x1 > 0:
+            cl = torch.channels_last
+            a = crop_margin(x1, bmar, PATCH)[None].float()
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                out["lpips1"] = (
+                    (lp_fn or lp_train)(
+                        a.contiguous(memory_format=cl),
+                        b1.float()[None].contiguous(memory_format=cl),
+                    )
+                    .mean()
+                    .float()
+                )
         return out
 
     def grad_norms(sample) -> dict[str, float]:
@@ -721,7 +763,7 @@ def main():
                 order = train[:]
                 rng.shuffle(order)
             item = order.pop()
-        lo, hi, adapter_on = train_points[r % len(train_points)]
+        lo, hi, adapter_on, real = train_points[r % len(train_points)]
         sg = lo if hi == lo else sig_rng.uniform(lo, hi)
         f, lat, img = rollout(item, r, sg, adapter_on)
         gh, gw = f.shape[:2]
@@ -734,15 +776,25 @@ def main():
             0 if x0 == 0 else m,
             0 if x0 + ww == gw else m,
         )
-        win = img[:, y0 * PATCH : (y0 + wh) * PATCH, x0 * PATCH : (x0 + ww) * PATCH]
+        ys, xs = (
+            slice(y0 * PATCH, (y0 + wh) * PATCH),
+            slice(x0 * PATCH, (x0 + ww) * PATCH),
+        )
+        win = img[:, ys, xs]
         t2 = up2(win, r)
+        win1 = win  # the ×1 target: VAE(x̂0), or the original image at a :real point
+        if real:
+            px = real_pixels(item)
+            assert px.shape[-2:] == img.shape[-2:], (item, px.shape, img.shape)
+            win1 = px[:, ys, xs].to(device).float() / 127.5 - 1
         replay.append(
             (
                 f[y0 : y0 + wh, x0 : x0 + ww].to(torch.bfloat16).clone(),
                 lat[y0 : y0 + wh, x0 : x0 + ww].clone(),
-                crop_margin(win, mar, PATCH).half().clone(),
+                crop_margin(win1, mar, PATCH).half().clone(),
                 crop_margin(t2, mar, 2 * PATCH).half(),
                 mar,
+                real,
             )
         )
         for _ in range(args.opt_steps):
@@ -760,9 +812,9 @@ def main():
         if (r + 1) % 50 == 0:
             el = time.perf_counter() - t0
             extra = ""
-            if use_lpips or use_dc:
+            if use_lpips or use_dc or "lpips1" in ema:
                 extra = "  " + " ".join(
-                    f"{k} {ema[k]:.4f}" for k in ("lpips", "dc") if k in ema
+                    f"{k} {ema[k]:.4f}" for k in ("lpips", "dc", "lpips1") if k in ema
                 )
             print(
                 f"  rollout {r + 1}/{args.rollouts}  psnr~ ×2 "
@@ -851,12 +903,13 @@ def main():
             "skip": "0",
             "x2_depth": str(args.depth2),
             "sigma": ",".join(
-                f"{lo}" if lo == hi else f"{lo}-{hi}" for lo, hi, _ in train_points
+                f"{lo}" if lo == hi else f"{lo}-{hi}" for lo, hi, _, _ in train_points
             ),
             "points": " ".join(args.points or []),
             "stream": args.stream,
             "adapter": args.adapter or "",
             "init": args.init,
+            "lambda_lpips_x1": str(args.lambda_lpips_x1),
             "teacher": TEACHER_FILE,
         },
     )
@@ -880,7 +933,8 @@ def main():
             )
     metrics = {
         "train_points": [
-            {"sigma_lo": lo, "sigma_hi": hi, "adapter": a} for lo, hi, a in train_points
+            {"sigma_lo": lo, "sigma_hi": hi, "adapter": a, "real_x1": rl}
+            for lo, hi, a, rl in train_points
         ],
         "eval_points": [{"name": n, "sigma": s, "adapter": a} for n, s, a in points],
         "n_train": len(train),

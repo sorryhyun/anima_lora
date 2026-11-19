@@ -188,6 +188,12 @@ def main():
         help="DiT residual stream; fp32 is inference.py's default and the head's since "
         "replay_1119_1225",
     )
+    p.add_argument(
+        "--int8",
+        action="store_true",
+        help="render on the int8 base (inference.py --int8: GPTQ forward copies beside "
+        "the DiT); the heads were trained on the bf16 GEMMs",
+    )
     args = p.parse_args()
     start_heartbeat(label="p3")
     device = torch.device(args.device)
@@ -200,6 +206,12 @@ def main():
     ).to(device)
     compile_blocks, args.compile = args.compile, False
     anima = build_anima(args, adapter=None, train_mode=False).anima
+    if args.int8:  # inference.py's order: convert, stream change, adapters
+        from library.anima.int8 import convert_for_inference
+
+        convert_for_inference(
+            anima, argparse.Namespace(dit=args.dit, int8_file=None, lora_weight=[])
+        )
     if args.stream == "fp32":
         from library.anima.stream import stream_fp32_
 
@@ -210,7 +222,9 @@ def main():
     _attach_vocab_pack_if_set(anima, default_vocab_pack())
     if compile_blocks:
         toks = sorted({(h // PATCH) * (w // PATCH) for _, _, (h, w) in prompts})
-        compile_blocks_isolated(anima, [(toks[0], toks[-1])])
+        compile_blocks_isolated(
+            anima, [(toks[0], toks[-1])], tag="int8" if args.int8 else ""
+        )
 
     # --- taps: every forward appends (t, x_in, feature, v); reset when t changes ---
     calls: list[dict] = []

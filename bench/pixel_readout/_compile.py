@@ -11,10 +11,13 @@ signature its own cache dir; see ``library/runtime/dynamo.py``.
 from __future__ import annotations
 
 
-def compile_blocks_isolated(anima, seq_bands: list | None = None) -> None:
+def compile_blocks_isolated(
+    anima, seq_bands: list | None = None, tag: str = ""
+) -> None:
     """``anima.compile_blocks(dynamic_seq=True, seq_bands=…)`` in an isolated cache.
 
-    Call after ``stream_fp32_`` and any adapter, before the first forward."""
+    Call after ``stream_fp32_`` and any adapter, before the first forward. ``tag`` names
+    a base the signature cannot see (``int8``)."""
     from library.runtime.dynamo import compile_signature, isolate_compile_cache
 
     isolate_compile_cache(
@@ -26,5 +29,6 @@ def compile_blocks_isolated(anima, seq_bands: list | None = None) -> None:
             seq_bands=seq_bands,
         )
         + f";stream={getattr(anima, 'stream', 'bf16')}"
+        + (f";{tag}" if tag else "")
     )
     anima.compile_blocks(dynamic_seq=True, seq_bands=seq_bands)

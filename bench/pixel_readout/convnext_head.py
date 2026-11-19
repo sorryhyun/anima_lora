@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from glob import escape as glob_escape
 import os
 import random
 import time
@@ -178,6 +179,30 @@ def pick_text(cache_root: Path, exclude: set[str]) -> list:
     return out
 
 
+def real_pixels(item) -> torch.Tensor:
+    """The image an item's latent was encoded from, (3, H, W) uint8: a cached pair's
+    resized image, or a build_pages.py page (stored pixels, else its source resized
+    as the builder did)."""
+    if isinstance(item, Path):
+        with safe_open(str(item), "pt") as fh:
+            if "pixels" in fh.keys():
+                return fh.get_tensor("pixels")
+            meta = fh.metadata()
+        w, h = (int(v) for v in meta["size"].split("x"))
+        im = Image.open(meta["source"]).convert("RGB").resize((w, h), Image.LANCZOS)
+        return torch.from_numpy(np.array(im)).permute(2, 0, 1)
+    src = caption_path(item)
+    hits = [
+        q
+        for q in src.parent.glob(f"{glob_escape(src.stem)}.*")
+        if q.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+    ]
+    assert hits, f"no resized image for {item.npz_path}"
+    return torch.from_numpy(np.array(Image.open(hits[0]).convert("RGB"))).permute(
+        2, 0, 1
+    )
+
+
 def page_token_count(path: Path) -> int:
     """Tokens of a build_pages.py page, from its stored ``size`` (WxH pixels)."""
     with safe_open(str(path), "pt") as fh:
@@ -310,11 +335,33 @@ def main():
         "--points",
         nargs="+",
         default=None,
-        metavar="SIGMA[-SIGMA][:adapter]",
+        metavar="SIGMA[-SIGMA][:adapter][:real]",
         help="decode points for one head, taken in turn per rollout: σ on the base DiT, "
         "or σ:adapter with --adapter switched on (e.g. 0.1 0.5:adapter). LO-HI draws σ "
-        "uniformly per rollout and is evaluated at LO, the midpoint and HI. Evals, sheets "
-        "and metrics are per evaluated point. Overrides --sigma",
+        "uniformly per rollout and is evaluated at LO, the midpoint and HI. :real trains "
+        "that point against the original image instead of --target, with "
+        "--lambda_lpips. Evals, sheets and metrics are per evaluated point. Overrides "
+        "--sigma",
+    )
+    p.add_argument(
+        "--lambda_lpips",
+        type=float,
+        default=0.0,
+        help="weight of LPIPS (VGG) on the :real points, beside the reconstruction loss",
+    )
+    p.add_argument(
+        "--lpips_crop",
+        type=int,
+        default=512,
+        help="LPIPS on one random crop of this side per update (lpips_speed.py: 512² "
+        "9.0 ms, 768² 19.6 ms compiled)",
+    )
+    p.add_argument(
+        "--grad_ratio",
+        type=int,
+        default=0,
+        help="print the LPIPS / reconstruction gradient-norm ratio (unweighted, over the "
+        "head's parameters) on the first N :real rollouts, before any update",
     )
     p.add_argument(
         "--init", default=None, help="start the head from <run>/head.safetensors"
@@ -365,21 +412,29 @@ def main():
     sigma_last = float(sigmas[-2]) if args.sigma is None else args.sigma
     # training points (σ lo, σ hi, adapter on) and the fixed points they are read at
     # (name, σ, adapter on); one unnamed point = the single-σ run (adapter on if given)
-    train_points: list[tuple[float, float, bool]] = [(sigma_last, sigma_last, True)]
+    # a point's training target: --target, or "real" (the original image) when tagged
+    train_points: list[tuple[float, float, bool, str]] = [
+        (sigma_last, sigma_last, True, args.target)
+    ]
     points: list[tuple[str, float, bool]] = [("", sigma_last, True)]
     if args.points:
         train_points, points = [], []
         for spec in args.points:
-            s, _, tag = spec.partition(":")
-            assert tag in ("", "adapter"), f"--points {spec}: SIGMA or SIGMA:adapter"
+            s, *tags = spec.split(":")
+            assert set(tags) <= {"adapter", "real"}, (
+                f"--points {spec}: SIGMA[:adapter][:real]"
+            )
+            tag = "adapter" in tags
             assert not tag or args.adapter, f"--points {spec} needs --adapter"
             lo, _, hi = s.partition("-")
             lo, hi = float(lo), float(hi or lo)
             assert lo <= hi, f"--points {spec}: LO-HI"
-            train_points.append((lo, hi, bool(tag)))
+            train_points.append(
+                (lo, hi, tag, "real" if "real" in tags else args.target)
+            )
             for sg in dict.fromkeys((lo, (lo + hi) / 2, hi)):
                 name = f"{'lora' if tag else 'base'}_s{sg:.4g}"
-                points.append((name, sg, bool(tag)))
+                points.append((name, sg, tag))
         assert len({n for n, _, _ in points}) == len(points), "duplicate --points"
     multi = bool(points[0][0])
     sig_rng = random.Random(args.seed + 4)
@@ -436,6 +491,12 @@ def main():
         cross, _ = load_cached_text_features(item.te_path, variant=0)
         return lat, cross.unsqueeze(0).to(device, torch.bfloat16)
 
+    def load_real(item, hw: tuple[int, int]) -> torch.Tensor:
+        """The image the latent was encoded from, (3, H, W) in [-1, 1] on the card."""
+        px = real_pixels(item)
+        assert tuple(px.shape[-2:]) == hw, (item, tuple(px.shape), hw)
+        return px.to(device).float() / 127.5 - 1
+
     @torch.no_grad()
     def rollout(item, idx: int, targets=None, point=None):
         """→ (features, x_t patches, {target name: VAE decode}) at one decode point."""
@@ -459,6 +520,8 @@ def main():
         if "xhat0" in targets:
             x0_hat = x_t - sigma_last * v.float().squeeze(2)
             tgts["xhat0"] = vae.decode_to_pixels(x0_hat)[0].float()
+        if "real" in targets:
+            tgts["real"] = load_real(item, (lat.shape[-2] * 8, lat.shape[-1] * 8))
         return f.float(), lat_patches(x_t).float(), tgts
 
     # --- head ---
@@ -488,6 +551,62 @@ def main():
     print(f"head {n_params / 1e6:.1f}M params", flush=True)
     # training forward only; evals and sheets stay eager (rollout_profile: −15 % per update)
     head_train = torch.compile(head, dynamic=True) if compile_blocks else head
+    import lpips
+
+    lp = lpips.LPIPS(net="vgg", verbose=False).to(device).eval()
+    lp.requires_grad_(False)
+    lp.to(memory_format=torch.channels_last)  # + compile: lpips_speed.py, x2_head.py
+    lp_train = torch.compile(lp) if compile_blocks else lp
+    lp_rng = random.Random(args.seed + 5)
+
+    def lpips_term(pred, tgt, fn=None):
+        """LPIPS of one random --lpips_crop window (the whole image when smaller)."""
+        a, b = pred[None], tgt[None]
+        c = args.lpips_crop
+        if c and min(a.shape[-2:]) > c:
+            y = lp_rng.randint(0, a.shape[-2] - c)
+            x = lp_rng.randint(0, a.shape[-1] - c)
+            a, b = a[..., y : y + c, x : x + c], b[..., y : y + c, x : x + c]
+        cl = torch.channels_last
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            out = (fn or lp_train)(
+                a.contiguous(memory_format=cl), b.contiguous(memory_format=cl)
+            )
+        return out.mean().float()
+
+    @torch.no_grad()
+    def lpips_img(a: torch.Tensor, b: torch.Tensor, tile: int = 768) -> float:
+        """Whole-image LPIPS, the area-weighted mean over ``tile``-px tiles."""
+        h, w = a.shape[-2:]
+        tot = 0.0
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            for y in range(0, h, tile):
+                for x in range(0, w, tile):
+                    ta = a[None, :, y : y + tile, x : x + tile].float()
+                    tb = b[None, :, y : y + tile, x : x + tile].float()
+                    tot += lp(ta, tb).mean().item() * ta.shape[-2] * ta.shape[-1]
+        return tot / (h * w)
+
+    def grad_ratio(f, lat, tgt) -> tuple[float, float]:
+        """Unweighted gradient norms (reconstruction, LPIPS) over the head (eager)."""
+        params = [q for q in head.parameters() if q.requires_grad]
+        norms = []
+        for term in ("rec", "lpips"):
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                pred = head(f.float(), lat)
+            loss = (
+                rec_loss(pred, tgt)[0]
+                if term == "rec"
+                else lpips_term(pred.float(), tgt, fn=lp)
+            )
+            gs = torch.autograd.grad(loss, params, allow_unused=True)
+            norms.append(
+                math.sqrt(
+                    sum(float(g.float().pow(2).sum()) for g in gs if g is not None)
+                )
+            )
+        return norms[0], norms[1]
+
     lin_params = list(head.linear.parameters())
     rest = [p for n, p in head.named_parameters() if not n.startswith("linear.")]
     groups = [{"params": rest, "lr": args.lr, "weight_decay": 0.01}]
@@ -515,14 +634,17 @@ def main():
         + [(ci, "text") for ci in text]
         + [(pth, "manga") for pth in page_eval]
     )
+    origs: dict[int, torch.Tensor] = {}
     for point in points:  # the same noise per item at every point
         for j, (item, key) in enumerate(held_items):
             f, lat, tgts = rollout(
                 item, 10_000 + j, targets=("x0", "xhat0"), point=point
             )
-            orig = None
-            if isinstance(item, Path):
-                orig = load_file(str(item))["pixels"].float() / 127.5 - 1
+            if j not in origs:  # one copy per item, shared by its points
+                origs[j] = load_real(item, tuple(tgts["x0"].shape[-2:])).to(
+                    "cpu", torch.float16
+                )
+            orig = origs[j]
             held_feats.append(
                 (
                     item,
@@ -552,21 +674,29 @@ def main():
         return pred.float().clamp(-1, 1)
 
     def evaluate():
-        """{set: mean PSNR vs VAE(x0)} and {set_xhat0: … vs VAE(x̂0)}."""
+        """{set: mean PSNR vs VAE(x0)}, {set_xhat0: … vs VAE(x̂0)}, and against the
+        original image {set_orig: PSNR, set_lpips_orig: LPIPS}."""
         head.eval()
         out: dict[str, list] = {}
-        for _, key, f, lat, tgts, _, pt in held_feats:
+        for _, key, f, lat, tgts, orig, pt in held_feats:
             key = skey(pt, key)
             pred = predict(f, lat)
+            o = orig.to(device).float()
             out.setdefault(key, []).append(psnr(pred, tgts["x0"].to(device)))
             out.setdefault(f"{key}_xhat0", []).append(
                 psnr(pred, tgts["xhat0"].to(device))
             )
+            out.setdefault(f"{key}_orig", []).append(psnr(pred, o))
+            out.setdefault(f"{key}_lpips_orig", []).append(lpips_img(pred, o))
         head.train()
         return {k: float(np.mean(v)) for k, v in out.items()}
 
     def fmt(ev):
-        return "  ".join(f"{k} {ev[k]:.2f} (x̂0 {ev[k + '_xhat0']:.2f})" for k in sets)
+        return "  ".join(
+            f"{k} {ev[k]:.2f} (x̂0 {ev[k + '_xhat0']:.2f}, orig {ev[k + '_orig']:.2f} "
+            f"lpips {ev[k + '_lpips_orig']:.4f})"
+            for k in sets
+        )
 
     p1_lin: dict[str, list] = {}
     for _, key, f, lat, tgts, _, pt in held_feats:
@@ -590,11 +720,16 @@ def main():
     n_page_rollouts = 0
     step = 0
     t0 = time.perf_counter()
-    loss_ema = mse_ema = None
+    loss_ema = mse_ema = lp_ema = None
+    ratios: list[tuple[float, float]] = []
     window: deque = deque(maxlen=args.accum)
     assert not (args.replay and args.accum > 1), "--replay and --accum do not combine"
     replay: deque = deque(maxlen=max(1, args.replay))
     replay_rng = random.Random(args.seed + 3)
+    if args.init:  # the loaded head on this run's points and meters
+        ev = evaluate()
+        history.append({"rollout": 0, "step": 0, **ev})
+        print(f"  eval @ 0 ({args.init} as loaded): {fmt(ev)}", flush=True)
     for r in range(args.rollouts):
         if page_train and page_rng.random() < args.page_share:
             if not page_order:
@@ -607,24 +742,40 @@ def main():
                 order = train[:]
                 rng.shuffle(order)
             item = order.pop()
-        lo, hi, adapter_on = train_points[r % len(train_points)]
+        lo, hi, adapter_on, tname = train_points[r % len(train_points)]
         sg = lo if hi == lo else sig_rng.uniform(lo, hi)
-        f, lat, tgts = rollout(item, r, point=("", sg, adapter_on))
+        f, lat, tgts = rollout(item, r, targets=(tname,), point=("", sg, adapter_on))
+        perc = tname == "real" and args.lambda_lpips > 0
+        if tname == "real" and len(ratios) < args.grad_ratio:
+            ratios.append(grad_ratio(f, lat, tgts[tname]))
+            if len(ratios) == args.grad_ratio:
+                rr = sorted(lpg / max(rg, 1e-12) for rg, lpg in ratios)
+                print(
+                    f"  grad norm LPIPS / rec over {len(rr)} real rollouts: median "
+                    f"{rr[len(rr) // 2]:.2f} (min {rr[0]:.2f}, max {rr[-1]:.2f}); rec "
+                    f"median {sorted(g for g, _ in ratios)[len(rr) // 2]:.4f}",
+                    flush=True,
+                )
         if args.replay:
             # bf16 features lose nothing: the head's first linear runs under bf16 autocast
-            replay.append((f.to(torch.bfloat16), lat, tgts[args.target].half()))
+            replay.append((f.to(torch.bfloat16), lat, tgts[tname].half(), perc))
         else:
-            window.append((f, lat, tgts[args.target]))
+            window.append((f, lat, tgts[tname], perc))
         for _ in range(args.opt_steps):
             set_lr(step)
             opt.zero_grad(set_to_none=True)
             # window: newest rollout last, so the logged loss / mse are this rollout's;
             # replay: the logged loss is the last drawn sample's
             batch = [replay_rng.choice(replay)] if args.replay else window
-            for f, lat, tgt in batch:
+            for f, lat, tgt, perc in batch:
                 with torch.autocast("cuda", dtype=torch.bfloat16):
                     pred = head_train(f, lat)
                 loss, mse = rec_loss(pred, tgt.float())
+                if perc:
+                    lp_v = lpips_term(pred.float(), tgt.float())
+                    loss = loss + args.lambda_lpips * lp_v
+                    lv_ = lp_v.item()
+                    lp_ema = lv_ if lp_ema is None else 0.98 * lp_ema + 0.02 * lv_
                 (loss / len(batch)).backward()
             torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
             opt.step()
@@ -637,7 +788,8 @@ def main():
             print(
                 f"  rollout {r + 1}/{args.rollouts}  loss {loss_ema:.4f}  "
                 f"psnr~{10 * math.log10(4 / mse_ema):.2f}  "
-                f"{el / (r + 1):.2f}s/rollout  eta {(args.rollouts - r - 1) * el / (r + 1) / 60:.0f}m",
+                + (f"lpips {lp_ema:.4f}  " if lp_ema is not None else "")
+                + f"{el / (r + 1):.2f}s/rollout  eta {(args.rollouts - r - 1) * el / (r + 1) / 60:.0f}m",
                 flush=True,
             )
         if (r + 1) % args.eval_every == 0 or r + 1 == args.rollouts:
@@ -671,16 +823,20 @@ def main():
             "psnr_head_xhat0": psnr(pred, tgt_hat),
             "psnr_vae_xhat0": psnr(tgt_hat, tgt),
         }
-        if orig is not None:
-            o = orig.to(device)
-            row["psnr_vae_vs_orig"] = psnr(tgt, o)
-            row["psnr_head_vs_orig"] = psnr(pred, o)
+        o = orig.to(device).float()
+        row["psnr_vae_vs_orig"] = psnr(tgt, o)
+        row["psnr_head_vs_orig"] = psnr(pred, o)
+        row["lpips_vae_vs_orig"] = lpips_img(tgt, o)
+        row["lpips_head_vs_orig"] = lpips_img(pred, o)
+        # the VAE path at this point: the decode of the DiT's own x̂0
+        row["psnr_vaehat_vs_orig"] = psnr(tgt_hat, o)
+        row["lpips_vaehat_vs_orig"] = lpips_img(tgt_hat, o)
         rows.append(row)
         n = counters.get((pt, key), 0)
         counters[(pt, key)] = n + 1
         pre = f"{pt}_" if pt else ""
         if key == "manga":
-            cols = [("original", orig.to(device)), ("VAE decode", tgt), ("head", pred)]
+            cols = [("original", o), ("VAE decode", tgt), ("head", pred)]
             name = f"{pre}manga_{n:02d}_{item.stem}.png"
             sheet(cols, run_dir / name, at=densest_window(tgt, 384))
         elif key == "text":
@@ -706,8 +862,9 @@ def main():
             "up": str(args.up),
             "target": args.target,
             "sigma": ",".join(
-                f"{lo}" if lo == hi else f"{lo}-{hi}" for lo, hi, _ in train_points
+                f"{lo}" if lo == hi else f"{lo}-{hi}" for lo, hi, _, _ in train_points
             ),
+            "lambda_lpips": str(args.lambda_lpips),
             "points": " ".join(args.points or []),
             "stream": args.stream,
             "replay": str(args.replay),
@@ -724,6 +881,11 @@ def main():
             "psnr_head",
             "psnr_head_xhat0",
             "psnr_head_vs_orig",
+            "psnr_vae_vs_orig",
+            "lpips_head_vs_orig",
+            "lpips_vae_vs_orig",
+            "psnr_vaehat_vs_orig",
+            "lpips_vaehat_vs_orig",
         ):
             vals = [r[col] for r in rows if r["set"] == st and col in r]
             if vals:
@@ -732,8 +894,13 @@ def main():
     metrics = {
         "sigma_last": points[0][1],
         "train_points": [
-            {"sigma_lo": lo, "sigma_hi": hi, "adapter": bool(a and args.adapter)}
-            for lo, hi, a in train_points
+            {
+                "sigma_lo": lo,
+                "sigma_hi": hi,
+                "adapter": bool(a and args.adapter),
+                "target": t,
+            }
+            for lo, hi, a, t in train_points
         ],
         "eval_points": [
             {"name": n, "sigma": s, "adapter": bool(a and args.adapter)}
@@ -762,6 +929,19 @@ def main():
             f"{st}: P1 {set_metrics[f'{st}_psnr_p1_linear']:.2f} → head "
             f"{set_metrics[f'{st}_psnr_head']:.2f} "
             f"({set_metrics[f'{st}_psnr_head_xhat0']:.2f})"
+            for st in sets
+        ),
+        flush=True,
+    )
+    print(
+        "vs original, PSNR / LPIPS: "
+        + " | ".join(
+            f"{st}: VAE(x0) {set_metrics[f'{st}_psnr_vae_vs_orig']:.2f} / "
+            f"{set_metrics[f'{st}_lpips_vae_vs_orig']:.4f}, VAE(x̂0) "
+            f"{set_metrics[f'{st}_psnr_vaehat_vs_orig']:.2f} / "
+            f"{set_metrics[f'{st}_lpips_vaehat_vs_orig']:.4f}, head "
+            f"{set_metrics[f'{st}_psnr_head_vs_orig']:.2f} / "
+            f"{set_metrics[f'{st}_lpips_head_vs_orig']:.4f}"
             for st in sets
         ),
         flush=True,
