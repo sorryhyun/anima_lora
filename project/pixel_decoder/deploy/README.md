@@ -37,23 +37,29 @@ Read the head only where it was trained:
 - **Turbo**: the 4-step turbo LoRA of
   [anima-turbo-4step](https://huggingface.co/sorryhyun/anima-turbo-4step), Euler 4 steps,
   shift 3, CFG 1 (last-step σ 0.5). The turbo point was trained with
-  `old/anima_turbo_4step.safetensors` from that repo; v3 and v4 have not been read.
+  `old/anima_turbo_4step.safetensors` from that repo; on v3 and v4 the head reads about
+  3 dB lower against the VAE (31.5 / 31.4 dB vs 34.6 dB, 32 generated images).
 
 Outside those settings the head still decodes; quality there is unmeasured.
 
 ## Measured
 
-RTX 5070 Ti, 16 prompts at ~1 MP, compiled DiT blocks, one seed. PSNR is head vs the VAE
-decode of the same final latent.
+RTX 5070 Ti, 16 prompts at ~1 MP, compiled DiT blocks, one seed; medians. PSNR is head vs the
+VAE decode of the same final latent. "VAE, moved" is the usual interactive path: the VAE waits on
+the CPU and goes to the card for the decode.
 
-| sampler | DiT per image | head decode | VAE decode, resident / moved CPU↔GPU / loaded from disk | head vs VAE (median) |
-|---|---|---|---|---|
-| turbo, 4 steps, CFG 1 | 0.97 s | 7 ms | 141 / 176 / 851 ms | 35.4 dB |
-| base, Euler 28 + Spectrum, CFG 4 | 6.74 s | 14 ms | 141 / 179 / 796 ms | 33.0 dB |
+| | turbo, 4 steps, CFG 1 | base, Euler 28 + Spectrum, CFG 4 |
+|---|---|---|
+| DiT sampling | 0.97 s | 6.74 s |
+| decode, pixel head | 7 ms | 14 ms |
+| decode, VAE resident | 141 ms | 141 ms |
+| decode, VAE moved CPU↔GPU | 176 ms | 179 ms |
+| decode, VAE loaded from disk | 851 ms | 796 ms |
+| decode peak VRAM above the DiT, head / VAE | 0.24 / 1.30 – 1.38 GB | 0.24 / 1.30 – 1.38 GB |
+| head vs VAE | 35.4 dB | 33.0 dB |
+| **total per image (DiT + decode), head vs VAE moved** | **0.98 s vs 1.15 s (1.17×)** | **6.75 s vs 6.91 s (1.02×)** |
 
-Peak VRAM of the decode above the resident DiT: 0.24 GB for the head, 1.30 – 1.38 GB for the
-VAE. On turbo the VAE swap is 15 % of DiT + decode time and the head under 1 %
-(about 1.17× images per second, text encoding excluded).
+Text encoding (~0.3 s per prompt) is outside the totals.
 
 Held-out reads during training (dB, colour / mono):
 
