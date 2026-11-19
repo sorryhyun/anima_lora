@@ -51,6 +51,16 @@ training), `x2_overfit.py` (fit probe); results under `bench/pixel_readout/resul
   `image_dataset/` is at least 2× the resized side on 1,518 (46.8 %), at least 1.9× on 1,718;
   whether a master is itself an upscale or a JPEG is unchecked.
 
+- Run 2 `x2real_1119_2242` (real-target base, v4_longer) reads level with `x2lt_1119_2013` on the
+  ×2 output (base 29.74 / 26.70 / 25.94 dB, LPIPS 0.132 / 0.158 / 0.169, dark +13.8 / +11.7 /
+  +6.6 against the teacher); numbers in `reports/x2_preview_release_2026_11_19.md`.
+- The user's read of run 2 on renders, `VAE → ResShift ×2 | ×2 head | bicubic` (`x2bic_1119_2335`,
+  base 28 steps CFG 4, five random prompts, seed 510): "kotatsu에선 bicubic보다 톤을 잘 지키지만 털
+  세부 표현은 아쉽고, shop 예시에선 각 책이 bicubic보다 망가진 느낌이 들기도 한다. 하지만 스크린톤
+  자체는 bicubic보다 톤을 잘 보존하면서 특유의 질감이 약간 더 나는 느낌이 난다. manga같은 경우 선이
+  좀 더 뚜렷해야 할것 같아". On the same renders bicubic is higher than the ×2 head against the chain
+  on all five (e.g. kotatsu 21.67 against 17.90 dB).
+
 ### Interpretation
 
 - The level to read a ×2 head against is the chain, not the teacher's second draw. The target is
@@ -151,135 +161,11 @@ Interpretation: LPIPS against the teacher went under the chain's on the test set
 above it on text and manga; the tone term at 1.0 did not hold the dark pixels (+13 against arm
 A's +10), and PSNR fell to bicubic's level. Arm 3 (GAN) stays the next arm on sharpness.
 
-## ×2 preview — release plan (2026-11-19)
+## ×2 preview — release
 
-### Facts
-
-- The user, on replacing the release head with the real-target head
-  (`reports/real_target_2026_11_19.md`): "릴리스 헤드를 바꿔도 되긴 하는데 흠... x2 preview 느낌으로
-  릴리스하는건 어때? x2를 12ms만으로 만드는건 꽤 매력적이라". Then: "본런이랑 x2 스테이지 돌리고,
-  라이브러리랑 comfyui 노드 배포는 x2_plan.md 에 적어놓자".
-- The user, asked whether `mixr_1119_1455` stays as the default beside a preview file: "본런
-  결과 보고 정하지 뭐 옆에 두기보단 교체하는 느낌으로 가자". The new head replaces the release head
-  (`anima_pixel_head` in the catalog, the Hub file, the node's default) once the user has read
-  run 1; it is not shipped beside it.
-- The new head: ×1 on the real-target recipe with the turbo point on
-  `anima_turbo_4step_v4_longer`, and the ×2 stage on it.
-- Open until the read: whether the replacement is run 1's ×1 file with the ×2 file as a second,
-  preview file, or run 2's one file for both scales. `x2a_1119_1802` moved the ×1 output about
-  1 dB while the ×2 stage trained; run 2's ×1 meters against run 1's say which.
-- Run 1, `realr_1119_2200` (×1): `real_1119_2106` with `--rollouts` 1000 → 3000, nothing else
-  changed (`--init mixr_1119_1455`, points `0.0577-0.1364:real 0.5:adapter`, `--lambda_lpips
-  0.05`, adapter v4_longer). About 45 min.
-- Run 2, `x2real_1119_2242` (×2 stage): `x2lt_1119_2013` with
-  `--init` → run 1's head and `--adapter` → v4_longer, plus `--points 0.0577-0.1364:real` and
-  `--lambda_lpips_x1 0.05`: the ×1 output's loss at the base points is run 1's (the original
-  image + LPIPS) instead of VAE(x̂0). The ×2 target is unchanged: the teacher on VAE(x̂0). About
-  40 min. `x2_head.py` gained the `:real` tag, `--lambda_lpips_x1` and ×1-against-original
-  meters; `smoke_x2real_1119_2205` (20 rollouts on `real_1119_2106`) checks the path first.
-- What run 2 cannot separate from `x2lt_1119_2013`: the base head, the adapter and the ×1 loss
-  all change.
-
-### Interpretation
-
-- Without the ×1 change, run 2's ×1 term would pull the base head back onto VAE(x̂0) and undo
-  what the user read on run 1's recipe.
-- The ×1 output aims at the original and the ×2 output at the teacher's upscale of VAE(x̂0), two
-  slightly different images; at the base points they are about 35 dB apart (VAE(x̂0) against the
-  original, σ 0.058), so the two outputs of one file may differ in tone. A ×2 target on the
-  original (the master at 2×, 1,518 images) is arm 4 below and not in the preview.
-
-### Read before deployment
-
-Claude's draft. The run's own crops `chain | ×2 head` (test 12 / text 8 / manga 4, both points,
-labelled) and the numbers above against `x2lt_1119_2013` and the chain; then renders through the
-×2 head, which no run has made yet: P3's 16 prompts on base 28 steps CFG 4 and on v4_longer
-4 steps, `VAE → ResShift ×2 | ×2 head`, with end-to-end time (the teacher is 3.16 s per image).
-`p3_generated.py` reads ×1 heads only and needs a ×2 path for this. The user's read decides;
-bars: spread unknown.
-
-### Deployment progress (2026-11-19 23:10)
-
-The user, after the briefing: "배포 1, 2, 3의 1번은 진행하고, 3의 2/3/4번은 일단은 결과 나오면 하자".
-Done while run 2 trained, before the read:
-
-- Library: `PixelHeadX2` and `head_scales` in `library/anima/pixel_head.py` (the bench imports
-  them back); `load_pixel_head` builds it for a file stamped `x2_depth`, `width2` read off
-  `up2_proj.weight`; `PixelTap.decode(…, scale)`; `--pixel_scale`, `PIXEL_SCALE=`,
-  `GenerationRequest(pixel_scale=…)`; a ×1 file refuses scale 2 at load; the load log line
-  names the scales and the `adapter` stamp. Façade `anima_lora.models.PixelHeadX2`. Tests:
-  `tests/test_pixel_head.py` (×2 round trip, scale 1 / 2 shapes, ×1 refusal), 9 pass on CPU.
-  `docs/anima/inference/pixel_head.md` has a ×2 section. Not done: the catalog row (waits on
-  one file or two), the daemon checks on base / turbo / `--int8`.
-- Bench: `p3_generated.py --x2` (the render read above: `VAE → ResShift ×2 | ×2 head` sheets,
-  dB / LPIPS / dark lift against the chain, ×1 against the VAE, times);
-  `e2e_speed.py --scale 2` (adds a `chain` arm); `comfy_e2e.py --scale 2`.
-- Node: `AnimaPixelDecode` has an optional `scale` input (saved workflows still load);
-  `_vendor/pixel_head.py` regenerated; README ×2 section without a file name; version 0.2.0 in
-  `pyproject.toml`. Not committed, published or pushed: no ×2 file exists to point at.
-  `make vendor-sync` also rewrote `_vendor/` files in the Spectrum and Adapter node repos
-  (library drift unrelated to the head; left as is).
-- Hub: `old/anima_pixel_head.safetensors` = `mixr_1119_1455` (sha256 27b3f0dc…, same as the
-  current main file). The main file is not replaced yet: which file replaces it (run 1's ×1 or
-  run 2's) waits on run 2's ×1 meters. The repo is public.
-
-### Deployment: library
-
-Claude's draft, after the read passes. It follows the ×1 promotion (`plan.md` §2).
-
-- `library/anima/pixel_head.py`: `PixelHeadX2` moves in from `bench/pixel_readout/x2_head.py`
-  (the bench script imports it back). `load_pixel_head` returns it for a file stamped
-  `x2_depth` (keys `base.*`, `up2_*`, `out2.*`; `d_feat` from `base.proj.weight`), with the σ
-  ranges as now. `PixelTap.decode(head, guidance_scale, scale=1 | 2)`: a ×2 file gives either
-  output, a ×1 file refuses `scale=2` with the reason in the message.
-- `inference.py --decoder pixel_head --pixel_scale 2` (`library/inference/pixel_decoder.py`),
-  `PIXEL=1 PIXEL_SCALE=2` on `test-*` and `test-turbo`, `GenerationRequest(pixel_scale=…)`. The
-  saved image is 2× `--image_size`; `save_decoded` and the PNG metadata are checked for an
-  assumed size.
-- Catalog: `anima_pixel_head` points at the replacement. If the ×2 file ships as a second file,
-  a row `anima_pixel_head_x2` (`models/vae/`, fetched on first use), pack `anima-pixel-head-x2`,
-  GUI pack strings in four languages, and `--pixel_scale 2` without `--pixel_head` resolves to
-  it; if one file serves both scales, no new row. `docs/anima/inference/pixel_head.md` and the
-  card's numbers (turbo point, σ table, PSNR against the VAE) are re-read on the new head: it no
-  longer regresses onto the VAE decode, so "dB against the VAE" drops by construction.
-- Warnings as for ×1 (σ outside the stamp, a Spectrum cached last step, `--cfgpp` /
-  `--smc_cfg`); the file's `adapter` stamp (v4_longer) goes into the log line at load.
-- Façade: `anima_lora.models.PixelHeadX2`.
-- Tier 2: `e2e_speed.py --scale 2` (head against VAE decode → ResShift ×2), a CPU test in
-  `tests/test_pixel_head.py` (loader round trip, output shapes ×1 and ×2, the ×1-file refusal),
-  a ×2 section in `docs/anima/inference/pixel_head.md`; `docs/anima/experimental/pixel_decoder.md`
-  updated from "in progress".
-- One check through the daemon as for ×1: base 28 steps CFG 4 and turbo, the ×2 PNG against
-  ResShift ×2 of the VAE decode of the saved latent; and one on `--int8`
-  (`reports/int8_cond_2026_11_19.md` read ×1 only).
-
-### Deployment: ComfyUI node
-
-Claude's draft. Repo `~/ComfyUI-Anima-PixelDecoder` (GitHub `sorryhyun/ComfyUI-Anima-PixelDecoder`,
-registry `comfyui-anima-pixel-decoder`, 0.1.0 now); publish flow in the `custom-nodes` skill.
-
-- `make vendor-sync` rewrites `_vendor/pixel_head.py` from the library (`build_pixel_vendor`);
-  no hand copy.
-- `AnimaPixelDecode` takes `scale` (1 / 2). 2 needs a ×2 head file and returns the IMAGE at 2×
-  the latent's pixel size; with a ×1 file it raises with the reason. `AnimaPixelHeadTap` is
-  unchanged (same tap, same features).
-- Head files stay in `models/pixel_heads/` (or a VAE folder under a name containing
-  `pixel_head`); the README names the ×2 file and that it also decodes ×1.
-- `bench/pixel_readout/comfy_e2e.py --scale 2`: turbo (v4_longer) in ComfyUI, VAE Decode →
-  the ResShift ×2 node against Anima Pixel Decode at scale 2, time and PSNR / LPIPS; record in
-  `reports/`. Still not run in ComfyUI from 0.1.0: the Spectrum KSampler, the base DiT at CFG 4.
-- Version 0.2.0: README (a ×2 sample beside the ×1 ones), `pyproject.toml`, registry publish,
-  GitHub push.
-
-### Deployment: Hub
-
-Claude's draft. `sorryhyun/anima-pixel-decoder` (the user edits the card): the replacement
-under the release head's file name, with `mixr_1119_1455` kept under `old/` (it is the head
-for the Hub turbo repo's `old/` file); the ×2 file as `anima_pixel_head_x2_preview.safetensors`
-if it ships separately; and a "×2 preview" card section stating what the file holds (×1 on the original-image target + LPIPS, ×2 stage on the
-ResShift ×2 student's output, turbo point trained on `anima_turbo_4step_v4_longer`), the
-measured time, and the limits read at that point (tone of dark regions, line softness). Upload
-on the user's word.
+Moved to `reports/x2_preview_release_2026_11_19.md`: run 1 (`realr_1119_2200`) and run 2
+(`x2real_1119_2242`), the render read (`x2bic_1119_2335`), the user's decision to ship the ×2 file
+as a test file, and the deployment record.
 
 ## Next arms
 

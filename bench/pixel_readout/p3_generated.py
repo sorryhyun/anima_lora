@@ -28,7 +28,8 @@ through the library tap's path (the CFG feature, ``PixelHeadX2``). The reference
 chain the head replaces, the released ResShift ×2 student on VAE(x_final); per image:
 ×2 against it (dB, LPIPS, whole-image and dark-pixel luma), ×1 against VAE(x_final), and
 the time of VAE decode + ResShift against the head's ×2 readout. Sheets: two columns
-``VAE → ResShift ×2 | ×2 head``, full image and a 768-px crop at native pixels.
+``VAE → ResShift ×2 | ×2 head | bicubic ×2 of VAE``, full image and a 768-px crop at
+native pixels.
 
 Usage::
 
@@ -437,6 +438,7 @@ def main():
                             flush=True,
                         )
                         cols.append((f"x2 head {hname}", x2_img))
+                    cols.append(("bicubic x2 of VAE", bicubic2(tgt)))
                     for tag, at in (
                         ("full", None),
                         ("crop", (cx, cy, args.crop)),
