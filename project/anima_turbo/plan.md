@@ -4,7 +4,7 @@ Restarted on the user's call. Every student of this line up to 2026-11-18 was tr
 whose chord ended at σ 0.75 (6 of 12, then 14 of 28) while its step 0 covered σ 1 → 0.9 only, so
 their reads do not carry over. The earlier plan, reports, run configs and proposals are in
 `_archive/anima_turbo/` and `_archive/configs/anima_turbo/` (local). This file holds what is
-carried, the two open items, and what is to be measured again.
+carried, the open items (preference RL first), and what is to be measured again.
 
 ## Carried
 
@@ -31,27 +31,51 @@ Facts:
   feature matching, the teacher-forced handoff and the dynamic grid were removed from the code on
   2026-11-18; they are in the git history.
 
-## 1. Step 0 on 7 of 28 without losing steps 1–3
+## 1. Preference RL on the warm v1.1 delta
+
+Replaces the step-0-on-7-of-28 item (the user's call, 2026-11-18). That item's record, with the
+user's blind reads (`turbo_1118_1818` S 0 / 12; teacher T against v1.1 S, T 8 / S 16 over 24
+rows), is [reports/step0_k7of28.md](reports/step0_k7of28.md). Not started.
 
 Facts:
 
-- Done so far, in [reports/step0_k7of28.md](reports/step0_k7of28.md): the v1.1 delta untrained
-  finishes from the teacher's σ 0.9 state (the user's read 8 / 4, near tie, taken as yes);
-  `turbo_1118_1818` (step 0 alone on the 7 of 28 cache `m15_k7of28_p500`, one pass) won every
-  probe number and lost the user's blind reads, S 0 / 12 and `T>S@1` 2 / 10.
-- `1818`'s step 0 on the untouched v1.1 delta (`P>S@1`) also lost the user's blind read to v1.1
-  S, 10 / 2 (report section 3).
-- The v1.1 delta untrained, `T>S@1` against its own S: the user's blind read 6 / 6, level
-  (report section 4).
-- Not read: teacher T against v1.1 S.
-- Reference only, not a basis: `turbo_1117_0823` (fitted to 14 of 28) read MSE 0.037 to the 7 of
-  28 target without training on it, and its velocity mixed toward that target read cos 0.863 at
-  MSE 0.021, 0.906 at 0.009 and 0.944 at 0 (`_archive/anima_turbo/reports/step0_depth.md`, local).
+- The user's call (2026-11-18): the rest of this line is preference RL, trained on the warm v1.1
+  delta on merged15 (the policy of item 1a), not on merged14 + Hub v3.
+- Design and gates: [pref_rl/proposal.md](pref_rl/proposal.md). The student follows the
+  gradient of a preference head fitted on the user's picks, through its own 4-step Euler rollout;
+  step 0 trains first, with an anchor to the policy's own step 0.
+- P0 and P1 ([pref_rl/p1.md](pref_rl/p1.md)), on merged14 + Hub v3, session `test`
+  (25 rounds, 400 renders, 158 picked): P1 not passed. No head (DINOv3 CLS, PE-Spatial pooled,
+  tagger logits, tagger embedding) ranks picked above unpicked within a round at p < 0.05; 10 of 25
+  rounds sit at the 8-pick cap. The DiT-head basis is not built.
+- Built: the round window and render server (`make exp-turbo-pref`, blind A/B mode),
+  `pref_rl/features.py`, `pref_rl/head.py`. Not built: the P2 reward-gradient loop.
+- v1.1 S sameness: 0.397 on `judge_hard` and 0.572 on `judge_random_1118` against the teacher's
+  0.314 / 0.504 (report sections 5 and 6).
+
+Steps, in order:
+
+1. DiT-head basis (frozen merged-DiT block features of the renoised latent, caption-conditioned),
+   read on session `test`'s 25 rounds against the P1 gate. GPU, minutes.
+2. The round server's policy set to merged15 (its int8 GPTQ) + the v1.1 delta; new rounds on it,
+   with a pick cap below 8 (4 proposed).
+3. P1 gate read again on the v1.1 rounds, every basis.
+4. If it passes: the P2 loop (step 0 only, anchor to v1.1's own step 0, head refreshed on new
+   rounds), gated as in the proposal § 4 P2.
 
 Interpretation:
 
-- The teacher's real σ 0.9 state does not finish better than v1.1's own step 0, so the 7 of 28
-  target is not the step-0 objective for v1.1's steps 1–3. What this line distills toward is open.
+- The P1 picks were made on another policy, so they rank bases but do not train a head for v1.1.
+- v1.1 already sits above the teacher on sameness, so P2's "sameness not up" condition leaves
+  less room than it did on Hub v3.
+
+## 1a. Release of the 4-step as it stands
+
+Facts:
+
+- The user's call (2026-11-18): the untrained v1.1 delta on merged15 ships as
+  `anima_turbo_4step_v4_longer` on `huggingface.co/sorryhyun/anima-turbo-4step`. Steps, checks and
+  the open calls: [deploy/release_v4_longer.md](deploy/release_v4_longer.md). Not built or uploaded yet.
 
 ## 2. Superturbo (σ 0.75 → 0 in one jump): parked
 

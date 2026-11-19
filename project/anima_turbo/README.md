@@ -16,8 +16,10 @@ merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
 - The v1.1 delta finishes from the teacher's σ 0.9 state (the user's read, near tie), and
   `turbo_1118_1818` (step 0 alone on 7 of 28) lost the user's blind reads to it, and v1.1 finishes from the
   teacher's σ 0.9 state no better than from its own step 0
-  ([reports/step0_k7of28.md](reports/step0_k7of28.md)). Open: what the line distills toward. The 2-step student is parked ([plan.md](plan.md)).
-- Preference RL is at its P1 gate, not passed ([pref_rl/p1.md](pref_rl/p1.md)).
+  ([reports/step0_k7of28.md](reports/step0_k7of28.md)). Teacher T against v1.1 S read level on
+  `judge_hard` (T 5 / S 7) and behind on three random dataset captions (T 3 / S 9). Open: what the line distills toward. The 2-step student is parked ([plan.md](plan.md)).
+- Preference RL is at its P1 gate, not passed ([pref_rl/p1.md](pref_rl/p1.md)). From 2026-11-18
+  it is the plan's item 1, on the warm v1.1 delta on merged15 (the user's call).
 
 ## Layout
 
@@ -26,7 +28,8 @@ merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
 - [findings/](findings/README.md): two findings on how to measure (an LR artifact in a gate, a
   permutation null for gradient comparisons).
 - [configs/](configs/README.md): the live run config; finished ones in `_archive/configs/anima_turbo/`.
-- [deploy/](deploy/): `deploy.sh` writes a student's release forms (LoRA for base, baked DiT, int8 GPTQ).
+- [deploy/](deploy/): `deploy.sh` writes a student's release forms (LoRA for base, baked DiT, int8 GPTQ);
+  [deploy/release_v4_longer.md](deploy/release_v4_longer.md) is the plan for the next Hub file.
 - [pref_rl/](pref_rl/README.md): preference RL — proposal, P1 report, the round window (`make exp-turbo-pref`) and head scripts.
 
 ## Code and data

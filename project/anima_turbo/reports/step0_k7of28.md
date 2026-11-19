@@ -108,4 +108,57 @@ picks are the user's preference.
 
 - Handed the teacher's real σ 0.9 state, v1.1's steps 1–3 finish no better than from v1.1's own
   step 0, so pulling step 0 toward the teacher does not pay with them; the 7 of 28 target is not
-  the step-0 objective for v1.1's steps 1–3. Teacher T against v1.1 S has not been read.
+  the step-0 objective for v1.1's steps 1–3. Teacher T against v1.1 S is section 5.
+
+## 5. Teacher T against the v1.1 delta's S
+
+### Facts
+
+- Renders from `bench/turbo/results/20261118-1850-step0_1818_vs_v11/` (local), no new run: the
+  teacher's T column (merged15, CFG 4, 28 steps) and the v1.1 delta untrained's S column.
+- The user's read (blind, `output/blind/turbo/v11_T_vs_S/`, local): picks 011000101000, v1.1 S 7 /
+  T 5 (group 2 / 2, café 1 / 3, guitarist 4 / 0). Spread unknown.
+- The same S column on the probe: cos to the teacher's image 0.672, sameness 0.397 against the
+  teacher's 0.314 (café 0.506 against 0.347).
+
+### Interpretation
+
+- The three pairwise reads among T, `T>S@1` and S (8 / 4, 6 / 6, 5 / 7) put the v1.1 delta
+  untrained on merged15 level with the 28-step teacher on this judge set. By the user's read a
+  4-step student distilled toward this teacher has no gap to close here.
+- The split by prompt (guitarist 4 / 0 for S, café 3 / 1 for T) is on 4 rows each.
+- What still separates the two is the sameness number, which no read has covered, and the grids
+  v1.1 was not made for (the 2-step grid of plan item 2).
+
+## 6. Teacher T against the v1.1 delta's S on three random dataset captions
+
+### Facts
+
+- Prompt file `bench/turbo/judge_random_1118.txt`: three captions drawn with OS entropy from the
+  3,242 caption files under `post_image_dataset/resized` (`wantan_meo/dan_9831926`, a solo figure;
+  `ru_zhai/13252104`, a solo figure indoors; `sushispin/11780554`, two figures with position
+  clauses), as written with no quality-tag prefix, seeds 1–4, 768×1344. Each carries an artist tag.
+- Probe `random3_v11`, the v1.1 delta untrained, same script and settings as section 2's probe:
+  `bench/turbo/results/20261118-1922-random3_v11/` (local), job `20261118-192041-df194a`.
+  Spread unknown.
+
+  | | T | v1.1 S |
+  |---|---|---|
+  | sameness (three prompts) | 0.504 (0.271 / 0.695 / 0.546) | 0.572 (0.370 / 0.702 / 0.643) |
+  | cos to the teacher's image | | 0.745 (0.746 / 0.692 / 0.798) |
+  | `T>S@1` cos | | 0.964 |
+  | anchor MSE (7 of 28) | | 0.081 |
+
+- The user's read (blind, `output/blind/turbo/random3_T_vs_S/`, local): picks 100110011010,
+  v1.1 S 9 / T 3 (3 / 1 on each of the three prompts).
+- With section 5: v1.1 S 16 / T 8 over 24 rows and 6 prompts.
+
+### Interpretation
+
+- On neither set does the user's read put the 28-step teacher ahead of the v1.1 delta untrained at
+  4 steps, and on the random captions it is behind. The 4-step render at merged15's level that the
+  line set out to train is what the untrained delta on merged15 already gives, so merged15 at 28
+  steps and CFG 4 is not a target that improves it.
+- The teacher is ahead on one number only, sameness (0.504 against 0.572 here, 0.314 against 0.397
+  on `judge_hard`), which no read has covered.
+
