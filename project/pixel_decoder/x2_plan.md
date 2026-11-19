@@ -84,7 +84,7 @@ reference levels (bicubic 31.86 / 28.25, second draw 46.65 / 40.36, 2 test / 8 t
 Outcome: soft, and ×1 under the parent; the capacity and frozen-base branches were both read by
 the fit probes (above). No user verdict was asked on arm A's sheets beyond the tone read.
 
-## Arms 1 + 2 together — tone term and LPIPS (running)
+## Arms 1 + 2 together — tone term and LPIPS (running: `x2lt_1119_2013`)
 
 The user (2026-11-19): "1, 2 같이 적용해도 될듯? lpips나 tone term 모두 이미 resshift든 moss든
 검증된거라. 다만 hyperparameter만 가볍게 보고 본 학습 돌리자".
@@ -110,6 +110,22 @@ named `total`, which shadowed the cosine schedule's step count, so `set_lr` comp
 cos(π·step / loss). After warmup the LR multiplier landed anywhere in 0 … 1 each step, with no
 decay. Fixed (`loss`, `total_steps`). The smoke's gradient-norm ratios are kept for sizing
 only. Arm A and `x2ref_1119_1908` predate the change or do not train.
+
+Sweep `x2lp{001,003,01}_1119_1944` (250 rollouts, test 4 / text 8 / manga 2 per point). Base
+point against the teacher, PSNR test / text / manga; LPIPS test / text / manga; dark lift
+test / text:
+
+| λ_lpips | dB | LPIPS | dark lift | ×1 test |
+|---|---|---|---|---|
+| 0.01 | 30.20 / 26.45 / 25.21 | 0.176 / 0.241 / 0.271 | +14.1 / +12.3 | 38.28 |
+| 0.03 | 30.10 / 26.38 / 25.15 | 0.167 / 0.232 / 0.260 | +14.6 / +12.5 | 38.28 |
+| 0.1 | 29.91 / 26.24 / 25.02 | 0.161 / 0.218 / 0.245 | +15.6 / +13.2 | 38.17 |
+
+The same images in `x2ref_1119_1908`: arm A (1,000 rollouts) 32.12 / 27.25 / 25.90, LPIPS
+0.135 / 0.204 / 0.224, dark lift +8.0 / +9.5. The turbo point moves the same way. On Claude's
+labelled crops (test 00, text 01), the three arms cannot be told apart, and none shows an
+artefact. The full run takes λ_lpips 0.1 (the lowest LPIPS, clean on the crops); the dark lift
+grows with λ and is read there.
 
 Read: the full run's two-column crops `chain | ×2 head` (`--chain`), test 12 / text 8 / manga 4 at
 both points, labelled; numbers beside them: dB, LPIPS and dark lift against the teacher, the ×1
