@@ -23,10 +23,11 @@ the VAE decode, 30 held-out images / 8 text images, one seed, spread unknown:
 | P1 linear readout (`readout_1118_2219`) | 26.28 | 21.61 |
 | P2 head with a P1 skip (`convnext_1119_0835`) | 26.50 | 21.58 |
 | P2 head, no skip (`convnext_1119_0938`) | 32.93 | 27.45 |
+| the same, gradient over 4 rollouts at LR 1e-3 (`convnext_1119_0950`) | 32.96 | 27.46 |
 | VAE decode of the DiT's own x̂0 (`ceiling_1119_0920`) | 37.00 | 32.02 |
 
 The current head is `bench/pixel_readout/results/20261119-0959-convnext_1119_0938/head.safetensors`
 (local): 29.7M parameters, no skip, three ConvNeXt blocks at token resolution, 26 minutes of
 training. The first P2 head carried P1's linear as a skip and did not train past it
 (`reports/p2_skip_2026_11_19.md`). Not yet checked: generated images, a LoRA on the DiT, any σ
-other than the last one. The user's read of the `0938` sheets is pending.
+other than the last one. The user's read of the `0938` sheets is not recorded yet.

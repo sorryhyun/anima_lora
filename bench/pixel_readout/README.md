@@ -191,6 +191,22 @@ Read: test / text PSNR at each eval beside `0938`, same sheets, labelled; spread
 user's read decides.
 Cost: 3600 rollouts, ≈ 26 min.
 
+Result (25 min, 0.41 s / rollout; `results/20261119-1024-convnext_1119_0950/` (local)):
+
+| test PSNR vs VAE (dB), rollout 600 / 1200 / 1800 / 2400 / 3000 / 3600 | test (30) | text (8) |
+|---|---|---|
+| `0938` | 25.69 / 29.39 / 31.01 / 32.21 / 32.64 / 32.93 | 22.63 / 25.14 / 26.21 / 26.99 / 27.36 / 27.45 |
+| `0950` | 27.57 / 29.61 / 31.15 / 32.20 / 32.78 / 32.96 | 22.96 / 24.76 / 26.04 / 26.83 / 27.34 / 27.46 |
+
+Per image at the end, `0950` − `0938`: test −0.09 … +0.18 (20 / 30 up), text −0.05 … +0.07
+(5 / 8 up). Verdict: level; `0938`'s recipe stays.
+
+### ceiling_1119_1003 — the `0938` head against both targets
+
+`ceiling_probe.py --head_run …convnext_1119_0938`, `results/20261119-1025-ceiling_1119_1003/`
+(local). Head vs VAE(x0): test 32.93, text 27.45. Head vs VAE(x̂0): test 34.30, text 28.44.
+VAE(x̂0) vs VAE(x0): 37.00 / 32.02 as in `ceiling_1119_0920`.
+
 ## render_sheets.py — sheets for chosen images
 
 VAE | P1 | P2 head on cached items or raw images (raw: resized to ~4100 tokens, VAE-encoded,

@@ -13,7 +13,7 @@ is open. Each run's header and numbers live in `bench/pixel_readout/README.md`.
 
 `convnext_1119_0938` (no skip): test 32.93, text
 27.45, against 26.50 / 21.58 for the head with a P1 skip (`reports/p2_skip_2026_11_19.md`).
-The user's read of its sheets is pending; Claude's labelled read has the grid and grain gone and
+The user's read of its sheets is not recorded yet; Claude's labelled read has the grid and grain gone and
 the head a little softer than the VAE.
 
 ## Recipe (settled unless a run says otherwise)
@@ -22,8 +22,9 @@ the head a little softer than the VAE.
   changed together and are not separated; no run is planned to separate them.
 - Loss 0.5 L1 + 5 MSE + 0.05 L_grad, AdamW, cosine, clip 1.0, one DiT forward and one VAE decode
   per rollout.
-- LR and batch: `0938` ran LR 2e-4 at batch 1, 4 updates per rollout. `convnext_1119_0950`
-  (gradient over 4 rollouts, LR 1e-3, the user's arm) decides between the two for longer runs.
+- LR 2e-4 at batch 1, 4 updates per rollout (`0938`). `convnext_1119_0950` (gradient over 4
+  rollouts, LR 1e-3, the user's arm) ended level with it: test 32.96 against 32.93, text 27.46
+  against 27.45, after a faster start (27.57 against 25.69 at rollout 600).
 
 ## Next
 
