@@ -221,6 +221,23 @@ Results `results/20261119-0904-sheets_1119_0904/` (local). PSNR vs VAE, dB, P1 �
 | sushispin 10043045 / 10186995 / 12210581 / 12688803 / 9859367 (rated safe, held-out artist, in neither P1 nor P2 training) | 26.27 / 24.64 / 26.09 / 23.83 / 27.20 | 26.46 / 24.79 / 26.24 / 23.98 / 27.41 |
 | Manga109-s p.14 spreads ARMS / DollGun / AosugiruHaru / BakuretsuKungFuGirl (caption `monochrome, greyscale, comic, speech bubble, japanese text`) | 16.61 / 16.53 / 22.14 / 18.62 | 16.53 / 16.44 / 22.16 / 18.52 |
 
+### sheets_1119_1032 (head = convnext_1119_0938, same nine inputs)
+
+Results `results/20261119-1042-sheets_1119_1032/` (local). PSNR vs VAE, dB, P1 → head:
+
+| image | P1 | head |
+|---|---|---|
+| sushispin 10043045 / 10186995 / 12210581 / 12688803 / 9859367 | 26.27 / 24.64 / 26.09 / 23.83 / 27.20 | 32.20 / 29.87 / 31.12 / 28.57 / 33.79 |
+| Manga109-s p.14 spreads ARMS / DollGun / AosugiruHaru / BakuretsuKungFuGirl | 16.61 / 16.53 / 22.14 / 18.62 | 21.52 / 22.17 / 27.49 / 24.26 |
+
+Claude's read (labelled, 2× crops of sheets 00, 05, 07): colour image close to the VAE, no grid
+or grain, fine line work (flower petals) a little softer. Manga: blacks are black and paper is
+white, panel lines and hatching hold; the smallest balloon text keeps its layout with soft,
+partly unreadable strokes; a dotted ellipsis column reads as a faint line; screentone dots
+smooth into grey.
+
+### sheets_1119_0904 — read
+
 Claude's read (labelled, sheets 00, 05, 07): colour images as in the test set (16-px block grid,
 washed contrast, grain). Manga: panels, faces and large SFX kept; small balloon text keeps its
 layout but not readable glyphs; blacks lift to grey and white paper takes grain; screentone and

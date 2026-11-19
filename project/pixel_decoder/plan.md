@@ -13,8 +13,9 @@ is open. Each run's header and numbers live in `bench/pixel_readout/README.md`.
 
 `convnext_1119_0938` (no skip): test 32.93, text
 27.45, against 26.50 / 21.58 for the head with a P1 skip (`reports/p2_skip_2026_11_19.md`).
-The user's read of its sheets is not recorded yet; Claude's labelled read has the grid and grain gone and
-the head a little softer than the VAE.
+The user's verdict (2026-11-19): "대 합격". Claude's labelled read has the grid and grain gone
+and the head a little softer than the VAE; on manga pages (`sheets_1119_1032`) the smallest
+text and screentone dots stay soft.
 
 ## Recipe (settled unless a run says otherwise)
 

@@ -30,4 +30,4 @@ The current head is `bench/pixel_readout/results/20261119-0959-convnext_1119_093
 (local): 29.7M parameters, no skip, three ConvNeXt blocks at token resolution, 26 minutes of
 training. The first P2 head carried P1's linear as a skip and did not train past it
 (`reports/p2_skip_2026_11_19.md`). Not yet checked: generated images, a LoRA on the DiT, any σ
-other than the last one. The user's read of the `0938` sheets is not recorded yet.
+other than the last one. The user's verdict on P2 (2026-11-19): "대 합격".
