@@ -405,6 +405,16 @@ def main():
         help="LoRA-family adapter on the frozen DiT (hooks, after the stream change)",
     )
     p.add_argument(
+        "--points",
+        nargs="+",
+        default=None,
+        metavar="SIGMA[-SIGMA][:adapter]",
+        help="decode points for one head, taken in turn per rollout: σ on the base DiT, "
+        "or σ:adapter with --adapter switched on (e.g. 0.1 0.5:adapter). LO-HI draws σ "
+        "uniformly per rollout and is evaluated at LO, the midpoint and HI. Evals, sheets "
+        "and metrics are per evaluated point. Overrides --sigma",
+    )
+    p.add_argument(
         "--init", default=None, help="start the head from <run>/head.safetensors"
     )
     p.add_argument("--n_sheets", type=int, default=12)
@@ -451,10 +461,39 @@ def main():
     )
     _, sigmas = get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
     sigma_last = float(sigmas[-2]) if args.sigma is None else args.sigma
+    # training points (σ lo, σ hi, adapter on) and the fixed points they are read at
+    # (name, σ, adapter on); one unnamed point = the single-σ run (adapter on if given)
+    train_points: list[tuple[float, float, bool]] = [(sigma_last, sigma_last, True)]
+    points: list[tuple[str, float, bool]] = [("", sigma_last, True)]
+    if args.points:
+        train_points, points = [], []
+        for spec in args.points:
+            s, _, tag = spec.partition(":")
+            assert tag in ("", "adapter"), f"--points {spec}: SIGMA or SIGMA:adapter"
+            assert not tag or args.adapter, f"--points {spec} needs --adapter"
+            lo, _, hi = s.partition("-")
+            lo, hi = float(lo), float(hi or lo)
+            assert lo <= hi, f"--points {spec}: LO-HI"
+            train_points.append((lo, hi, bool(tag)))
+            for sg in dict.fromkeys((lo, (lo + hi) / 2, hi)):
+                name = f"{'lora' if tag else 'base'}_s{sg:.4g}"
+                points.append((name, sg, bool(tag)))
+        assert len({n for n, _, _ in points}) == len(points), "duplicate --points"
+    multi = bool(points[0][0])
+    sig_rng = random.Random(args.seed + 4)
+
+    def skey(pt: str, key: str) -> str:
+        return f"{pt}.{key}" if pt else key
+
     print(
         f"train {len(train)}  test {len(test)} ({', '.join(test_artists)})  "
         f"text {len(text)}  pages {len(page_train)} / eval {len(page_eval)}  "
-        f"bands {seq_bands}  sigma_last {sigma_last:.4f}",
+        f"bands {seq_bands}  "
+        + (
+            "points " + ", ".join(n for n, _, _ in points)
+            if multi
+            else f"sigma_last {sigma_last:.4f}"
+        ),
         flush=True,
     )
 
@@ -469,8 +508,7 @@ def main():
         from library.anima.stream import stream_fp32_
 
         stream_fp32_(anima)
-    if args.adapter:
-        attach_adapter(anima, args.adapter, device)
+    network = attach_adapter(anima, args.adapter, device) if args.adapter else None
     if compile_blocks:
         compile_blocks_isolated(anima, seq_bands)
     tap: dict[str, torch.Tensor] = {}
@@ -497,9 +535,13 @@ def main():
         return lat, cross.unsqueeze(0).to(device, torch.bfloat16)
 
     @torch.no_grad()
-    def rollout(item, idx: int, targets=None):
-        """→ (features, x_t patches, {target name: VAE decode})."""
+    def rollout(item, idx: int, targets=None, point=None):
+        """→ (features, x_t patches, {target name: VAE decode}) at one decode point."""
         targets = targets or (args.target,)
+        _, sigma_last, adapter_on = point or points[0]
+        if network is not None:
+            # off = each module returns its org_forward: the base DiT's own output
+            network.set_enabled(adapter_on)
         lat, cross = load_item(item)
         g = torch.Generator(device=device).manual_seed(args.seed * 100003 + idx)
         noise = torch.randn(lat.shape, generator=g, device=device, dtype=lat.dtype)
@@ -564,28 +606,33 @@ def main():
 
     # --- held-out features once (CPU), so evals cost no DiT forward ---
     t0 = time.perf_counter()
-    held_feats = []  # (item, set, features, x_t patches, {target: decode}, original | None)
+    # (item, set, features, x_t patches, {target: decode}, original | None, point name)
+    held_feats = []
     held_items = (
         [(ci, "test") for ci in test]
         + [(ci, "text") for ci in text]
         + [(pth, "manga") for pth in page_eval]
     )
-    for j, (item, key) in enumerate(held_items):
-        f, lat, tgts = rollout(item, 10_000 + j, targets=("x0", "xhat0"))
-        orig = None
-        if isinstance(item, Path):
-            orig = load_file(str(item))["pixels"].float() / 127.5 - 1
-        held_feats.append(
-            (
-                item,
-                key,
-                f.to("cpu", torch.bfloat16),
-                lat.cpu(),
-                {k: v.to("cpu", torch.float16) for k, v in tgts.items()},
-                orig,
+    for point in points:  # the same noise per item at every point
+        for j, (item, key) in enumerate(held_items):
+            f, lat, tgts = rollout(
+                item, 10_000 + j, targets=("x0", "xhat0"), point=point
             )
-        )
-    sets = list(dict.fromkeys(key for _, key in held_items))
+            orig = None
+            if isinstance(item, Path):
+                orig = load_file(str(item))["pixels"].float() / 127.5 - 1
+            held_feats.append(
+                (
+                    item,
+                    key,
+                    f.to("cpu", torch.bfloat16),
+                    lat.cpu(),
+                    {k: v.to("cpu", torch.float16) for k, v in tgts.items()},
+                    orig,
+                    point[0],
+                )
+            )
+    sets = list(dict.fromkeys(skey(h[6], h[1]) for h in held_feats))
     print(
         f"held-out features {len(held_feats)} in {time.perf_counter() - t0:.0f}s",
         flush=True,
@@ -606,7 +653,8 @@ def main():
         """{set: mean PSNR vs VAE(x0)} and {set_xhat0: … vs VAE(x̂0)}."""
         head.eval()
         out: dict[str, list] = {}
-        for _, key, f, lat, tgts, _ in held_feats:
+        for _, key, f, lat, tgts, _, pt in held_feats:
+            key = skey(pt, key)
             pred = predict(f, lat)
             out.setdefault(key, []).append(psnr(pred, tgts["x0"].to(device)))
             out.setdefault(f"{key}_xhat0", []).append(
@@ -619,8 +667,8 @@ def main():
         return "  ".join(f"{k} {ev[k]:.2f} (x̂0 {ev[k + '_xhat0']:.2f})" for k in sets)
 
     p1_lin: dict[str, list] = {}
-    for _, key, f, lat, tgts, _ in held_feats:
-        p1_lin.setdefault(key, []).append(
+    for _, key, f, lat, tgts, _, pt in held_feats:
+        p1_lin.setdefault(skey(pt, key), []).append(
             psnr(predict(f, lat, use_head=False), tgts["x0"].to(device))
         )
     p1_scores = {k: float(np.mean(v)) for k, v in p1_lin.items()}
@@ -657,7 +705,9 @@ def main():
                 order = train[:]
                 rng.shuffle(order)
             item = order.pop()
-        f, lat, tgts = rollout(item, r)
+        lo, hi, adapter_on = train_points[r % len(train_points)]
+        sg = lo if hi == lo else sig_rng.uniform(lo, hi)
+        f, lat, tgts = rollout(item, r, point=("", sg, adapter_on))
         if args.replay:
             # bf16 features lose nothing: the head's first linear runs under bf16 autocast
             replay.append((f.to(torch.bfloat16), lat, tgts[args.target].half()))
@@ -698,7 +748,7 @@ def main():
     rows, artifacts = [], []
     head.eval()
     counters: dict[str, int] = {}
-    for k, (item, key, f, lat, tgts, orig) in enumerate(held_feats):
+    for item, key, f, lat, tgts, orig, pt in held_feats:
         tgt = tgts["x0"].to(device).float()
         tgt_hat = tgts["xhat0"].to(device).float()
         pred = predict(f, lat)
@@ -712,7 +762,8 @@ def main():
         row = {
             "stem": item.stem,
             "artist": "pages" if is_page else Path(item.npz_path).parent.name,
-            "set": key,
+            "set": skey(pt, key),
+            "point": pt,
             "psnr_p1_linear": psnr(lin, tgt),
             "psnr_head": psnr(pred, tgt),
             "psnr_head_xhat0": psnr(pred, tgt_hat),
@@ -723,19 +774,20 @@ def main():
             row["psnr_vae_vs_orig"] = psnr(tgt, o)
             row["psnr_head_vs_orig"] = psnr(pred, o)
         rows.append(row)
-        n = counters.get(key, 0)
-        counters[key] = n + 1
+        n = counters.get((pt, key), 0)
+        counters[(pt, key)] = n + 1
+        pre = f"{pt}_" if pt else ""
         if key == "manga":
             cols = [("original", orig.to(device)), ("VAE decode", tgt), ("head", pred)]
-            name = f"manga_{n:02d}_{item.stem}.png"
+            name = f"{pre}manga_{n:02d}_{item.stem}.png"
             sheet(cols, run_dir / name, at=densest_window(tgt, 384))
         elif key == "text":
             cols = [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)]
-            name = f"text_{n:02d}_{item.stem}.png"
+            name = f"{pre}text_{n:02d}_{item.stem}.png"
             sheet(cols, run_dir / name, at=densest_window(tgt, 384))
         elif n < args.n_sheets:
             cols = [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)]
-            name = f"sheet_{n:02d}_{item.stem}.png"
+            name = f"{pre}sheet_{n:02d}_{item.stem}.png"
             sheet(cols, run_dir / name)
         else:
             continue
@@ -751,7 +803,10 @@ def main():
             "skip": str(int(head.use_skip)),
             "up": str(args.up),
             "target": args.target,
-            "sigma": f"{sigma_last}",
+            "sigma": ",".join(
+                f"{lo}" if lo == hi else f"{lo}-{hi}" for lo, hi, _ in train_points
+            ),
+            "points": " ".join(args.points or []),
             "stream": args.stream,
             "replay": str(args.replay),
             "adapter": args.adapter or "",
@@ -760,11 +815,28 @@ def main():
     )
     artifacts.append("head.safetensors")
 
-    def mean(s, key):
-        return float(np.mean([r[key] for r in rows if r["set"] == s]))
+    set_metrics = {}  # <set>_<column>; a multi-point run's sets are <point>.<set>
+    for st in sets:
+        for col in (
+            "psnr_p1_linear",
+            "psnr_head",
+            "psnr_head_xhat0",
+            "psnr_head_vs_orig",
+        ):
+            vals = [r[col] for r in rows if r["set"] == st and col in r]
+            if vals:
+                set_metrics[f"{st}_{col}"] = float(np.mean(vals))
 
     metrics = {
-        "sigma_last": sigma_last,
+        "sigma_last": points[0][1],
+        "train_points": [
+            {"sigma_lo": lo, "sigma_hi": hi, "adapter": bool(a and args.adapter)}
+            for lo, hi, a in train_points
+        ],
+        "eval_points": [
+            {"name": n, "sigma": s, "adapter": bool(a and args.adapter)}
+            for n, s, a in points
+        ],
         "n_train": len(train),
         "n_test": len(test),
         "n_text": len(text),
@@ -773,18 +845,9 @@ def main():
         "head_params_M": n_params / 1e6,
         "opt_steps_total": step,
         "sec_per_rollout": (time.perf_counter() - t0) / args.rollouts,
-        "test_psnr_p1_linear": mean("test", "psnr_p1_linear"),
-        "test_psnr_head": mean("test", "psnr_head"),
-        "text_psnr_p1_linear": mean("text", "psnr_p1_linear"),
-        "text_psnr_head": mean("text", "psnr_head"),
-        **{f"{st}_psnr_head_xhat0": mean(st, "psnr_head_xhat0") for st in sets},
+        **set_metrics,
         **(
-            {
-                "manga_psnr_head": mean("manga", "psnr_head"),
-                "manga_psnr_head_vs_orig": mean("manga", "psnr_head_vs_orig"),
-                "n_page_train": len(page_train),
-                "n_page_rollouts": n_page_rollouts,
-            }
+            {"n_page_train": len(page_train), "n_page_rollouts": n_page_rollouts}
             if page_eval
             else {}
         ),
@@ -792,9 +855,13 @@ def main():
         "per_image": rows,
     }
     print(
-        f"test PSNR vs VAE: P1 {metrics['test_psnr_p1_linear']:.2f} → head "
-        f"{metrics['test_psnr_head']:.2f} | text: P1 {metrics['text_psnr_p1_linear']:.2f} → "
-        f"head {metrics['text_psnr_head']:.2f}",
+        "PSNR vs VAE(x0) (x̂0): "
+        + " | ".join(
+            f"{st}: P1 {set_metrics[f'{st}_psnr_p1_linear']:.2f} → head "
+            f"{set_metrics[f'{st}_psnr_head']:.2f} "
+            f"({set_metrics[f'{st}_psnr_head_xhat0']:.2f})"
+            for st in sets
+        ),
         flush=True,
     )
     out = write_result(

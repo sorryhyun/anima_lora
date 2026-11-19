@@ -1,137 +1,127 @@
 # Plan (2026-11-19)
 
-Phases are the proposal's (`proposal.md`); this file holds their order, what is settled and what
-is open. Each run's design and numbers live in `reports/`.
-
-## Done
-
-### P1 — linear readout
-
-`readout_1118_2219`: test 26.28. The user's read: "진짜 잘나오네".
-
-### P2 — ConvNeXt head, reconstruction only
-
-`convnext_1119_0938` (no skip): test 32.93, text
-27.45, against 26.50 / 21.58 for the head with a P1 skip (`reports/p2_skip_2026_11_19.md`).
-The user's verdict (2026-11-19): "대 합격". Claude's labelled read has the grid and grain gone
-and the head a little softer than the VAE; on manga pages (`sheets_1119_1032`) the smallest
-text and screentone dots stay soft. The training method is settled (the user, 2026-11-19);
-see Recipe.
-
-### P3a — generated images and adapter transfer
-
-`p3_1119_1056` (`reports/p3_2026_11_19.md`): 16 prompts × 2 seeds, standard sampler, target
-VAE(x_final). Colour 30.90 on base, 31.24 with `anima_merged15`; mono 22.51 / 22.85; the
-CFG-combined feature reads level with the cond feature (+0.03 dB). Real manga pages
-(`manga_1119_1052`): the VAE alone is 21.5–39.8 dB from the original, VAE(x̂0) 24.3–36.3 from
-VAE(x0).
-
-Claude's call (2026-11-19, sheets sent to the user, standing unless flagged): the head
-generalizes to generated images and to the LoRA; what is left is dense fine strokes (screentone,
-hatching, fur lines), on generated and real images alike. The reasoning is in the report's
-interpretation. P3 continues as the training strategy for manga and greyscale (In progress).
-
-### Recipe change — fp32 stream, head compile, replay buffer
-
-`replay_1119_1225` (`reports/replay_recipe_2026_11_19.md`): test 33.35 / text 27.68 against
-`1106`'s 33.64 / 28.04 in 11.3 min against 25.7. The user's read: no difference, or replay
-slightly better (attributed to the fp32 stream). Adopted 2026-11-19. Same report: decode cost
-on the Spectrum sampler (`e2e_1119_1209`) and the rollout profile.
-
-### P3b — manga pages in the mix, target VAE(x̂0)
-
-`pagemix_1119_1242` (`reports/pagemix_2026_11_19.md`): the replay recipe with `--target xhat0`,
-pages at share 0.33, 2,000 rollouts. Test 34.83 / text 29.65 / manga 28.15 against VAE(x0)
-(replay 33.35 / 27.68; `mangaup` manga 26.64); 30 / 30 test and 8 / 8 text images up; tone level
-with the VAE. Target, rollout count and pages changed together. The user's verdict
-(2026-11-19): "거의 구분 안되는 정도고 그나마 강조선이 살짝 흐린정도네. p3은 통과라고 봐도
-될거같아." P3 passed.
-
-### P4 — the head on the shipped decode points
-
-`reports/p4_t2_2026_11_19.md`. Targets (the user, 2026-11-19), from `get_timesteps_sigmas` and
-the `scripts/tasks/inference.py` flags (Euler, shift 3; Spectrum `stop_caching_step` 27, so the
-last step is an actual forward):
-
-| target | DiT | steps / CFG | last forward σ |
-|---|---|---|---|
-| T1 `make test SPECTRUM=1` | base (+ user LoRA) | 28 / 4 | 0.100 |
-| T2 `make test-turbo` | base + turbo LoRA (adaLN trained) | 4 / 1 | 0.500 |
-| T3 Spectrum 30 steps | base (+ user LoRA) | 30 / 4 | 0.0938 |
-| `pagemix_1119_1242` trained at | base | teacher-forced | 0.0577 |
-
-The head reads the last forward's features (input of `final_layer.linear`, adaLN-modulated by t)
-and x_t; x_final = x_t − σ_last·v is that forward's x̂0. FastFrames trains its head at one fixed
-step, the two-step student's last (App. C, Fig. 2), so P4 trains per target rather than one head
-over σ; the σ-mixed single-head arm of the first design was dropped.
-
-T2: `t2probe_1119_1328` (pagemix head on 32 turbo rollouts) 13.73 colour / 14.16 mono. Arm A
-`t2a_1119_1337` (warm start from pagemix, teacher-forced at σ 0.5 with the turbo LoRA, 500
-rollouts, ≈ 7 min): 34.58 / 27.85 on the same rollouts, level with its teacher-forced 34.35 /
-27.67 (−0.36 … +0.92 per image), so rollout training (arm B) was not run. The user's verdict
-(2026-11-19): "생각보다 거의 비슷한데??? 뭐냐 일단 p4도 성공한걸로 기록하자." P4 passed.
-T2 head: `bench/pixel_readout/results/20261119-1343-t2a_1119_1337/head.safetensors` (local).
-
-T1 / T3: not trained. `e2e_1119_1209` (head `1106`) read colour 28.52 / mono 20.89 at T1.
-
-## Recipe (settled unless a run says otherwise)
-
-- fp32 DiT stream (`--stream fp32`), head training forward compiled under `--compile`, replay
-  buffer `--replay 64 --opt_steps 16` (`replay_1119_1225`; earlier heads: bf16 stream, 4 updates
-  on the newest rollout). Time saved goes to more rollouts and data (the user, 2026-11-19).
-- No skip, out at default init, layer scale γ 1 (`--no_skip --ls_init 1.0`). The three were
-  changed together and are not separated; no run is planned to separate them.
-- Loss 0.5 L1 + 5 MSE + 0.05 L_grad, AdamW, cosine, clip 1.0, one DiT forward and one VAE decode
-  per rollout.
-- LR 2e-4 at batch 1 (`0938`). `convnext_1119_0950` (gradient over 4
-  rollouts, LR 1e-3, the user's arm) ended level with it: test 32.96 against 32.93, text 27.46
-  against 27.45, after a faster start (27.57 against 25.69 at rollout 600).
-- One 2× upsample stage before the third block (`--up 1`, the user's arm): `convnext_1119_1106`
-  test 33.64 / text 28.04 against `0938`'s 32.93 / 27.45, 38 / 38 images up, same speed, 24.9M
-  parameters; spread unknown. Adopted 2026-11-19 (Claude's call, sheets sent, standing unless
-  flagged).
-- Target VAE(x̂0) (x̂0 = x_t − σ·v from the rollout's own forward) and manga pages at share 0.33,
-  2,000 rollouts (`pagemix_1119_1242`, P3 passed on the user's read). Pages:
-  `post_image_dataset/pixel_pages/` (local; `build_pages.py`, 3,000 train pages, 1,500
-  Manga109-s + 1,500 hitocrawl JA, seed 0, ~4,100 tokens, one fixed tag caption `monochrome,
-  greyscale, comic, speech bubble, japanese text`; 10 eval pages with original pixels).
-- Current head: `bench/pixel_readout/results/20261119-1304-pagemix_1119_1242/head.safetensors`
-  (local).
+P1 – P4 are done (the user, 2026-11-19: "일단은 p4까지 완료인걸로"). Their record and the settled
+training recipe are in `reports/phases_p1_p4_2026_11_19.md`; each run's design and numbers are in
+`reports/`. The release head is `mixr_1119_1455`
+(`bench/pixel_readout/results/20261119-1527-mixr_1119_1455/head.safetensors`, local). This file
+holds what is next and what is open.
 
 ## Next
 
-### 1. P4 follow-ups
+Order (the user, 2026-11-19): "배포되면 프로젝트 모델 코어는 라이브러리에 편입하는 쪽으로
+계획을 잡자. p5는 아마 픽셀로스 등 integration일텐데 배포 및 승격을 선행하게 될듯". Release,
+then promotion of the model core into `library/`, then the P5 topics.
 
-- The T2 head on standard base renders (28 steps, CFG 4, σ_last 0.10), beside the pagemix head
-  (`t2base_1119_1349`, running): does the turbo-trained head carry back to the base DiT?
-- T1 / T3 head if the read above leaves a gap: the pagemix head warm-started at σ 0.10 (one
-  head for both, σ 0.0938 / 0.100), as arm A did for T2.
-- Spectrum's cached steps (σ 0.90 … 0.265) read a Chebyshev-forecast feature at the tap; a head
-  on forecasts would preview every step. Deferred (cjk_rl arm D wants σ over [0, 1]).
+### 1. Release
 
-### 2. P5 — pixel losses through the head
+- The head: `mixr_1119_1455` (P4, the user's verdict).
+- Before the card is written (`promotion_maybe.md`): a turbo e2e run (`e2e_speed.py` with the
+  turbo LoRA, 4 steps, CFG 1) for the decode share the card claims, now an estimate; the
+  card's quality lines re-read on the release head.
+- Upload to the Hub on the user's word; repo and card text are the user's call.
 
-GAN on the head, arm D's reader NLL through the head,
-or a ResShift refiner. Separate proposals once P4 reads out.
+### 2. Promotion — the model core into `library/`
+
+After the release. The steps below are Claude's draft, to be settled when the item opens.
+
+- What moves: `PixelHead` / `ConvNeXtBlock`, `load_head`, `lat_patches`, `from_patches` and
+  `PATCH`, the tap on `final_layer.linear`'s input, the CFG feature combine
+  f_u + g·(f_c − f_u), and one decode call (features + x_t → pixels). Destination
+  `library/anima/pixel_head.py`: the tap, the 16-px patch and the 64-value latent patch are
+  Anima's. `bench/pixel_readout/` imports from it and keeps training, evals, sheets and probes.
+- A model-catalog row for the released weight (`library/downloads.py`); the loader's default
+  path comes from it.
+- An `inference.py` decode switch (head or VAE) and its `test-*` lever. The head is read only
+  where it was trained: shift-3 Euler at 20 … 50 steps on the base DiT, and the 4-step turbo
+  grid. Outside that the head still decodes and the CLI logs a warning; no refusal, no fallback
+  (the user, 2026-11-19: "거부까진 안해도 될듯. 경고 cli 로그만 출력하면 될거같고").
+- `anima_lora` façade re-export for embedders.
+- `CONTRIBUTING.md` Tier 2: `e2e_speed.py` as the bench, an invariant test that runs without
+  the card (a saved head loads from its metadata; decode output shape per token grid), and a
+  `docs/anima/` page.
+- ComfyUI node (the user plans one, 2026-11-19), after the library lands. Its own standalone
+  repo symlinked into `../comfy/custom_nodes/`, the head code a `_vendor/` copy of
+  `library/anima/pixel_head.py` (`make vendor-sync`). Two parts: a MODEL patch that keeps the
+  last forward's pre-head features and x_t (cond and uncond, for the CFG combine), and a decode
+  node that turns them into an IMAGE in place of VAE Decode; the same out-of-range warning as
+  the CLI. The tap sits on the DiT (`final_layer.linear`'s input), not on a sampler, so the
+  stock KSampler and the Spectrum KSampler need no change: Spectrum's cached steps still run
+  `final_layer` on the forecast feature (`ComfyUI-Spectrum-KSampler/spectrum.py`,
+  `_spectrum_fast_forward`), and its tail steps are actual forwards. x_t and σ come from a
+  `CALC_COND_BATCH` wrapper, which runs above Spectrum's model wrapper on every step.
+
+## P5 topics
+
+After the release and the promotion, on the library's head (the user, 2026-11-19: "기존 plan은
+이제 p5에서 unnest해서 여러 주제를 적자. x2 or x4, rgba, pixel loss 등"). Each topic is its own
+line of work with its own proposal; order not set. The first steps are Claude's drafts.
+
+### ×2 / ×4 output
+
+The head writes 16×16 px per token after one internal 2× stage; ×2 output is 32×32 per token,
+decode and upscale in one readout. Under L1 / MSE a 1024-tier feature has no 2048 detail to
+regress, so a ×2 head trained on the recipe's loss alone gives a blurred mean
+(`proposal.md`); it needs a pixel loss (below) or a refiner. What exists: the SR sidecar's
+1-step ResShift ×2 / ×4 students (`project/finished/sr/`).
+
+- First steps: the chain swap with no training (head output in place of the VAE decode ahead
+  of ResShift ×2, minutes); a count of training images whose master in `image_dataset/` is at
+  least 2× the resized side, the supply of real ×2 targets.
+
+### RGBA
+
+An alpha channel on the head's output is cheap to add, and labels can come from real RGBA
+cutouts composited onto random backgrounds (exact alpha) or a matting model on generated images.
+What the head alone cannot give: the DiT renders a composite, so semi-transparent regions (hair
+tips, glass, smoke) carry no background-free foreground colour; LayerDiffuse tunes the DiT for
+that. The baseline to beat is post-hoc matting (BiRefNet, anime-segmentation) on hair-edge
+sheets.
+
+### Pixel losses on the head
+
+What is left against the VAE on `mixr_1119_1455`, on the user's read: screentone dots smoothed
+into soft shading; earlier, speed lines and footnote-size glyphs soft under zoom.
+
+- GAN on the head: FastFrames uses DINOv3 ViT-S/16 heads at layers 4 / 8 / 12 with a
+  relativistic loss and R1 / R2; the turbo line's disc code is in git history.
+- A paired real-pixel target: head training is teacher-forced from cached latents, so each pair
+  has its real image (`post_image_dataset/resized/`), a target past the VAE without a GAN.
+- A ResShift 1-step refiner from the head's output, read against the GAN arm.
+
+### Pixel losses through the head, into the DiT
+
+The head as the differentiable decode for losses that train the DiT or a LoRA: cjk_rl arm D
+(reader NLL through the head, its D0 cost probe rerun against the VAE-window path), a GAN or
+refiner term for the turbo student.
+
+### A head at every step
+
+Spectrum's cached steps (σ 0.90 … 0.265) read a Chebyshev-forecast feature at the tap, and
+cjk_rl arm D reads x̂0 at steps 0 – 1; both want a head over σ in [0, 1]. `mixr_1119_1455`
+covers σ 0.058 … 0.136 on base and 0.5 on turbo. Use: a preview at every step.
+
+### MOSS
+
+A head on MOSS-Image (different DiT, 128-channel latents at /16, the same 16-px token); decode
+memory is the motive there (the fp32 VAE decode does not fit beside the DiT). Nothing run.
 
 ## Open
 
+- Screentone: small dots smoothed into soft shading, a systematic difference from the VAE (the
+  user's read on `mixr_1119_1455`, good enough to release). Taken up under P5, pixel losses on
+  the head.
 - Speed lines (강조선) slightly soft, footnote-size glyphs blur, under zoom only (the user's read
   and Claude's on `pagemix_1119_1242`).
 - The P3a generations (6 mono, 26 colour) not re-run on the pagemix head (`p3_generated.py`).
 - Training on sampled final latents: in reserve (P3a did not break on generated images).
 - The DiT GEMMs run under bf16 autocast (the stream is fp32 since `replay_1119_1225`); whether
   that rounding costs readout PSNR is unchecked.
+- The compiled head (`torch.compile(head, dynamic=True)`) hits `recompile_limit` 12 on image
+  shape and runs eager after that, in every run of the replay recipe
+  (`reports/p4_mix_2026_11_19.md`); speed only.
 - No spread for any trained head: one seed per run. A seed twin of the recipe is owed before a
   gap under about 1 dB is read as a gain. P3's seed-to-seed gap of one prompt (mean 1.98 dB) is
   content variation between images, not a run spread.
 - Grey tint on mono generations (Claude's read on `p3_1119_1056`): on teacher-forced greyscale
   pages the pagemix head adds about 0.5 level of chroma over the VAE (`reports/pagemix_2026_11_19.md`);
   generated mono images are not re-checked.
-- MOSS: nothing until the Anima phases read out.
-- RGBA (the user, 2026-11-19: an open item only). An alpha channel on the head's output is
-  cheap to add, and labels can come from real RGBA cutouts composited onto random backgrounds
-  (exact alpha) or a matting model on generated images. What the head alone cannot give: the DiT
-  renders a composite, so semi-transparent regions (hair tips, glass, smoke) carry no
-  background-free foreground colour; LayerDiffuse tunes the DiT for that. The baseline to beat is
-  post-hoc matting (BiRefNet, anime-segmentation) on hair-edge sheets.

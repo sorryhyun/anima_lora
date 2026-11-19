@@ -8,7 +8,8 @@ for, in order: pixel-space losses that fit beside the DiT (cjk_rl arm D, a GAN o
 turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS later.
 
 - [proposal.md](proposal.md) — the idea, what a head buys and costs, phases P1–P5.
-- [plan.md](plan.md) — the order of work and the open items.
+- [plan.md](plan.md) — what is next (release, promotion into `library/`), the P5 topics and the
+  open items. P1 – P4 and the settled recipe: `reports/phases_p1_p4_2026_11_19.md`.
 - [reports/](reports/) — one report per run or probe, indexed in its `README.md`.
 - [promotion_maybe.md](promotion_maybe.md) — draft Hugging Face card material for the head as a
   turbo decoder (measured decode cost, turbo share estimated).
@@ -49,5 +50,10 @@ target VAE(x̂0); manga eval 28.15 against `mangaup`'s 26.64, tone level with th
 verdict (2026-11-19): P3 passed; speed lines slightly soft under zoom. P4
 (`reports/p4_t2_2026_11_19.md`): a head warm-started from pagemix and trained 7 minutes at turbo's
 σ 0.5 reads turbo 4-step rollouts at 34.58 colour / 27.85 mono (13.73 / 14.16 before); the user's
-verdict: P4 passed. Not yet trained: Spectrum's σ 0.10 (T1 / T3; the `1106` head read colour
-28.52 there, `e2e_1119_1209`).
+verdict: P4 passed. One head over both decode points (`mix_1119_1415`,
+`reports/p4_mix_2026_11_19.md`, base σ 0.10 and turbo σ 0.5 in turn): turbo rollouts 34.42 /
+27.74 against the T2 head's 34.67 / 27.91, base renders 32.91 / 25.65 against the pagemix head's
+29.06 / 23.13; the user settled the recipe on it. Release head `mixr_1119_1455` (base σ 0.0577 … 0.1364 and turbo σ 0.5,
+3,000 rollouts): turbo 35.90 / 29.01, base 28 steps 33.83 / 26.38; the user's verdict: good
+enough to release, P4 complete. Next: release, promotion of the model core into `library/`,
+then the P5 topics (`plan.md`).

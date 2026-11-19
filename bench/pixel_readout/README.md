@@ -3,7 +3,8 @@
 Code for `project/pixel_decoder/`: a pixel head on the frozen Anima DiT's pre-head features (the
 input of `final_layer.linear`) in place of the VAE decoder (FastFrames, arXiv:2611.23226 §3.2,
 App. C). Run records, numbers and reads: `project/pixel_decoder/reports/` (index in its
-`README.md`). Plan and current recipe: `project/pixel_decoder/plan.md`.
+`README.md`). Plan: `project/pixel_decoder/plan.md`; current recipe:
+`project/pixel_decoder/reports/phases_p1_p4_2026_11_19.md`.
 
 ## Scripts
 
