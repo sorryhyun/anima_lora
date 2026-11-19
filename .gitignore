@@ -103,3 +103,4 @@ project/**/assets/*.csv
 project/finished/ocr_reader/assets/
 # ocr_reader eval reports, written by the eval scripts on every run
 project/finished/ocr_reader/reports/ocr_eval_*.md
+bench/turbo/judge_random_1118.txt
