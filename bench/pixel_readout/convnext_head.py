@@ -339,6 +339,20 @@ def main():
         "--page_caption",
         default="monochrome, greyscale, comic, speech bubble, japanese text",
     )
+    p.add_argument(
+        "--stream",
+        choices=["bf16", "fp32"],
+        default="fp32",
+        help="DiT residual stream (stream_fp32_); fp32 is inference.py's default. Runs up "
+        "to convnext_1119_1106 used bf16",
+    )
+    p.add_argument(
+        "--replay",
+        type=int,
+        default=0,
+        help="> 0: keep the last N rollouts on the card and draw every update's sample "
+        "uniformly from them (--opt_steps updates per rollout); 0 = the newest rollout(s)",
+    )
     p.add_argument("--text_encoder", default=DEFAULT_TEXT_ENCODER)
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--lr_linear", type=float, default=2e-5)
@@ -404,6 +418,10 @@ def main():
     compile_blocks, args.compile = args.compile, False
     anima = build_anima(args, adapter=None, train_mode=False).anima
     args.compile = compile_blocks
+    if args.stream == "fp32":
+        from library.anima.stream import stream_fp32_
+
+        stream_fp32_(anima)
     if compile_blocks:
         anima.compile_blocks(dynamic_seq=True, seq_bands=seq_bands)
     tap: dict[str, torch.Tensor] = {}
@@ -470,6 +488,8 @@ def main():
         head.linear.bias.copy_(w1[:, D])
     n_params = sum(p.numel() for p in head.parameters())
     print(f"head {n_params / 1e6:.1f}M params", flush=True)
+    # training forward only; evals and sheets stay eager (rollout_profile: −15 % per update)
+    head_train = torch.compile(head, dynamic=True) if compile_blocks else head
     lin_params = list(head.linear.parameters())
     rest = [p for n, p in head.named_parameters() if not n.startswith("linear.")]
     groups = [{"params": rest, "lr": args.lr, "weight_decay": 0.01}]
@@ -568,6 +588,9 @@ def main():
     t0 = time.perf_counter()
     loss_ema = mse_ema = None
     window: deque = deque(maxlen=args.accum)
+    assert not (args.replay and args.accum > 1), "--replay and --accum do not combine"
+    replay: deque = deque(maxlen=max(1, args.replay))
+    replay_rng = random.Random(args.seed + 3)
     for r in range(args.rollouts):
         if page_train and page_rng.random() < args.page_share:
             if not page_order:
@@ -581,16 +604,22 @@ def main():
                 rng.shuffle(order)
             item = order.pop()
         f, lat, tgts = rollout(item, r)
-        window.append((f, lat, tgts[args.target]))
+        if args.replay:
+            # bf16 features lose nothing: the head's first linear runs under bf16 autocast
+            replay.append((f.to(torch.bfloat16), lat, tgts[args.target].half()))
+        else:
+            window.append((f, lat, tgts[args.target]))
         for _ in range(args.opt_steps):
             set_lr(step)
             opt.zero_grad(set_to_none=True)
-            # newest rollout last, so the logged loss / mse are this rollout's
-            for f, lat, tgt in window:
+            # window: newest rollout last, so the logged loss / mse are this rollout's;
+            # replay: the logged loss is the last drawn sample's
+            batch = [replay_rng.choice(replay)] if args.replay else window
+            for f, lat, tgt in batch:
                 with torch.autocast("cuda", dtype=torch.bfloat16):
-                    pred = head(f, lat)
-                loss, mse = rec_loss(pred, tgt)
-                (loss / len(window)).backward()
+                    pred = head_train(f, lat)
+                loss, mse = rec_loss(pred, tgt.float())
+                (loss / len(batch)).backward()
             torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
             opt.step()
             step += 1
@@ -669,6 +698,8 @@ def main():
             "up": str(args.up),
             "target": args.target,
             "sigma": f"{sigma_last}",
+            "stream": args.stream,
+            "replay": str(args.replay),
         },
     )
     artifacts.append("head.safetensors")

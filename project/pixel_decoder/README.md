@@ -10,8 +10,10 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
 - [proposal.md](proposal.md) — the idea, what a head buys and costs, phases P1–P5.
 - [plan.md](plan.md) — the order of work and the open items.
 - [reports/](reports/) — one report per run or probe, indexed in its `README.md`.
+- [promotion_maybe.md](promotion_maybe.md) — draft Hugging Face card material for the head as a
+  turbo decoder (measured decode cost, turbo share estimated).
 - Code and per-run records: `bench/pixel_readout/` (`linear_probe.py` P1, `convnext_head.py`
-  P2 training, `render_sheets.py`, `ceiling_probe.py`, `overfit_probe.py`, `grad_probe.py`;
+  head training, `e2e_speed.py`, `rollout_profile.py`, `render_sheets.py`, `ceiling_probe.py`, `overfit_probe.py`, `grad_probe.py`;
   its `README.md` holds every run's settings and numbers). Results:
   `bench/pixel_readout/results/` (local).
 
@@ -26,10 +28,11 @@ the VAE decode, 30 held-out images / 8 text images, one seed, spread unknown:
 | the same, gradient over 4 rollouts at LR 1e-3 (`convnext_1119_0950`) | 32.96 | 27.46 |
 | no skip + one 2× upsample stage (`convnext_1119_1106`) | 33.64 | 28.04 |
 | VAE decode of the DiT's own x̂0 (`ceiling_1119_0920`) | 37.00 | 32.02 |
+| fp32 stream + head compile + replay buffer, 900 rollouts (`replay_1119_1225`) | 33.35 | 27.68 |
 
-The current head is `bench/pixel_readout/results/20261119-0959-convnext_1119_0938/head.safetensors`
-(local): 29.7M parameters, no skip, three ConvNeXt blocks at token resolution, 26 minutes of
-training. The first P2 head carried P1's linear as a skip and did not train past it
+The current head is `bench/pixel_readout/results/20261119-1236-replay_1119_1225/head.safetensors`
+(local): 24.9M parameters, no skip, two ConvNeXt blocks at token resolution and one after a 2×
+upsample, 11 minutes of training. The first P2 head carried P1's linear as a skip and did not train past it
 (`reports/p2_skip_2026_11_19.md`). The user's verdict on P2 (2026-11-19): "대 합격"; the
 training method is settled.
 
@@ -37,6 +40,9 @@ P3 (`reports/p3_2026_11_19.md`): on 64 generated images (16 prompts × 2 seeds, 
 the same head reads 30.90 on colour with the base DiT and 31.24 with `anima_merged15`, 22.51 /
 22.85 on mono prompts, against VAE(x_final). Claude's call, sheets sent to the user: the head
 generalizes; dense fine strokes (screentone, hatching) are what is left. A 2× upsample stage
-(`convnext_1119_1106`) took test / text to 33.64 / 28.04 and is in the recipe. Next: the manga /
-greyscale training arms in `plan.md`. Not yet
-checked: any σ other than the last one.
+(`convnext_1119_1106`) took test / text to 33.64 / 28.04 and is in the recipe. The fp32 stream,
+a compiled head and a replay buffer (`replay_1119_1225`, `reports/replay_recipe_2026_11_19.md`)
+read 33.35 / 27.68 in 44 % of the time; the user read the renders as level and the recipe took
+it. In progress: P3b, manga pages in the mix with target VAE(x̂0) (`pagemix_1119_1242`). Not
+yet trained: any σ other than the last one (the head reads colour 28.52 at the Spectrum
+sampler's σ 0.10, `e2e_1119_1209`).

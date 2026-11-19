@@ -318,3 +318,83 @@ Build 2026-11-19: pools 8,140 Manga109-s / 9,683 hitocrawl JA (pages 1–2 of ea
 1,500 + 1,500 drawn (seed 0), 471 s, 1.6 GB. `smoke_pages` (20 rollouts, `--target xhat0
 --page_share 0.33`, no `--up`): 9 page rollouts; manga eval VAE vs original and VAE(x̂0) vs
 VAE(x0) match `manga_1119_1052` within 0.1 dB.
+
+## e2e_speed.py — decode cost on the `make test SPECTRUM=1` sampler
+
+The 16 P3 prompts, anima-base, Euler 28 / shift 3 / CFG 4, Spectrum flags of
+`scripts/tasks/inference.py` (last step an actual forward, σ_last 0.10), compiled blocks, seed 0.
+The final latent is decoded four ways: the `1106` head (resident), the VAE kept on CPU and moved
+in and out (`vae_swap`, the interactive path), the VAE loaded from disk (`vae_disk`, the
+single-prompt path), the VAE resident (reference). Times with CUDA sync, pixels on CPU; peak VRAM
+above the resident DiT.
+
+### e2e_1119_1209 (`results/20261119-1212-e2e_1119_1209/` (local))
+
+| per image, median of 16 | seconds | peak above resident DiT (MB) |
+|---|---|---|
+| DiT sampling | 6.58 | 1349 |
+| head | 0.007 | 244 (+95 weights, resident) |
+| VAE resident | 0.141 | 1298 |
+| VAE swap | 0.178 | 1384 |
+| VAE disk | 0.828 | 1384 |
+
+16 images: DiT 105.6 s; decode adds 0.2 s (head), 2.8 s (swap), 12.9 s (disk). Head vs
+VAE(x_final) PSNR: 27.09 mean, colour (13) 28.52, mono (3) 20.89; P3 (`0938` head, σ 0.0577,
+50 steps, CFG 3.5) was 30.90 / 22.51. The run changes σ, steps, CFG, Spectrum and the head at
+once; one seed.
+
+## rollout_profile.py — where a rollout's time goes
+
+12 train images (~4,100 tokens), medians (`results/20261119-1219-prof_bf16_1119_1217`,
+`…-1220-prof_fp32_1119_1217`, local): load 2 ms, DiT forward 203 ms (bf16 stream) / 207 ms
+(fp32), one VAE decode 141 ms, 4 head updates 73 ms eager / 62 ms under
+`torch.compile(dynamic=True)`. DiT + VAE are 82 % of a rollout.
+
+`bench/_anima.build_anima` does not apply `stream_fp32_`, so every head up to `convnext_1119_1106`
+read bf16-stream features while `inference.py` defaults to `--stream fp32`. `convnext_head.py`
+now takes `--stream` (default fp32), compiles the head's training forward under `--compile`, and
+takes `--replay N`.
+
+### replay_1119_1225 (the user's arm, 2026-11-19)
+
+Parent `convnext_1119_1106`; changed together: `--stream fp32`, head compile, and
+`--rollouts 900 --opt_steps 16 --replay 64` (each update draws one of the last 64 rollouts;
+14,400 updates as the parent, a quarter of the DiT forwards and VAE decodes). `--eval_every 150`.
+Question: does a quarter of the rollouts, reused from a buffer, hold `1106`'s test 33.64 / text
+28.04? The user's rule: no large drop → replay goes into the recipe and the saved time goes to
+more data. Held-out features are on the fp32 stream here, so the comparison carries the stream
+change too.
+
+
+`replaybf16_1119_1231` (the same arm on `--stream bf16`) was queued and cancelled by the user
+(2026-11-19): fp32 stream is settled on other evidence, so a drop in `replay_1119_1225` reads as
+replay's.
+
+Result `replay_1119_1225` (`results/20261119-1236-replay_1119_1225/` (local)), 11.3 min against
+`1106`'s 25.7 (0.76 against 0.43 s / rollout, a quarter of the rollouts):
+
+| updates 2400 / 4800 / 7200 / 9600 / 12000 / 14400 | test (30) | text (8) |
+|---|---|---|
+| `1106` | 26.94 / 30.57 / 31.73 / 32.89 / 33.44 / 33.64 | 23.47 / 26.01 / 26.93 / 27.62 / 27.96 / 28.04 |
+| `replay_1119_1225` | 29.03 / 31.30 / 31.97 / 32.63 / 33.21 / 33.35 | 24.45 / 26.01 / 26.72 / 27.20 / 27.54 / 27.68 |
+
+Per image, replay − `1106`: test −0.47 … −0.13 (0 / 30 up), text −0.41 … −0.28 (0 / 8 up).
+Against VAE(x̂0): test 34.93, text 28.77. P1 linear (fit on bf16 features) reads 25.21 on the
+fp32-stream features against 26.28 on bf16. Spread unknown.
+Reading: ahead to 7,200 updates, behind from 9,600 on; the buffer's 900 distinct rollouts
+against 3,600 is the likely limit late in the run. The user's rule (no large drop → replay in the
+recipe, time to data) applies.
+The user's read (2026-11-19, native-resolution crops of the 8 text windows and sheet 08, VAE |
+`1106` | replay): no difference, or replay slightly better, which the user attributes to the
+fp32 stream.
+
+### pagemix_1119_1242 (P3 manga arm 2 on the replay recipe; the user's call, 2026-11-19)
+
+`replay_1119_1225`'s flags with `--target xhat0 --pages post_image_dataset/pixel_pages
+--page_share 0.33 --rollouts 2000 --eval_every 400` (32,000 updates). Arm 1 (no pages in the mix)
+was dropped by the user: target, rollout count and pages change together against
+`replay_1119_1225`, and the reading is not held to a separated comparison.
+Question: does the page mix take out the soft small text, screentone and the grey tint on mono,
+without losing colour? Read: test / text / manga PSNR (vs VAE(x0) and VAE(x̂0)) beside
+`replay_1119_1225` and `mangaup_1119_1152`, manga sheets (original | VAE | head), labelled; the
+user's read decides.
