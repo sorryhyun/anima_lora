@@ -44,22 +44,20 @@ Outside those settings the head still decodes; quality there is unmeasured.
 
 ## Measured
 
-RTX 5070 Ti, 16 prompts at ~1 MP, compiled DiT blocks, one seed; medians. PSNR is head vs the
-VAE decode of the same final latent. "VAE, moved" is the usual interactive path: the VAE waits on
-the CPU and goes to the card for the decode.
+Turbo 4 steps, CFG 1, RTX 5070 Ti, 16 prompts at ~1 MP, compiled DiT blocks, one seed;
+medians. The VAE column is the usual interactive path: the VAE waits on the CPU and goes to the
+card for the decode.
 
-| | turbo, 4 steps, CFG 1 | base, Euler 28 + Spectrum, CFG 4 |
+| | turbo + VAE | turbo + pixel head |
 |---|---|---|
-| DiT sampling | 0.97 s | 6.74 s |
-| decode, pixel head | 7 ms | 14 ms |
-| decode, VAE resident | 141 ms | 141 ms |
-| decode, VAE moved CPU↔GPU | 176 ms | 179 ms |
-| decode, VAE loaded from disk | 851 ms | 796 ms |
-| decode peak VRAM above the DiT, head / VAE | 0.24 / 1.30 – 1.38 GB | 0.24 / 1.30 – 1.38 GB |
-| head vs VAE | 35.4 dB | 33.0 dB |
-| **total per image (DiT + decode), head vs VAE moved** | **0.98 s vs 1.15 s (1.17×)** | **6.75 s vs 6.91 s (1.02×)** |
+| DiT sampling | 0.97 s | 0.97 s |
+| decode | 176 ms | 7 ms |
+| decode peak VRAM above the DiT | 1.38 GB | 0.24 GB |
+| PSNR against the VAE decode | — | 35.4 dB |
+| **total per image (DiT + decode)** | **1.15 s** | **0.98 s (1.17×)** |
 
-Text encoding (~0.3 s per prompt) is outside the totals.
+With the VAE kept on the card the decode is 141 ms (total 1.11 s, 1.30 GB); loaded from disk
+per image it is 851 ms (total 1.82 s). Text encoding (~0.3 s per prompt) is outside the totals.
 
 Held-out reads during training (dB, colour / mono):
 
