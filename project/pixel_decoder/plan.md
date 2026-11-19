@@ -1,12 +1,13 @@
 # Plan (2026-11-19)
 
-P1 – P4 are done (the user, 2026-11-19: "일단은 p4까지 완료인걸로"). Their record and the settled
+P1 – P4 are complete, with the release, the promotion and the ComfyUI node below (the user,
+2026-11-19: "일단은 p4까지 완료인걸로", then "p4는 완료된걸로 갱신하고 커밋하자"). Their record and the settled
 training recipe are in `reports/phases_p1_p4_2026_11_19.md`; each run's design and numbers are in
 `reports/`. The release head is `mixr_1119_1455`
 (`bench/pixel_readout/results/20261119-1527-mixr_1119_1455/head.safetensors`, local). This file
-holds what is next and what is open.
+holds the P4 wrap-up, the P5 topics and what is open.
 
-## Next
+## P4 wrap-up (done 2026-11-19)
 
 Order (the user, 2026-11-19): "배포되면 프로젝트 모델 코어는 라이브러리에 편입하는 쪽으로
 계획을 잡자. p5는 아마 픽셀로스 등 integration일텐데 배포 및 승격을 선행하게 될듯". Release,
@@ -26,7 +27,7 @@ then promotion of the model core into `library/`, then the P5 topics.
 
 ### 2. Promotion — the model core into `library/`
 
-Done 2026-11-19 (the user: "승격 ㄱㄱ"), except the ComfyUI node:
+Done 2026-11-19 (the user: "승격 ㄱㄱ"):
 
 - `library/anima/pixel_head.py`: `PixelHead`, `ConvNeXtBlock`, `load_pixel_head` (shape and
   trained σ ranges from the metadata), `lat_patches`, `from_patches`, `PATCH`, `PixelTap`

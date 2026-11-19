@@ -8,16 +8,20 @@ for, in order: pixel-space losses that fit beside the DiT (cjk_rl arm D, a GAN o
 turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS later.
 
 - [proposal.md](proposal.md) — the idea, what a head buys and costs, phases P1–P5.
-- [plan.md](plan.md) — what is next (release, promotion into `library/`), the P5 topics and the
-  open items. P1 – P4 and the settled recipe: `reports/phases_p1_p4_2026_11_19.md`.
+- [plan.md](plan.md) — the P4 wrap-up (release, promotion into `library/`, ComfyUI node), the
+  P5 topics and the open items. P1 – P4 and the settled recipe: `reports/phases_p1_p4_2026_11_19.md`.
 - [reports/](reports/) — one report per run or probe, indexed in its `README.md`.
-- [deploy/](deploy/) — the Hub card and NOTICE of `sorryhyun/anima-pixel-decoder` (private).
+- [deploy/](deploy/) — the Hub card and NOTICE of `sorryhyun/anima-pixel-decoder` (private);
+  the card's sample images are local (`bench/pixel_readout/results/card_samples_1119/`) and on the Hub.
 - Code and per-run records: `bench/pixel_readout/` (`linear_probe.py` P1, `convnext_head.py`
   head training, `e2e_speed.py`, `rollout_profile.py`, `render_sheets.py`, `ceiling_probe.py`, `overfit_probe.py`, `grad_probe.py`;
   its `README.md` maps the scripts; run records are in `reports/`). Results:
   `bench/pixel_readout/results/` (local).
 
-State (2026-11-19): P1 and P2 done on anima-base, teacher-forced at σ 0.0577. Test PSNR against
+State (2026-11-19): P1 – P4 complete, with the release, the promotion into `library/` and the
+ComfyUI node (the user: "p4는 완료된걸로 갱신하고 커밋하자"). Next: the P5 topics (`plan.md`).
+
+P1 and P2 on anima-base, teacher-forced at σ 0.0577. Test PSNR against
 the VAE decode, 30 held-out images / 8 text images, one seed, spread unknown:
 
 | | test | text |
@@ -31,7 +35,7 @@ the VAE decode, 30 held-out images / 8 text images, one seed, spread unknown:
 | fp32 stream + head compile + replay buffer, 900 rollouts (`replay_1119_1225`) | 33.35 | 27.68 |
 | + target VAE(x̂0), manga pages 0.33, 2,000 rollouts (`pagemix_1119_1242`) | 34.83 | 29.65 |
 
-The current head is `bench/pixel_readout/results/20261119-1304-pagemix_1119_1242/head.safetensors`
+The P3 head was `bench/pixel_readout/results/20261119-1304-pagemix_1119_1242/head.safetensors`
 (local): 24.9M parameters, no skip, two ConvNeXt blocks at token resolution and one after a 2×
 upsample, 22 minutes of training. The first P2 head carried P1's linear as a skip and did not train past it
 (`reports/p2_skip_2026_11_19.md`). The user's verdict on P2 (2026-11-19): "대 합격"; the
@@ -58,5 +62,5 @@ enough to release, P4 complete. Released 2026-11-19 to the private Hub repo
 `sorryhyun/anima-pixel-decoder` (`reports/release_2026_11_19.md`). Promoted the same day: the model
 core in `library/anima/pixel_head.py`, `inference.py --decoder pixel_head` (`make test PIXEL=1`),
 `docs/anima/inference/pixel_head.md`. ComfyUI node pack `ComfyUI-Anima-PixelDecoder` built the
-same day; turbo in ComfyUI 1.127 s with VAE Decode vs 1.005 s with the head
-(`reports/comfy_node_2026_11_19.md`). Next: the P5 topics (`plan.md`).
+same day and published (GitHub, ComfyUI registry 0.1.0); turbo in ComfyUI 1.127 s with VAE
+Decode vs 1.005 s with the head (`reports/comfy_node_2026_11_19.md`).
