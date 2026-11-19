@@ -42,13 +42,13 @@ description: Wording rules for Korean documents written for outside readers — 
 
 ## 예시
 
-- 고치기 전: "이 tail의 꼬리 부분에서 gradient가 커진다." → 고친 후: "σ 분포의 tail에서 gradient가 커집니다."
-- 고치기 전: "step 0은 layout을 잃는 가장 큰 단계 하나다." → 고친 후: "step 0에서 layout을 가장 많이 잃습니다."
-- 고치기 전: "base GPTQ를 쓰면 bake된 delta가 조용히 사라진다." → 고친 후: "base GPTQ를 쓰면 bake된 delta가 빠집니다."
+- 고치기 전: "분포의 꼬리 부분에서 gradient가 커진다." → 고친 후: "분포의 tail에서 gradient가 커집니다."
+- 고치기 전: "step 0은 layout을 잃는 가장 큰 단계 하나다." → 고친 후: "step 0에서 layout을 가장 많이 잃어버립니다."
+- 고치기 전: "base GPTQ를 쓰면 delta가 조용히 사라진다." → 고친 후: "base GPTQ를 쓰면 delta가 빠집니다."
 - 고치기 전: "캐시가 경고 없이 무효화된다." → 고친 후: "캐시가 무효화됩니다."
 - 고치기 전: "레벨을 정하는 것은 noise가 아니라 objective다." → 고친 후: "레벨은 objective가 정합니다."
 - 고치기 전: "merge는 adaLN을 평균하는 규칙을 따른다." → 고친 후: "merge는 adaLN을 평균합니다."
-- 그대로 둠: "DMD는 궤적이 아니라 분포를 맞춥니다." (앞 문단이 궤적을 맞추는 증류를 설명한 경우)
+- 그대로 둠: "반면 DMD는 궤적이 아니라 분포를 맞춥니다." (앞 문단이 궤적을 맞추는 증류를 설명한 경우)
 
 ## 확인
 
