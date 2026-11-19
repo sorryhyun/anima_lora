@@ -116,7 +116,9 @@ memory is the motive there (the fp32 VAE decode does not fit beside the DiT). No
   `reports/p4_mix_2026_11_19.md`): about 2.5 levels in linear light on screentone-like blocks of
   mono renders on the base DiT, 1 on turbo, under 1 level over a whole image; flat regions level.
   The loss has no term on local tone. Same P5 topic.
-- The user's read of the 50-step and Spectrum renders of `mixr_1119_1455`: not given yet.
+- Spectrum renders of `mixr_1119_1455` have numbers only (34.37 / 26.00); no sheet was made.
+- The head's flat grey on screentone carries a faint regular weave at the patch scale (Claude's
+  read, labelled, base 20 / 50 `manga_page` crops); not measured.
 - Speed lines (강조선) slightly soft, footnote-size glyphs blur, under zoom only (the user's read
   and Claude's on `pagemix_1119_1242`).
 - The P3a generations (6 mono, 26 colour) not re-run on the pagemix head (`p3_generated.py`).
