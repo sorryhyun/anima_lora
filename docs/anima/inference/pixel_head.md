@@ -65,5 +65,6 @@ submodule).
 - The int8 DiT (`--int8`) and other LoRAs are untested; P3 read a merged style LoRA at the
   base level.
 
+Structure, training and the ×2 work: [../experimental/pixel_decoder.md](../experimental/pixel_decoder.md).
 Training, evals and probes: `bench/pixel_readout/`; the project record:
 `project/pixel_decoder/`.

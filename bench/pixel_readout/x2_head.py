@@ -220,6 +220,32 @@ def down2(img: torch.Tensor) -> torch.Tensor:
     return F.avg_pool2d(img[None].float(), 2)[0]
 
 
+def dc_loss(a: torch.Tensor, b: torch.Tensor, k: int) -> torch.Tensor:
+    """L1 on ``k``-px block means (the SR line's tone term,
+    ``project/finished/sr/distill_rsd/train.py``); both in [-1, 1]."""
+    return F.l1_loss(F.avg_pool2d(a[None], k), F.avg_pool2d(b[None], k))
+
+
+def luma8(img: torch.Tensor) -> torch.Tensor:
+    """(3, H, W) in [-1, 1] → Rec.601 luma in 8-bit levels."""
+    w = img.new_tensor([0.299, 0.587, 0.114]).view(3, 1, 1)
+    return ((img.float() + 1) * 127.5 * w).sum(0)
+
+
+def tone_stats(pred: torch.Tensor, tgt: torch.Tensor) -> tuple[float, float | None]:
+    """(whole-image luma, luma over the pixels ``tgt`` has under 64), ``pred`` −
+    ``tgt`` in 8-bit levels: the dark-pixel lift read in ``x2_plan.md``."""
+    lp, lt = luma8(pred), luma8(tgt)
+    d = lp - lt
+    dark = lt < 64
+    return d.mean().item(), (d[dark].mean().item() if dark.any() else None)
+
+
+def mean_or_none(v: list) -> float | None:
+    v = [x for x in v if x is not None]
+    return float(np.mean(v)) if v else None
+
+
 def pair_sheet(cols, path: Path, at: tuple[int, int, int] | None = None):
     """Two labelled columns at native pixels; ``at`` = (x, y, size) crops both."""
     pils = [to_pil(t) for _, t in cols]
@@ -253,6 +279,39 @@ def main():
     p.add_argument("--window", type=int, default=32, help="loss window, tokens")
     p.add_argument("--margin", type=int, default=3, help="context strip, tokens")
     p.add_argument("--x1_weight", type=float, default=1.0, help="×1 output's loss")
+    p.add_argument(
+        "--lambda_lpips",
+        type=float,
+        default=0.0,
+        help="VGG-LPIPS on the ×2 output against the target (the SR line's 2.0 was "
+        "beside a DMD loss, not this recipe loss)",
+    )
+    p.add_argument(
+        "--lambda_dc",
+        type=float,
+        default=0.0,
+        help="tone term (dc_loss) on the ×2 output",
+    )
+    p.add_argument("--dc_block", type=int, default=32, help="dc_loss block, ×2 px")
+    p.add_argument(
+        "--lpips_crop",
+        type=int,
+        default=0,
+        help="LPIPS on one random CxC crop of the loss window per step (0 = the whole "
+        "window; lpips_speed.py: 768² 19.6 ms, 512² 9.0 ms compiled)",
+    )
+    p.add_argument(
+        "--term_log",
+        action="store_true",
+        help="compute LPIPS and dc_loss in the graph even at weight 0 and log every "
+        "term's loss and gradient norm every 50 rollouts (to size the weights)",
+    )
+    p.add_argument(
+        "--resume_x2",
+        default=None,
+        help="<run> whose head_x2.safetensors is loaded after the held-out build "
+        "(with --rollouts 0: read a trained ×2 head on this script's meters)",
+    )
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--warmup", type=int, default=200, help="opt steps")
     p.add_argument("--eval_every", type=int, default=250, help="rollouts")
@@ -282,9 +341,9 @@ def main():
     p.add_argument(
         "--chain",
         action="store_true",
-        help="read the chain too: the teacher on the head's ×1 output against the "
-        "teacher on VAE(x̂0), and put it on the sheets in place of the ×2 output "
-        "(with --rollouts 0: the base head as loaded, no training)",
+        help="read the chain too: the teacher on the --init head's ×1 output (as "
+        "loaded, before training) against the teacher on VAE(x̂0); the sheets become "
+        "chain | ×2 head",
     )
     p.add_argument("--teacher_repo", default=TEACHER_REPO)
     p.add_argument("--teacher_dir", default=TEACHER_DIR)
@@ -429,13 +488,13 @@ def main():
     opt = torch.optim.AdamW(
         head.parameters(), lr=args.lr, betas=(0.9, 0.99), weight_decay=0.01
     )
-    total = args.rollouts * args.opt_steps
+    total_steps = args.rollouts * args.opt_steps
 
     def set_lr(step):
         s = (
             min(1.0, (step + 1) / args.warmup)
             * 0.5
-            * (1 + math.cos(math.pi * step / total))
+            * (1 + math.cos(math.pi * step / total_steps))
         )
         for g in opt.param_groups:
             g["lr"] = args.lr * s
@@ -447,11 +506,43 @@ def main():
         + [(ci, "text") for ci in text]
         + [(pth, "manga") for pth in page_eval[: args.n_manga]]
     )
-    held_feats = []  # (item, set key, f, lat, VAE(x̂0), teacher ×2, bicubic dB, twin dB)
+    import lpips
+
+    lp = lpips.LPIPS(net="vgg", verbose=False).to(device).eval()
+    for q in lp.parameters():
+        q.requires_grad_(False)
+    # channels_last + compile, pred and target as two inputs: 40.3 → 19.6 ms per
+    # 768² step (bench/pixel_readout/lpips_speed.py)
+    lp.to(memory_format=torch.channels_last)
+    lp_train = torch.compile(lp) if compile_blocks else lp
+
+    @torch.no_grad()
+    def lpips_img(a: torch.Tensor, b: torch.Tensor, tile: int = 768) -> float:
+        """Whole-image LPIPS as the area-weighted mean over ``tile``-px tiles (a
+        2560 × 1664 image in one VGG pass runs out of memory beside training)."""
+        h, w = a.shape[-2:]
+        tot = 0.0
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            for y in range(0, h, tile):
+                for x in range(0, w, tile):
+                    ta = a[None, :, y : y + tile, x : x + tile].float()
+                    tb = b[None, :, y : y + tile, x : x + tile].float()
+                    tot += lp(ta, tb).mean().item() * ta.shape[-2] * ta.shape[-1]
+        return tot / (h * w)
+
+    # (item, set key, f, lat, VAE(x̂0), teacher ×2, bicubic dB, twin dB, chain | None)
+    held_feats = []
+    chain_rows = []  # (set key, dB, LPIPS, luma, dark luma) vs the teacher
     t_teacher = []
+    head.eval()
     for name, sigma, adapter_on in points:  # the same noise per item at every point
         for j, (item, key) in enumerate(held_items):
             f, lat, img = rollout(item, 10_000 + j, sigma, adapter_on)
+            chain = None
+            if args.chain:  # the teacher on the --init head's ×1 output, as loaded
+                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                    x1, _ = head(f, lat)
+                chain = up2(x1.float().clamp(-1, 1), 0)
             torch.cuda.synchronize()
             tt = time.perf_counter()
             t2 = up2(img, 0)
@@ -471,8 +562,21 @@ def main():
                     t2.to("cpu", torch.float16),
                     psnr(bicubic2(img), t2),
                     twin,
+                    None if chain is None else chain.to("cpu", torch.float16),
                 )
             )
+            if chain is not None:  # chain meters, once
+                lum, dark = tone_stats(chain, t2)
+                chain_rows.append(
+                    (
+                        f"{name}.{key}",
+                        psnr(chain, t2),
+                        lpips_img(chain, t2),
+                        lum,
+                        dark,
+                    )
+                )
+    head.train()
     sets = list(dict.fromkeys(h[1] for h in held_feats))
     refs = {}
     for st in sets:
@@ -481,6 +585,14 @@ def main():
         refs[f"{st}_psnr_teacher_twin"] = float(
             np.mean([h[7] for h in rows_ if h[7] is not None])
         )
+        cr = [c for c in chain_rows if c[0] == st]
+        if cr:
+            for i, col in enumerate(("psnr", "lpips", "luma", "dark"), 1):
+                refs[f"{st}_chain_{col}"] = mean_or_none([c[i] for c in cr])
+    if args.resume_x2:
+        rx = resolve_run(args.resume_x2) / "head_x2.safetensors"
+        head.load_state_dict(load_file(str(rx), device=str(device)))
+        print(f"loaded ×2 head {rx}", flush=True)
     refs["teacher_sec_per_image"] = float(np.mean(t_teacher))
     print(
         f"held-out {len(held_feats)} in {time.perf_counter() - t0:.0f}s, teacher "
@@ -503,21 +615,28 @@ def main():
         return x1.float().clamp(-1, 1), x2.float().clamp(-1, 1)
 
     def evaluate():
-        """Per set: ×2 vs the teacher, ×1 vs VAE(x̂0), 2×2-mean of ×2 vs VAE(x̂0)."""
+        """Per set: ×2 vs the teacher (dB, LPIPS, luma, dark-pixel luma), ×1 vs
+        VAE(x̂0), 2×2-mean of ×2 vs VAE(x̂0)."""
         head.eval()
         out: dict[str, list] = {}
-        for _, key, f, lat, img, t2, _, _ in held_feats:
+        for _, key, f, lat, img, t2, *_ in held_feats:
             x1, x2 = predict(f, lat)
-            img = img.to(device).float()
-            out.setdefault(f"{key}_x2", []).append(psnr(x2, t2.to(device).float()))
+            img, t2 = img.to(device).float(), t2.to(device).float()
+            lum, dark = tone_stats(x2, t2)
+            out.setdefault(f"{key}_x2", []).append(psnr(x2, t2))
+            out.setdefault(f"{key}_x2_lpips", []).append(lpips_img(x2, t2))
+            out.setdefault(f"{key}_x2_luma", []).append(lum)
+            out.setdefault(f"{key}_x2_dark", []).append(dark)
             out.setdefault(f"{key}_x1", []).append(psnr(x1, img))
             out.setdefault(f"{key}_down", []).append(psnr(down2(x2), img))
         head.train()
-        return {k: float(np.mean(v)) for k, v in out.items()}
+        return {k: mean_or_none(v) for k, v in out.items()}
 
     def fmt(ev):
         return "  ".join(
-            f"{k} ×2 {ev[k + '_x2']:.2f} ×1 {ev[k + '_x1']:.2f} down {ev[k + '_down']:.2f}"
+            f"{k} ×2 {ev[k + '_x2']:.2f} lpips {ev[k + '_x2_lpips']:.4f} "
+            f"dark {ev[k + '_x2_dark'] or 0:+.2f} ×1 {ev[k + '_x1']:.2f} "
+            f"down {ev[k + '_down']:.2f}"
             for k in sets
         )
 
@@ -526,6 +645,59 @@ def main():
     print(f"  eval @ 0 (×1 = the base head as loaded): {fmt(ev0)}", flush=True)
 
     # --- train ---
+    use_lpips = args.lambda_lpips > 0 or args.term_log
+    use_dc = args.lambda_dc > 0 or args.term_log
+    weights = {"rec2": 1.0, "rec1": args.x1_weight}
+    if use_lpips:
+        weights["lpips"] = args.lambda_lpips
+    if use_dc:
+        weights["dc"] = args.lambda_dc
+
+    def loss_terms(bf, blat, b1, b2, bmar, model=None, lp_fn=None):
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            x1, x2 = (model or head_train)(bf, blat)
+        p2, t2_ = crop_margin(x2, bmar, 2 * PATCH), b2.float()
+        l2, mse2 = rec_loss(p2, t2_)
+        l1, mse1 = rec_loss(crop_margin(x1, bmar, PATCH), b1.float())
+        out = {"rec2": l2, "rec1": l1, "mse2": mse2.detach(), "mse1": mse1.detach()}
+        if use_lpips:
+            a, b = p2[None], t2_[None]
+            c = args.lpips_crop
+            if c and min(a.shape[-2:]) > c:
+                y = lp_rng.randint(0, a.shape[-2] - c)
+                x = lp_rng.randint(0, a.shape[-1] - c)
+                a, b = a[..., y : y + c, x : x + c], b[..., y : y + c, x : x + c]
+            cl = torch.channels_last
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                out["lpips"] = (
+                    (lp_fn or lp_train)(
+                        a.contiguous(memory_format=cl), b.contiguous(memory_format=cl)
+                    )
+                    .mean()
+                    .float()
+                )
+        if use_dc:
+            out["dc"] = dc_loss(p2, t2_, args.dc_block)
+        return out
+
+    def grad_norms(sample) -> dict[str, float]:
+        """Unweighted gradient norm of each loss term over all head parameters
+        (eager: the compiled backward donates buffers, so no retain_graph)."""
+        params = [q for q in head.parameters() if q.requires_grad]
+        terms = loss_terms(*sample, model=head, lp_fn=lp)
+        keys = [k for k in weights if k in terms]
+        out = {}
+        for i, k in enumerate(keys):
+            g = torch.autograd.grad(
+                terms[k], params, retain_graph=i + 1 < len(keys), allow_unused=True
+            )
+            out[f"g_{k}"] = torch.sqrt(
+                sum((x.float() ** 2).sum() for x in g if x is not None)
+            ).item()
+        return out
+
+    grad_log: list[dict] = []
+    lp_rng = random.Random(args.seed + 6)
     order: list = []
     page_order: list = []
     page_rng = random.Random(args.seed + 2)
@@ -576,26 +748,38 @@ def main():
         for _ in range(args.opt_steps):
             set_lr(step)
             opt.zero_grad(set_to_none=True)
-            bf, blat, b1, b2, bmar = replay_rng.choice(replay)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
-                x1, x2 = head_train(bf, blat)
-            l2, mse2 = rec_loss(crop_margin(x2, bmar, 2 * PATCH), b2.float())
-            l1, mse1 = rec_loss(crop_margin(x1, bmar, PATCH), b1.float())
-            (l2 + args.x1_weight * l1).backward()
+            terms = loss_terms(*replay_rng.choice(replay))
+            loss = sum(w * terms[k] for k, w in weights.items() if k in terms)
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
             opt.step()
             step += 1
-        for k, v in (("mse2", mse2.item()), ("mse1", mse1.item())):
+        for k, v in terms.items():
+            v = v.item()
             ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
         if (r + 1) % 50 == 0:
             el = time.perf_counter() - t0
+            extra = ""
+            if use_lpips or use_dc:
+                extra = "  " + " ".join(
+                    f"{k} {ema[k]:.4f}" for k in ("lpips", "dc") if k in ema
+                )
             print(
                 f"  rollout {r + 1}/{args.rollouts}  psnr~ ×2 "
                 f"{10 * math.log10(4 / ema['mse2']):.2f} ×1 "
-                f"{10 * math.log10(4 / ema['mse1']):.2f}  {el / (r + 1):.2f}s/rollout  "
+                f"{10 * math.log10(4 / ema['mse1']):.2f}{extra}  "
+                f"{el / (r + 1):.2f}s/rollout  "
                 f"eta {(args.rollouts - r - 1) * el / (r + 1) / 60:.0f}m",
                 flush=True,
             )
+            if args.term_log:
+                gn = grad_norms(replay_rng.choice(replay))
+                grad_log.append({"rollout": r + 1, **gn, **{k: ema[k] for k in ema}})
+                print(
+                    "    grad norm per term (unweighted): "
+                    + "  ".join(f"{k} {v:.3e}" for k, v in gn.items()),
+                    flush=True,
+                )
         if (r + 1) % args.eval_every == 0 or r + 1 == args.rollouts:
             ev = evaluate()
             history.append({"rollout": r + 1, "step": step, **ev})
@@ -607,9 +791,10 @@ def main():
     head.eval()
     rows, artifacts = [], []
     counters: dict[str, int] = {}
-    for item, key, f, lat, img, t2, bic, twin in held_feats:
+    for item, key, f, lat, img, t2, bic, twin, chain in held_feats:
         x1, x2 = predict(f, lat)
         img, t2 = img.to(device).float(), t2.to(device).float()
+        lum, dark = tone_stats(x2, t2)
         is_page = isinstance(item, Path)
         rows.append(
             {
@@ -617,6 +802,9 @@ def main():
                 "artist": "pages" if is_page else Path(item.npz_path).parent.name,
                 "set": key,
                 "psnr_x2_vs_teacher": psnr(x2, t2),
+                "lpips_x2_vs_teacher": lpips_img(x2, t2),
+                "luma_x2_vs_teacher": lum,
+                "dark_x2_vs_teacher": dark,
                 "psnr_bicubic_vs_teacher": bic,
                 "psnr_teacher_twin": twin,
                 "psnr_x1_vs_vae": psnr(x1, img),
@@ -624,16 +812,16 @@ def main():
                 "psnr_teacher_down_vs_vae": psnr(down2(t2), img),
             }
         )
-        if args.chain:
-            chain = up2(x1, 0)
+        if chain is not None:
+            chain = chain.to(device).float()
             rows[-1]["psnr_chain_vs_teacher"] = psnr(chain, t2)
         n = counters.get(key, 0)
         counters[key] = n + 1
         if n >= args.n_sheets and not key.endswith(".text"):
             continue
         cols = [("VAE -> ResShift x2", t2), ("x2 head", x2)]
-        if args.chain:
-            cols[1] = ("head x1 -> ResShift x2", chain)
+        if chain is not None:
+            cols = [("chain: head x1 -> ResShift x2", chain), ("x2 head", x2)]
         stem = f"{key.replace('.', '_')}_{n:02d}_{item.stem}"
         pair_sheet(cols, run_dir / f"{stem}_full.png")
         cx, cy = densest_window(t2, args.crop)
@@ -678,14 +866,17 @@ def main():
     for st in sets:
         for col in (
             "psnr_x2_vs_teacher",
+            "lpips_x2_vs_teacher",
+            "luma_x2_vs_teacher",
+            "dark_x2_vs_teacher",
             "psnr_bicubic_vs_teacher",
             "psnr_x1_vs_vae",
             "psnr_down_vs_vae",
             "psnr_teacher_down_vs_vae",
             *(["psnr_chain_vs_teacher"] if args.chain else []),
         ):
-            set_metrics[f"{st}_{col}"] = float(
-                np.mean([row[col] for row in rows if row["set"] == st])
+            set_metrics[f"{st}_{col}"] = mean_or_none(
+                [row[col] for row in rows if row["set"] == st]
             )
     metrics = {
         "train_points": [
@@ -704,6 +895,8 @@ def main():
         "peak_vram_gb": torch.cuda.max_memory_allocated() / 1e9,
         **refs,
         **set_metrics,
+        "loss_weights": weights,
+        "term_log": grad_log,
         "eval_history": history,
         "per_image": rows,
     }
@@ -711,6 +904,7 @@ def main():
         "×2 head vs teacher (bicubic | second teacher draw): "
         + " | ".join(
             f"{st}: {set_metrics[f'{st}_psnr_x2_vs_teacher']:.2f} "
+            f"lpips {set_metrics[f'{st}_lpips_x2_vs_teacher']:.4f} "
             f"({refs[f'{st}_psnr_bicubic']:.2f} | {refs[f'{st}_psnr_teacher_twin']:.2f})"
             for st in sets
         ),
@@ -718,9 +912,11 @@ def main():
     )
     if args.chain:
         print(
-            "chain (teacher on the ×1 output) vs teacher: "
+            "chain (teacher on the --init head's ×1 output) vs teacher: "
             + " | ".join(
-                f"{st}: {set_metrics[f'{st}_psnr_chain_vs_teacher']:.2f}" for st in sets
+                f"{st}: {refs[f'{st}_chain_psnr']:.2f} lpips {refs[f'{st}_chain_lpips']:.4f} "
+                f"dark {refs[f'{st}_chain_dark'] or 0:+.2f}"
+                for st in sets
             ),
             flush=True,
         )

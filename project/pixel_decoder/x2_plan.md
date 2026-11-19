@@ -84,6 +84,38 @@ reference levels (bicubic 31.86 / 28.25, second draw 46.65 / 40.36, 2 test / 8 t
 Outcome: soft, and ×1 under the parent; the capacity and frozen-base branches were both read by
 the fit probes (above). No user verdict was asked on arm A's sheets beyond the tone read.
 
+## Arms 1 + 2 together — tone term and LPIPS (running)
+
+The user (2026-11-19): "1, 2 같이 적용해도 될듯? lpips나 tone term 모두 이미 resshift든 moss든
+검증된거라. 다만 hyperparameter만 가볍게 보고 본 학습 돌리자".
+
+Design: `x2a_1119_1802` with two terms added on the ×2 output against the teacher, nothing else
+changed (window 24, margin 3, 1,000 rollouts, LR 2e-4, points `0.0577-0.1364 0.5:adapter`, pages
+0.33, init `mixr_1119_1455`): `--lambda_dc` (L1 on 32-px block means, `dc_loss` of the SR line)
+and `--lambda_lpips` (VGG-LPIPS). The two cannot be separated in this run. Question: do the ×2
+head's lines and dark tone come up to the chain's? Yes → the ×2 stage is a candidate for
+promotion, read by the user on crops. No → arm 3 (GAN).
+
+Sizing, `smoke_x2lp` (λ 0 with both terms in the graph, 150 rollouts): unweighted gradient norms
+over the head, rollouts 50 / 100 / 150: rec2 0.38 / 0.31 / 0.33, rec1 0.29 / 0.24 / 0.35, LPIPS
+7.1 / 7.1 / 16.0, dc 0.57 / 0.48 / 0.38. 1.71 – 1.78 s per rollout against arm A's 1.09.
+λ_dc = 1.0 (the SR line's value; its gradient is about rec2's). λ_lpips sweep at 250 rollouts,
+`x2lp{001,003,01}_1119_1944`: 0.01 / 0.03 / 0.1, about 0.3× / 1× / 3× rec2's gradient. The
+SR line's 2.0 sat beside a DMD loss and does not carry over. The full run takes the λ whose
+crops are crisp without artefacts, read against `x2ref_1119_1908` (arm A and the chain on the
+new meters: LPIPS against the teacher, dark-pixel luma lift).
+
+Void runs: `smoke_x2lp` and the first sweep (`x2lp{001,003,01}_1119_1919`). The loss sum was
+named `total`, which shadowed the cosine schedule's step count, so `set_lr` computed
+cos(π·step / loss). After warmup the LR multiplier landed anywhere in 0 … 1 each step, with no
+decay. Fixed (`loss`, `total_steps`). The smoke's gradient-norm ratios are kept for sizing
+only. Arm A and `x2ref_1119_1908` predate the change or do not train.
+
+Read: the full run's two-column crops `chain | ×2 head` (`--chain`), test 12 / text 8 / manga 4 at
+both points, labelled; numbers beside them: dB, LPIPS and dark lift against the teacher, the ×1
+output against the parent. The user's read decides. Bars: spread unknown.
+Cost: sweep 3 × ~11 min, full run ~40 min.
+
 ## Next arms
 
 Claude's drafts, none queued. Each is a micro arm on arm A's recipe (about 25 min at 1.09 s per

@@ -106,6 +106,7 @@ dependencies = [
     "flash-linear-attention>=0.5.2 ; sys_platform == 'linux'",
     # OCR reader train / eval / gate scripts (project/finished/ocr_reader/).
     "pandas>=3.0.3",
+    "lpips>=0.1.4",
 ]
 
 [project.optional-dependencies]

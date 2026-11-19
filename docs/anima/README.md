@@ -30,6 +30,7 @@ Wired and runnable, but not part of the default stack — may break or change.
 | [experimental/soft_tokens.md](experimental/soft_tokens.md) | Soft Tokens — SoftREPA per-layer × per-t soft text tokens (~1M params); frozen DiT, optional B=1 contrastive |
 | [experimental/directedit_editing_v3.md](experimental/directedit_editing_v3.md) | DirectEdit (v3) — flow-inversion image editing; what's actually wired and runnable |
 | [experimental/vr_loss.md](experimental/vr_loss.md) | Variance-reduced FM loss — AsymFlow §5.2 control-variate correction at the loss level |
+| [experimental/pixel_decoder.md](experimental/pixel_decoder.md) | Pixel decoder — 25M ConvNeXt head on the DiT's last features in place of the VAE: structure, training, phases, the ×2 output in progress |
 | [experimental/easycontrol_region.md](experimental/easycontrol_region.md) | EasyControl · Region — paint-to-character inpainting task on the EasyControl stack |
 | [experimental/soup.md](experimental/soup.md) | Soup — uncond-init ΔW LoRA soup (`make soup`) |
 | [experimental/cjk_ext_vocab_coverage.md](experimental/cjk_ext_vocab_coverage.md) | CJK ext-vocab row coverage — measured reachable/unreachable rows and the symbol block |
