@@ -51,13 +51,16 @@ card for the decode.
 | | turbo + VAE | turbo + pixel head |
 |---|---|---|
 | DiT sampling | 0.97 s | 0.97 s |
-| decode | 176 ms | 7 ms |
+| VAE move to the card and back | 35 ms | — |
+| decode | 141 ms | 7 ms |
 | decode peak VRAM above the DiT | 1.38 GB | 0.24 GB |
 | PSNR against the VAE decode | — | 35.4 dB |
 | **total per image (DiT + decode)** | **1.15 s** | **0.98 s (1.17×)** |
 
-With the VAE kept on the card the decode is 141 ms (total 1.11 s, 1.30 GB); loaded from disk
-per image it is 851 ms (total 1.82 s). Text encoding (~0.3 s per prompt) is outside the totals.
+The move row is the moved-VAE path (176 ms) minus a decode with the VAE already on the card
+(141 ms). Loading the VAE from disk per image instead costs ~710 ms (851 ms with the decode,
+total 1.82 s); keeping it on the card saves the move (total 1.11 s, 1.30 GB). Text encoding
+(~0.3 s per prompt) is outside the totals.
 
 Held-out reads during training (dB, colour / mono):
 
