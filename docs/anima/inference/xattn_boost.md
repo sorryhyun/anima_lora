@@ -14,7 +14,7 @@ intervention is a *rotation toward the cross-attn direction* on (near) the norm
 shell downstream blocks were trained on, not an unconstrained residual add.
 
 Origin: `_archive/proposals/frontload_text_boost.md` arm (b), Phase-0 G1+G2 PASS;
-renorm = Phase-1'' arm (g) (`bench/frontload_text_boost/report.md`). The
+renorm = Phase-1'' arm (g) (`_archive/bench/frontload_text_boost/report.md`). The
 σ-gated CFG arm (a) of the same proposal is CLOSED — style collapse at
 every strength that does anything; do not re-propose plain high-σ CFG-up.
 
@@ -116,4 +116,4 @@ tone by eyeball, not Δsat.
 - `library/inference/generation.py` — inline + tiled loop wiring
 - `networks/spectrum.py`, `networks/spd.py`, `networks/foveated.py` — runners
 - `tests/test_xattn_gain.py` — identity/scaling/reset invariants
-- `bench/frontload_text_boost/` — Phase-0/1 grids + report
+- `_archive/bench/frontload_text_boost/` — Phase-0/1 grids + report

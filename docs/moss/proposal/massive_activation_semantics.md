@@ -84,7 +84,7 @@ prompt-dependent part, and the second part is what the paper's results depend on
 
 ## Question 1 result (2026-11-13)
 
-`bench/moss_ma_mask/probe_masks.py`, run `results/20261113-1014-base`: Base, fp32 stream,
+`_archive/bench/moss_ma_mask/probe_masks.py`, run `results/20261113-1014-base`: Base, fp32 stream,
 1024², 30 steps, CFG 3, 16 subject-on-background prompts × 2 seeds. Block outputs of the
 cond forward on steps 0 3 7 11 15 19 23 29, K-means on the raw channel maps and on their
 min-max normalised maps, the paper's polarity rule, mIoU against BiRefNet on the final
@@ -126,7 +126,7 @@ input or activation), a LoRA, and i2i reference rows.
 
 ## i2i LoRAs on these channels (2026-11-13, weights only)
 
-`bench/moss_ma_mask/lora_channels.py`, run `results/20261113-1051-lora-channels`. Uncensor
+`_archive/bench/moss_ma_mask/lora_channels.py`, run `results/20261113-1051-lora-channels`. Uncensor
 (with and without `mod_rank` 16), sanitize v3, swap_text v3 and v6, colorize v5, against
 the t2i ama_mitsuki pair; all rank 32, Muon, kaiming `down`, so a column's share of `ΔW`
 starts uniform (18 channels: 0.59 %, ch 1356 + 42: 0.065 %). The modulation is shared by

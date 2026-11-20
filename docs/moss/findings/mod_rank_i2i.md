@@ -61,7 +61,7 @@ An arm with `ref_timestep` equal to the image's would separate the two.
 Runs: `output/ckpt_moss_i2i/moss_i2i_sanitize_q1_e4{,_mod16}`; renders
 `output/tests/moss_i2i_sanitize/ab_q1_mod16/{base,mod16}/s{42,43,44}` (sheets
 `compare_<page>.jpg`, tone `tone_s{42,43,44}.{txt,json}` beside them); probes
-`bench/moss_bbox_grounding/results/20261029-1040-sanitize_q1_base` and
+`_archive/bench/moss_bbox_grounding/results/20261029-1040-sanitize_q1_base` and
 `20261029-1110-sanitize_q1_mod16`.
 
 The v3 recipe (`configs/moss/i2i/sanitize/train.toml`: rank 32, Muon lr 5e-5, isolated

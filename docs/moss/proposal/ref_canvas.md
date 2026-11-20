@@ -1,6 +1,6 @@
 # MOSS i2i: the reference as a panel of one layout canvas (`ref_pos = canvas`)
 
-Status: proposal, 2026-11-10, probed the same day (`bench/moss_ref_canvas/`). Base does hold a
+Status: proposal, 2026-11-10, probed the same day (`_archive/bench/moss_ref_canvas/`). Base does hold a
 character across two panels, and reads a reference panel that is noised with the image and
 attends both ways. It does not read the isolated reference of the i2i recipe, on canvas or
 `offset` coordinates, and the panel boxes change nothing. What runs from here is the copy
@@ -65,7 +65,7 @@ coordinates and the caption change.
 
 ## Measured (2026-11-10)
 
-`bench/moss_ref_canvas/` (README: conditions, both tables, the run folders). Base, int8 DiT, no
+`_archive/bench/moss_ref_canvas/` (README: conditions, both tables, the run folders). Base, int8 DiT, no
 LoRA.
 
 **Renders** (`panels.toml`, a 1728×1216 canvas, 4 prompts × seeds 0–2, no prompt naming hair,

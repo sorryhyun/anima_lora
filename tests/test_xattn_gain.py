@@ -1,7 +1,7 @@
 """Invariants for the Block._xattn_gain cross-attn residual gain.
 
 The buffer backs the frontload_text_boost arm-(b) bench
-(bench/frontload_text_boost/). Two things must hold:
+(_archive/bench/frontload_text_boost/). Two things must hold:
 
 1. gain = 1.0 (the default) is EXACT identity — the training path and every
    checkpoint rendered before the buffer existed are bit-unchanged.

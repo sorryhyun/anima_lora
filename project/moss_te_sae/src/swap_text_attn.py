@@ -32,7 +32,6 @@ from PIL import Image
 from safetensors.torch import load_file, save_file
 
 import library.moss.model as mm
-from bench.moss_bbox_grounding.probe import box_cells
 from library.env import resolve_under_home
 from library.moss import loader
 from library.moss.generate import (
@@ -48,6 +47,24 @@ from library.moss.model import decode, snapped_sigmas
 from library.moss.requests import GenerateRequest, resolve_model_dir
 from probe import tokenize
 from template_causal import log
+
+
+def box_cells(box, height, width):
+    """Bool ``(h/16 · w/16)`` of the cells whose centre is inside the box (the
+    cell holding the box centre when none is). Copied from
+    ``_archive/bench/moss_bbox_grounding/probe.py``."""
+    h16, w16 = height // 16, width // 16
+    y0, x0, y1, x1 = (box[0] + height / 2, box[1] + width / 2,
+                      box[2] + height / 2, box[3] + width / 2)  # fmt: skip
+    cy = (torch.arange(h16) + 0.5) * 16
+    cx = (torch.arange(w16) + 0.5) * 16
+    m = ((cy >= y0) & (cy <= y1))[:, None] & ((cx >= x0) & (cx <= x1))[None]
+    if not m.any():
+        r = min(h16 - 1, int((y0 + y1) / 2 // 16))
+        c = min(w16 - 1, int((x0 + x1) / 2 // 16))
+        m[r, c] = True
+    return m.flatten()
+
 
 REGION_DIR = "output/tests/moss_i2i_swap_text_region"
 PAGES = ("1483610_0007_en", "3124789_0042_en", "589883_0004_ko", "737486_0019_ko")

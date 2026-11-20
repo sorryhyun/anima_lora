@@ -16,7 +16,7 @@ Anima finding: FM-MSE does not track quality (why validation moved to CMMD,
 `docs/anima/guidelines/base-config.md` `use_cmmd`). If the reward is noise, AGSM is dead on arrival — the
 proposal flagged this as "the single most important early kill-check."
 
-Phase 0 ran it (`bench/soft_tokens_contrastive/reward_premise_probe.py`, no
+Phase 0 ran it (`_archive/bench/soft_tokens_contrastive/reward_premise_probe.py`, no
 training). The premise holds. This note records why that is not a
 contradiction, plus two non-obvious results that fall out of the same run.
 
@@ -125,11 +125,11 @@ decimals, and hard is slightly worse (0.927 vs 0.958). Reading:
 ## Reproduce
 
 ```
-uv run python -m bench.soft_tokens_contrastive.reward_premise_probe \
+uv run python _archive/bench/soft_tokens_contrastive/reward_premise_probe.py \
     --num_samples 24 --num_seeds 2 --contrastive_k 2 \
     --adapter output/ckpt/anima_soft_tokens_tenth.safetensors --label phase0-agsm
 ```
 
-Probe: `bench/soft_tokens_contrastive/reward_premise_probe.py`. Structural sibling
+Probe: `_archive/bench/soft_tokens_contrastive/reward_premise_probe.py`. Structural sibling
 (does a hard negative exist): `negative_audit.py`. Proposal (archived as LANDED):
 `_archive/proposals/soft_tokens_agsm.md` §"premise risk to falsify first" + Phase 0.

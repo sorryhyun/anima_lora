@@ -1,7 +1,7 @@
 # Caption rows pick up the page and the image reads it back in blocks 26–41; the template rows run a fixed trajectory
 
 Measured 2026-11-14 on colorize v5 (`moss_colorize_v5`, isolated reference at `ref_timestep` 0)
-and on Base. Probes, runs and per-page arrays: `bench/moss_text_stream/` (`probe.py`,
+and on Base. Probes, runs and per-page arrays: `_archive/bench/moss_text_stream/` (`probe.py`,
 `caption_rows.py`, `README.md`).
 
 ## Setting

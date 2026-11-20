@@ -1,7 +1,7 @@
 # The text refiner turns a layout bbox into the location MOSS draws at
 
 Measured 2026-10-28 on MOSS-Image Base. Probe, ablation and per-condition tables:
-`bench/moss_bbox_grounding/` (`probe.py`, `ablate.py`, `README.md`).
+`_archive/bench/moss_bbox_grounding/` (`probe.py`, `ablate.py`, `README.md`).
 
 ## Setting
 
@@ -47,7 +47,7 @@ every query (σ 0.9; share of the box's in-box gain lost, 1 = gone; bootstrap 95
 
 ## The sanitize LoRA does its edit in the same blocks
 
-`bench/moss_bbox_grounding/sanitize_probe.py`, sanitize v3 (EMA), trained without boxes:
+`_archive/bench/moss_bbox_grounding/sanitize_probe.py`, sanitize v3 (EMA), trained without boxes:
 4 eval pages rendered by the LoRA (its output as the target, so the edit region is what it
 chose to remove) and 15 training pairs, teacher-forced with the isolated reference. Edit
 region `E` = latent RMS diff > 0.6, `K` the rest. Share of the LoRA's gain over Base lost

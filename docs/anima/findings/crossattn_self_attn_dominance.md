@@ -3,7 +3,7 @@
 > **ARCHIVED (2026-07-12).** The measurement bench moved to
 > `_archive/bench/cross_attn_drive/` — mechanism questions answered, the
 > exploitation lever shipped as `--xattn_boost` (see
-> `docs/anima/inference/xattn_boost.md`, `bench/frontload_text_boost/`). The glyph
+> `docs/anima/inference/xattn_boost.md`, `_archive/bench/frontload_text_boost/`). The glyph
 > scatter probe is `_archive/bench/turbo/glyph_scatter_probe.py` (local; turbo
 > text-loss diagnosis). Paths below are pre-archive.
 >
@@ -176,7 +176,7 @@ as a rendering-quality number.
 Result 4 left "is there a glyph proxy here at all?" open on the mass axis. There is
 one on the velocity axis. Same production CfgDelta probe as Result 1's companion
 (`ANIMA_CFG_DELTA_LOG`), base DiT, 14 real captions × 2 seeds × 5 arms, 1024/28/cfg 4,
-paired by (caption, seed). Probe: `bench/frontload_text_boost/glyph_delta_probe.py`,
+paired by (caption, seed). Probe: `_archive/bench/frontload_text_boost/glyph_delta_probe.py`,
 run `results/20260716-2207-glyph-delta/`.
 
 Each arm appends a clause to the same real caption. A vs C alone confounds three
@@ -231,7 +231,7 @@ Band = σ ∈ [0.5, 0.8], the feature-commit band (n=28 cells):
   headroom lives only in the first 2–3 steps" verdict stands — a bigger collinear
   push is what CFG already does.
 
-Why this matters for the localized lever. `bench/frontload_text_boost`'s Phase-1
+Why this matters for the localized lever. `_archive/bench/frontload_text_boost`'s Phase-1
 verdict gated the localized feature-commit-band boost on finding "a regime that
 demonstrably DROPS small features". Glyphs are that regime, and this says the model
 is already spending extra drive there — the deficit is not that text goes quiet in
@@ -306,10 +306,10 @@ PYTHONPATH=. uv run python _archive/bench/cross_attn_drive/attn_evolution.py --p
 
 # Result 5 — glyph vs the CFG-delta. This one is LIVE (it feeds that bench's open
 # localized-boost gate) and rides the production CfgDelta probe, no hooks:
-uv run python bench/frontload_text_boost/glyph_delta_probe.py --label glyph-delta
-uv run python bench/frontload_text_boost/glyph_delta_probe.py --check-tokens   # asserts D/E stay length-matched
+uv run python _archive/bench/frontload_text_boost/glyph_delta_probe.py --label glyph-delta
+uv run python _archive/bench/frontload_text_boost/glyph_delta_probe.py --check-tokens   # asserts D/E stay length-matched
 # Re-analyze an existing log without regenerating (~28 min of GPU otherwise):
-uv run python bench/frontload_text_boost/glyph_delta_probe.py --log <cfg_delta.json>
+uv run python _archive/bench/frontload_text_boost/glyph_delta_probe.py --log <cfg_delta.json>
 ```
 
 Results: `_archive/bench/cross_attn_drive/results/*-contrib_{base,sincos}/` (+ `attn_contribution.png`),

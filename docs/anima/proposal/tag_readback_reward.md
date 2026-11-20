@@ -2,8 +2,8 @@
 
 Status: **Phase 0a PASS (tagger judge, content-tag axis).** The scoring primitive
 (`anime_tools.tagger.readback::TagReadback`), the validity harness
-(`bench/readback/run_bench.py`), and the turbo render driver
-(`bench/readback/render_turbo.py`) are built and run. Verdict: the tagger read-back
+(`_archive/bench/readback/run_bench.py`), and the turbo render driver
+(`_archive/bench/readback/render_turbo.py`) are built and run. Verdict: the tagger read-back
 is a valid per-image caption-*adherence* instrument, on both real and generated
 images; it is (by design) orthogonal to the turbo text/pose teacher-gap, which is a
 scope boundary, not a failure. Results:
@@ -12,7 +12,7 @@ scope boundary, not a failure. Results:
 > on the PE-backed tagger, which was removed; `AnimaTagger` now runs the dbv4 backend
 > (`anime_tools.tagger.dbv4_backend`: dbv4 general/character/rating tags + a sidecar
 > head for copyright, dataset-only characters and people-count — no artist head).
-> Re-run `bench/readback/run_bench.py` on dbv4 before a consumer relies on the 0a
+> Re-run `_archive/bench/readback/run_bench.py` on dbv4 before a consumer relies on the 0a
 > gates. Phase 0b loses its tagger-artist-head candidate.
 
 - Real-data controls (val N=756, cached PE, zero renders): shuffled-caption drop
@@ -45,11 +45,11 @@ RWR phases may proceed on this instrument. Supersedes PR #67
 (`reward_weighted_artist_lora.md`, unmerged): the RWR estimator and phase discipline
 are inherited from it, the reward stack is rebuilt.
 
-Runs: `bench/readback/results/20260722-1105-v3-refit/` (real-data),
-`bench/readback/results/20260722-1153-turbo/` (+ generated-image + turbo pair/spread);
-renders at `bench/readback/renders/20260722-1117-turbo/`.
+Runs: `_archive/bench/readback/results/20260722-1105-v3-refit/` (real-data),
+`_archive/bench/readback/results/20260722-1153-turbo/` (+ generated-image + turbo pair/spread);
+renders at `_archive/bench/readback/renders/20260722-1117-turbo/`.
 
-- Planned bench: `bench/readback/run_bench.py` (new; Phase-0 judge validation on
+- Planned bench: `_archive/bench/readback/run_bench.py` (new; Phase-0 judge validation on
   pairs with known ground-truth ranking — no training, no new models).
 - Planned bench: `bench/rwr/verifier_probe.py` (from PR #67, revised: style
   verifier validated content-matched, see Phase 0b).
@@ -141,7 +141,7 @@ Not a tagger change — the judge is frozen throughout.
 
 ## Phase 0a — read-back validity (gate; no training, no new models)
 
-`bench/readback/run_bench.py`. Score pairs where the correct ranking is already
+`_archive/bench/readback/run_bench.py`. Score pairs where the correct ranking is already
 known, with both judges:
 
 | pair set | known ranking | source |
