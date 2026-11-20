@@ -28,7 +28,10 @@ Folds, in order:
    their length — ``だから――――`` is a prolongation, like ``ーー``. Curly
    double quotes ``“`` / ``”`` → ASCII ``"`` (``TARGET_NORM = 6``, 2026-11-17: one
    quote, three spellings across the manifests; swaprelax_v5 had 75 ``”`` rows
-   to 3 ``"``).
+   to 3 ``"``). Circles ``◯`` / ``〇`` → ``○`` (``TARGET_NORM = 9``, 2026-11-20: the
+   censor mark, the bullet and the kanji zero are one drawn shape, spelled all three
+   ways across the labels; Latin ``O`` stays). ``anime_tools`` 0.13.1's
+   ``normalize_read`` folds the same.
 5. **Korean dashes** (``TARGET_NORM = 8``, 2026-11-20) — in a string holding Hangul,
    every dash (``―`` after fold 4, ``–``, ``‒``, ``‐``) → ASCII ``-``, run length kept.
    The KO labels spell one dash four ways (swaprelax_v5: ``-`` 289, ``―`` 161, ``—`` 38,
@@ -38,7 +41,7 @@ Folds, in order:
    ``...`` / ``・・・`` / ``…`` as labelled (``…`` shielded from NFKC, which
    spells it ``...``); ``‥`` takes NFKC's ``..``.
 
-The **training target** (:func:`training_target`, ``TARGET_NORM = 8``) keeps
+The **training target** (:func:`training_target`, ``TARGET_NORM = 9``) keeps
 the label's line breaks as ``\\n`` (one token, id 23; norm 4 collapsed them to a
 space, so v4 answers one line) and writes the heart as ``♥``: in the VL-1.6 tokenizer ``♥`` is
 one token and ``♡`` is three bytes, and ``TARGET_NORM = 3`` (``♡`` in the
@@ -70,6 +73,8 @@ HEART_FOLD = str.maketrans(
         "—": "―",
         "“": '"',
         "”": '"',
+        "◯": "○",  # every drawn circle → ○ (TARGET_NORM = 9)
+        "〇": "○",
     }
 )
 """Post-NFKC symbol table. Name kept from ``eval_manga109`` — it grew the wave,
@@ -144,7 +149,7 @@ def collapse_keep_lines(s: str) -> str:
 
 
 def training_target(s: str) -> str:
-    """The training target (``TARGET_NORM = 8``): :func:`fold_glyphs` without
+    """The training target (``TARGET_NORM = 9``): :func:`fold_glyphs` without
     the dot-run fold (``dots=False``), line breaks kept as ``\\n``
     (:func:`collapse_keep_lines`), the heart as :data:`TRAIN_HEART`.
     ``exact_key`` / ``space_key`` stay ``♡``-spelled, whitespace-blind and

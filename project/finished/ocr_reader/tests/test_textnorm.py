@@ -130,3 +130,19 @@ def test_dash_glyphs_are_the_ones_the_corpus_uses():
 def test_korean_dashes_fold_to_hyphen(raw, target):
     # TARGET_NORM 8: a Hangul string's dashes → "-", run length kept; Japanese keeps ―
     assert _mod().training_target(raw) == target
+
+
+@pytest.mark.parametrize(
+    "raw, target",
+    [
+        ("○○바이러스", "○○바이러스"),
+        ("オ〇ニー", "オ○ニー"),
+        ("二〇三六年", "二○三六年"),
+        ("◯太陽は小さく…", "○太陽は小さく…"),
+        ("O자키군", "O자키군"),
+    ],
+)
+def test_circles_fold_to_white_circle(raw, target):
+    # TARGET_NORM 9: ◯ / 〇 → ○ in the target and the scoring key; Latin O stays
+    assert _mod().training_target(raw) == target
+    assert _mod().exact_key(raw) == target
