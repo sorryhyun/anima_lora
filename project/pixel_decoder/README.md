@@ -10,7 +10,7 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
 - [proposal.md](proposal.md) — the idea, what a head buys and costs, phases P1–P5.
 - [plan.md](plan.md) — the P4 wrap-up (release, promotion into `library/`, ComfyUI node), the
   P5 topics and the open items. P1 – P4 and the settled recipe: `reports/phases_p1_p4_2026_11_19.md`.
-- [x2_plan.md](x2_plan.md) — the ×2 output topic of P5: state after arm A (`x2a_1119_1802`), next arms.
+- [x2_plan.md](x2_plan.md) — the ×2 output topic of P5: state, the finished arms (A, 1 + 2, preview, 3) as a table, arm B (the real 2× image as the target, decided 2026-11-20), next arms.
 - [reports/](reports/) — one report per run or probe, indexed in its `README.md`.
 - [deploy/](deploy/) — the Hub card and NOTICE of `sorryhyun/anima-pixel-decoder` (private);
   the card's sample images are local (`bench/pixel_readout/results/card_samples_1119/`) and on the Hub.
@@ -23,6 +23,10 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
 
 State (2026-11-19): P1 – P4 complete, with the release, the promotion into `library/` and the
 ComfyUI node (the user: "p4는 완료된걸로 갱신하고 커밋하자"). Next: the P5 topics (`plan.md`).
+
+P5, ×2 output (2026-11-20): a ×2 file shipped as a test file; LPIPS, a tone term and the SR
+line's DMD / GAN critic did not bring the ×2 stage up to the chain; the user chose arm B (the
+real 2× image as the target, base points only) as the next arm (`x2_plan.md`).
 
 P1 and P2 on anima-base, teacher-forced at σ 0.0577. Test PSNR against
 the VAE decode, 30 held-out images / 8 text images, one seed, spread unknown:

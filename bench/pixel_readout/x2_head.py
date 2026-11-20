@@ -67,6 +67,7 @@ from bench.pixel_readout.convnext_head import (
     token_count,
 )
 from bench.pixel_readout.linear_probe import PATCH, pick_samples, psnr, to_pil
+from bench.pixel_readout.x2_dmd import X2_TEACHER, X2Critic
 from library.anima.pixel_head import (
     PixelHeadX2,
     lat_patches,
@@ -143,6 +144,8 @@ def load_teacher(repo: Path, weights: Path, device):
             cond_mode=cond,
         )[0].float()
 
+    # the pieces a critic on the same VQ-f4 latent builds on (x2_dmd.X2Critic)
+    up2.resshift = (R, cfg, diff, cond)
     return up2
 
 
@@ -253,6 +256,40 @@ def main():
         help="LPIPS on one random CxC crop of the loss window per step (0 = the whole "
         "window; lpips_speed.py: 768² 19.6 ms, 512² 9.0 ms compiled)",
     )
+    p.add_argument(
+        "--lambda_dmd",
+        type=float,
+        default=0.0,
+        help="RSD's distribution-matching term on a --critic_crop crop of the ×2 "
+        "output, in the teacher's VQ-f4 latent (x2_dmd.X2Critic)",
+    )
+    p.add_argument(
+        "--lambda_gan",
+        type=float,
+        default=0.0,
+        help="GAN term on the fake critic's bottleneck (the SR line's 3e-3 sat beside "
+        "its own DMD and LPIPS weights)",
+    )
+    p.add_argument(
+        "--critic",
+        action="store_true",
+        help="build and train the critic even at --lambda_dmd 0 --lambda_gan 0 (with "
+        "--term_log: size the two weights)",
+    )
+    p.add_argument(
+        "--critic_crop", type=int, default=256, help="×2 px, multiple of 256"
+    )
+    p.add_argument(
+        "--critic_k", type=int, default=1, help="critic updates per head update"
+    )
+    p.add_argument("--critic_lr", type=float, default=5e-5)
+    p.add_argument(
+        "--critic_gan_d",
+        type=float,
+        default=3e-3,
+        help="weight of the discriminator loss inside the critic's update",
+    )
+    p.add_argument("--critic_teacher", default=X2_TEACHER)
     p.add_argument(
         "--term_log",
         action="store_true",
@@ -617,6 +654,28 @@ def main():
     history = [{"rollout": 0, "step": 0, **ev0}]
     print(f"  eval @ 0 (×1 = the base head as loaded): {fmt(ev0)}", flush=True)
 
+    # --- critic (arm 3): RSD's DMD + GAN terms on a crop of the ×2 output ---
+    critic = None
+    if args.lambda_dmd > 0 or args.lambda_gan > 0 or args.critic:
+        assert args.critic_crop % 256 == 0, "--critic_crop: a multiple of 256"
+        R, rcfg, rdiff, rcond = up2.resshift
+        assert rcond == "latent", f"critic conditioning {rcond}"
+        critic = X2Critic(
+            R,
+            rcfg,
+            rdiff,
+            Path(resolve_under_home(args.critic_teacher)),
+            device,
+            lr=args.critic_lr,
+            lambda_gan_d=args.critic_gan_d,
+            seed=args.seed + 7,
+            use_dmd=args.lambda_dmd > 0 or args.critic,
+            use_gan=args.lambda_gan > 0 or args.critic,
+        )
+    peak_setup = torch.cuda.max_memory_allocated() / 1e9
+    torch.cuda.reset_peak_memory_stats()
+    print(f"peak VRAM before training {peak_setup:.2f} GB", flush=True)
+
     # --- train ---
     use_lpips = args.lambda_lpips > 0 or args.term_log
     use_dc = args.lambda_dc > 0 or args.term_log
@@ -627,8 +686,30 @@ def main():
         weights["dc"] = args.lambda_dc
     if args.lambda_lpips_x1 > 0:
         weights["lpips1"] = args.lambda_lpips_x1
+    if critic is not None:  # a term at weight 0 is in the graph only under --critic
+        if critic.use_dmd:
+            weights["dmd"] = args.lambda_dmd
+        if critic.use_gan:
+            weights["gan"] = args.lambda_gan
+    crit_rng = random.Random(args.seed + 8)
 
-    def loss_terms(bf, blat, b1, b2, bmar, breal=False, model=None, lp_fn=None):
+    def critic_crops(p2, blq, t2_):
+        """One random --critic_crop crop of the loss region → (×2 output, bicubic ×2
+        of VAE(x̂0), teacher ×2), each (1, 3, c, c). The bicubic is the teacher's own
+        upsample (``resshift_infer.upscale``), taken on the region before the crop."""
+        c = args.critic_crop
+        h, w = p2.shape[-2:]
+        assert min(h, w) >= c, (h, w, c)
+        y, x = crit_rng.randint(0, h - c), crit_rng.randint(0, w - c)
+        up = F.interpolate(
+            blq[None].float(), scale_factor=2, mode="bicubic", align_corners=False
+        )
+        sl = (..., slice(y, y + c), slice(x, x + c))
+        return p2[None].float()[sl], up[sl], t2_[None][sl]
+
+    def loss_terms(
+        bf, blat, b1, b2, bmar, breal=False, blq=None, model=None, lp_fn=None
+    ):
         with torch.autocast("cuda", dtype=torch.bfloat16):
             x1, x2 = (model or head_train)(bf, blat)
         p2, t2_ = crop_margin(x2, bmar, 2 * PATCH), b2.float()
@@ -653,6 +734,9 @@ def main():
                 )
         if use_dc:
             out["dc"] = dc_loss(p2, t2_, args.dc_block)
+        if critic is not None:
+            dmd, gan = critic.gen_terms(*critic_crops(p2, blq, t2_))
+            out.update({k: v for k, v in (("dmd", dmd), ("gan", gan)) if v is not None})
         if breal and args.lambda_lpips_x1 > 0:
             cl = torch.channels_last
             a = crop_margin(x1, bmar, PATCH)[None].float()
@@ -695,6 +779,9 @@ def main():
     step = 0
     wt = args.window + 2 * args.margin
     ema: dict[str, float] = {}
+    t_critic = 0.0
+    peak_steps, evaluated = None, False
+    crit_keys = ("dmd", "gan", "c_fake", "c_gan_d", "d_real", "d_fake")
     t0 = time.perf_counter()
     for r in range(args.rollouts):
         if page_train and page_rng.random() < args.page_share:
@@ -740,6 +827,7 @@ def main():
                 crop_margin(t2, mar, 2 * PATCH).half(),
                 mar,
                 real,
+                crop_margin(win, mar, PATCH).half().clone(),  # VAE(x̂0): the critic's LQ
             )
         )
         for _ in range(args.opt_steps):
@@ -751,9 +839,29 @@ def main():
             torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
             opt.step()
             step += 1
+            if critic is not None:
+                if args.term_log:
+                    torch.cuda.synchronize()
+                tc = time.perf_counter()
+                clog = critic.step()  # on this step's ×2 crop, detached
+                for _ in range(args.critic_k - 1):
+                    cf, clat, _, cb2, cmar, _, clq = crit_rng.choice(replay)
+                    with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                        _, cx2 = head(cf.float(), clat)
+                    clog = critic.update(
+                        *critic_crops(
+                            crop_margin(cx2, cmar, 2 * PATCH), clq, cb2.float()
+                        )
+                    )
+                if args.term_log:
+                    torch.cuda.synchronize()
+                t_critic += time.perf_counter() - tc
         for k, v in terms.items():
             v = v.item()
             ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
+        if critic is not None:
+            for k, v in clog.items():
+                ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
         if (r + 1) % 50 == 0:
             el = time.perf_counter() - t0
             extra = ""
@@ -761,6 +869,11 @@ def main():
                 extra = "  " + " ".join(
                     f"{k} {ema[k]:.4f}" for k in ("lpips", "dc", "lpips1") if k in ema
                 )
+            if critic is not None:
+                extra += "  " + " ".join(
+                    f"{k} {ema[k]:.4g}" for k in crit_keys if k in ema
+                )
+                extra += f"  critic {t_critic / step * 1e3:.0f} ms/step"
             print(
                 f"  rollout {r + 1}/{args.rollouts}  psnr~ ×2 "
                 f"{10 * math.log10(4 / ema['mse2']):.2f} ×1 "
@@ -777,7 +890,10 @@ def main():
                     + "  ".join(f"{k} {v:.3e}" for k, v in gn.items()),
                     flush=True,
                 )
+        if not evaluated:  # rollouts and updates only, before any whole-image eval
+            peak_steps = torch.cuda.max_memory_allocated() / 1e9
         if (r + 1) % args.eval_every == 0 or r + 1 == args.rollouts:
+            evaluated = True
             ev = evaluate()
             history.append({"rollout": r + 1, "step": step, **ev})
             print(f"  eval @ {r + 1}: {fmt(ev)}", flush=True)
@@ -891,7 +1007,12 @@ def main():
         "sec_per_rollout": sec_per_rollout,
         "head_ms_whole_image": head_ms,
         "head_ms_image_tokens": list(f.shape[:2]),
-        "peak_vram_gb": torch.cuda.max_memory_allocated() / 1e9,
+        "peak_vram_gb": max(peak_setup, torch.cuda.max_memory_allocated() / 1e9),
+        "peak_vram_setup_gb": peak_setup,
+        "peak_vram_train_gb": torch.cuda.max_memory_allocated() / 1e9,
+        "peak_vram_steps_gb": peak_steps,
+        "peak_vram_reserved_gb": torch.cuda.max_memory_reserved() / 1e9,
+        "critic_ms_per_step": t_critic / max(1, step) * 1e3,
         **refs,
         **set_metrics,
         "loss_weights": weights,
@@ -921,7 +1042,9 @@ def main():
         )
     print(
         f"head {head_ms:.1f} ms on {tuple(f.shape[:2])} tokens, "
-        f"{sec_per_rollout:.2f} s / rollout, peak {metrics['peak_vram_gb']:.1f} GB",
+        f"{sec_per_rollout:.2f} s / rollout, peak {metrics['peak_vram_gb']:.1f} GB "
+        f"(setup {peak_setup:.1f}, rollouts + updates {peak_steps or 0:.1f}, reserved "
+        f"{metrics['peak_vram_reserved_gb']:.1f})",
         flush=True,
     )
     out = write_result(

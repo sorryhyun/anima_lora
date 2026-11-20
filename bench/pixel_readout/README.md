@@ -25,8 +25,12 @@ The model code (`PixelHead`, `PixelTap`, `load_pixel_head`, `lat_patches`, `from
 | `overfit_probe.py` | can a fresh head fit 16 images (~70 s per arm) | `p2_skip_2026_11_19.md` |
 | `grad_probe.py` | gradient shares and per-image gradient cosines of a head | `p2_skip_2026_11_19.md` |
 | `tone_probe.py` | tone of a head against the VAE on sheets (CPU): block mean shift in code values and in linear light, by texture | `p4_mix_2026_11_19.md` |
-| `x2_head.py` | ×2 head: a second 2× stage on a released head, trained on windows against ResShift ×2 of VAE(x̂0); `--rollouts 0 --chain` reads the teacher on the ×1 output | `x2_arm_a_2026_11_19.md` |
+| `x2_head.py` | ×2 head: a second 2× stage on a released head, trained on windows against ResShift ×2 of VAE(x̂0); `--rollouts 0 --chain` reads the teacher on the ×1 output; `--resume_x2` continues a trained ×2 head; `--lambda_dmd` / `--lambda_gan` / `--critic*` add `x2_dmd.py`'s terms | `x2_arm_a_2026_11_19.md`, `x2_lpips_dc_2026_11_19.md`, `x2_critic_2026_11_20.md` |
 | `x2_overfit.py` | can the ×2 stage fit N train windows, per arm (depth, width, frozen base) | `x2_arm_a_2026_11_19.md` |
+| `x2_dmd.py` | `X2Critic`: the SR line's RSD critic on the ×2 output (frozen ResShift ×2 teacher, fake critic, GAN head, VQ-f4 encoder); a module, no CLI | `x2_critic_2026_11_20.md` |
+| `x2_pair.py` | one column of two runs' sheets as an `A \| B` sheet per image (CPU) | `x2_critic_2026_11_20.md` |
+| `x2_masters.py` | real 2× targets from the masters: supply manifest and the alignment check (`target_2x`; CPU) | `x2_plan.md`, arm B |
+| `feat_probe.py` | P1's ridge readout on other inputs: last-step feature, previous step, a mid block | `feat_probe_2026_11_20.md` |
 
 Every script compiles through `_compile.py::compile_blocks_isolated` (a compile cache per seq-band
 signature; a shared cache replayed head training's 4032–4200 guard into the 3952–4096 P3 renders).

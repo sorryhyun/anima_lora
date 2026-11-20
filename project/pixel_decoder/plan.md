@@ -61,11 +61,13 @@ line of work with its own proposal; order not set. The first steps are Claude's 
 
 ### ×2 / ×4 output
 
-Its own plan: `x2_plan.md` (state, arm A's design and outcome, next arms). In short: the head
+Its own plan: `x2_plan.md` (state, finished arms, arm B, next arms). In short: the head
 writes 32×32 px per token through a second 2× stage; arm A (`x2a_1119_1802`, regression onto the
 released ResShift ×2 student's output) came out soft, 1.7 – 3.0 dB under the teacher run on the
-release head's ×1 output; next are a tone term and a perceptual or adversarial term on the ×2
-output (`reports/x2_arm_a_2026_11_19.md`).
+release head's ×1 output; LPIPS and a tone term (`x2lt_1119_2013`) and the SR line's DMD / GAN
+critic (`reports/x2_critic_2026_11_20.md`) did not close it. A ×2 file shipped as a test file
+(`reports/x2_preview_release_2026_11_19.md`). Next, on the user's word (2026-11-20): arm B, the
+real 2× image as the target at the base points, the turbo point left out of ×2 for now.
 
 ### RGBA
 
