@@ -140,9 +140,13 @@ def test_korean_dashes_fold_to_hyphen(raw, target):
         ("二〇三六年", "二○三六年"),
         ("◯太陽は小さく…", "○太陽は小さく…"),
         ("O자키군", "O자키군"),
+        ("「☓☓☓と☓×☓」", "「×××と×××」"),
+        ("✕ 프라우다고교", "× 프라우다고교"),
+        ("X파일", "X파일"),
     ],
 )
-def test_circles_fold_to_white_circle(raw, target):
-    # TARGET_NORM 9: ◯ / 〇 → ○ in the target and the scoring key; Latin O stays
+def test_shapes_fold(raw, target):
+    # TARGET_NORM 9: ◯ / 〇 → ○, ☓ / ✕ … → × in the target and the scoring key;
+    # Latin O / x / X stay
     assert _mod().training_target(raw) == target
-    assert _mod().exact_key(raw) == target
+    assert _mod().exact_key(raw) == "".join(target.split())

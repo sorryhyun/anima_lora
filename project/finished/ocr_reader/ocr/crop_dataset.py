@@ -70,8 +70,8 @@ compatibility jamo (``ᄏᄏ`` → ``ㅋㅋ``; norm 3–5 taught ``ᄏ``) (2026-
 7 = norm 6 without the dot-run fold — ``...`` / ``・・・`` / ``…`` trained as
 labelled, ``…`` kept from NFKC's ``...``, ``‥`` → ``..`` (2026-11-18; scoring keys
 still fold); 8 = norm 7 with a Hangul string's dashes (``―`` / ``—`` / ``–`` …) → ``-``
-(2026-11-20, ``textnorm`` fold 5); 9 = norm 8 with ``◯`` / ``〇`` → ``○`` (2026-11-20,
-``textnorm`` fold 4)."""
+(2026-11-20, ``textnorm`` fold 5); 9 = norm 8 with ``◯`` / ``〇`` → ``○`` and ``☓`` / ``✕`` … → ``×``
+(2026-11-20, ``textnorm`` fold 4)."""
 
 
 def normalize_target(s: str) -> str:

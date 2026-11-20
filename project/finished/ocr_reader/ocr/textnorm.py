@@ -30,8 +30,9 @@ Folds, in order:
    quote, three spellings across the manifests; swaprelax_v5 had 75 ``”`` rows
    to 3 ``"``). Circles ``◯`` / ``〇`` → ``○`` (``TARGET_NORM = 9``, 2026-11-20: the
    censor mark, the bullet and the kanji zero are one drawn shape, spelled all three
-   ways across the labels; Latin ``O`` stays). ``anime_tools`` 0.13.1's
-   ``normalize_read`` folds the same.
+   ways across the labels); crosses ``☓`` / ``✕`` / ``✖`` / ``╳`` / ``✗`` / ``✘`` → ``×``
+   (one label wrote ``☓☓☓と☓×☓``). Latin ``O`` / ``x`` / ``X`` stay. ``anime_tools``
+   0.13.2's ``normalize_read`` folds the same (``SHAPE_FOLD``).
 5. **Korean dashes** (``TARGET_NORM = 8``, 2026-11-20) — in a string holding Hangul,
    every dash (``―`` after fold 4, ``–``, ``‒``, ``‐``) → ASCII ``-``, run length kept.
    The KO labels spell one dash four ways (swaprelax_v5: ``-`` 289, ``―`` 161, ``—`` 38,
@@ -73,8 +74,9 @@ HEART_FOLD = str.maketrans(
         "—": "―",
         "“": '"',
         "”": '"',
-        "◯": "○",  # every drawn circle → ○ (TARGET_NORM = 9)
+        "◯": "○",  # every drawn circle → ○, every cross → × (TARGET_NORM = 9)
         "〇": "○",
+        **{c: "×" for c in "☓✕✖╳✗✘"},
     }
 )
 """Post-NFKC symbol table. Name kept from ``eval_manga109`` — it grew the wave,
