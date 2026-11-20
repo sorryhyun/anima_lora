@@ -76,11 +76,15 @@ split (tower LoRA + LM full FT). The first probe is in
 | P3 — mixed-language v4 run | `vl16_p2b_kozh` = P2b + gelnote KO/ZH pseudo: KO/ZH back to stock level (v3 lost them: KO 1/48), JA gates flat or up — [`reports/p3_kozh.md`](reports/p3_kozh.md). ×2 epochs (`vl16_p2b_kozh_ep2`): sincos strict 316 → 346 (z +3.2, mostly hearts), COO SFX +49 (z +3.6), KO/ZH unchanged — [`reports/p3_kozh_ep2.md`](reports/p3_kozh_ep2.md); chosen to replace ep1 as Hub `v4/`. Owed: seed 2, more KO/ZH data to clear stock |
 | outside readers | OvisOCR2 (page parser, Qwen3.5-0.8B): ZH at stock, KO −9, sincos SFX 2 / 597 (crops) and 3 / 597 recall on whole pages — not a candidate — [`reports/ovisocr2.md`](reports/ovisocr2.md); OvisOCR3 (2026-10-21, `plain_ocr` prompt): KO 22 / 48 (stock level), ZH 27 / 48 (rewrites trad → simp), sincos SFX 9 / 597 — not a candidate. A 0.2-epoch LoRA reads 166 / 597; VL P3 at the same 16 k crops reads 233 (z +5.5) and wins COO too, so Ovis does not learn faster; VL's split on Ovis (LM decoder full FT) is no better (♡-blind 188 vs LoRA 198) — [`reports/ovisocr3.md`](reports/ovisocr3.md) |
 
+v7 (two-prompt `OCR:` / `SFX:`, Hub `v7_preview/`): [`docs/proposal/ocr_sfx_prefix.md`](../../../docs/proposal/ocr_sfx_prefix.md).
+The Manga109 side was reviewed 2026-11-20 (errors by kind, detector misses, missed polygons
+restored as `SFX:` rows): [`reports/manga_error_review.md`](reports/manga_error_review.md).
+Labelling next: the Korean set (`probes/ko_label_review.py` → `apply_ko_review.py`).
+
 Interpretation (notes on the table): v4's mean token logprob ranks well on K3 (P1 relabel
 row). Hito JA sits far more confident than the sincos SFX (P1b row).
 
-Plan and gates: [`roadmap.md`](roadmap.md). Open questions:
-[`questions.md`](questions.md).
+Plan and gates: [`roadmap.md`](roadmap.md).
 
 ## The gate — sincos 597
 

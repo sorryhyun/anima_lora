@@ -372,6 +372,11 @@ def main():
         default="sfxp_det_clean",
         help="det manifest for --sfx_prefix (sfxp_det = before the 11-17 clean)",
     )
+    ap.add_argument(
+        "--sfxp_missed",
+        help="--sfx_prefix: also train the detector-missed COO polygons of this manifest "
+        "(sfxp_missed, build_sfx_prefix.py --missed) as SFX: rows",
+    )
     ap.add_argument("--max_train", type=int, help="rows per kind (subsample)")
     ap.add_argument("--val_limit", type=int)
     ap.add_argument("--val_bs", type=int, default=16)
@@ -632,6 +637,7 @@ def main():
             limit=a.max_train,
             seed=a.seed,
             det_manifest=a.sfxp_det,
+            missed_manifest=a.sfxp_missed,
         )
         va_df = cd.load_sfxp(
             "val",
@@ -639,6 +645,7 @@ def main():
             limit=a.val_limit,
             seed=a.seed,
             det_manifest=a.sfxp_det,
+            missed_manifest=a.sfxp_missed,
         )
     else:
         tr_df = cd.load_split(

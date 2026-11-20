@@ -37,6 +37,10 @@ to the page. Three parts, each its own manifest under ``derived/``:
   (``eval_manga109.py --manifest sfxp_gt``).
 * ``--clean`` → ``manifest_sfxp_det_clean.parquet``: ``--det``'s boxes with the doubtful
   labels unwritten (``build_clean``).
+* ``--missed`` → ``manifest_sfxp_missed.parquet``: train COO polygons no detector box
+  covers, typed (``missed_sub``); the ``--missed_keep`` types (``i_plain``, ``a_punct``,
+  and ``g_tiny`` / ``e_dark_bg`` with no other SFX in the crop) cut from the polygon as
+  ``SFX:`` rows (``build_missed``).
 * ``--kozh`` → ``manifest_sfxp_kozh.parquet``: the gelnote KO / ZH and swaprelax_v5 pseudo
   rows, re-cut from their pages at the new margin, labels as they are, ``kind = speech``.
 
@@ -551,6 +555,121 @@ def build_gt(a, derived: Path):
     )
 
 
+PUNCT_ONLY = re.compile(r"^[・…‥.。、!！?？♡♥~〜ー―\-\s☆★♪]+$")
+
+
+def missed_sub(gray, pts, text: str, joined: bool) -> str:
+    """The sub-type of a ``missed`` COO polygon (no detector box covers 20 % of it),
+    first rule that fits: ``a_punct`` (marks only), ``b_page_edge`` (touches the page
+    edge), ``c_huge`` (long side ≥ 300 px), ``d_joined``, ``e_dark_bg`` (a 4 px ring
+    round the polygon averages under 150 grey), ``f_rotated`` (≥ 25° off axis),
+    ``g_tiny`` (long side < 40 px), ``h_one_char``, else ``i_plain``."""
+    H, W = gray.shape
+    p = np.asarray(pts, np.int32).reshape(-1, 2)
+    x0, y0 = p.min(0)
+    x1, y1 = p.max(0)
+    long = max(x1 - x0 + 1, y1 - y0 + 1)
+    if PUNCT_ONLY.match(text):
+        return "a_punct"
+    if x0 <= 3 or y0 <= 3 or x1 >= W - 4 or y1 >= H - 4:
+        return "b_page_edge"
+    if long >= 300:
+        return "c_huge"
+    if joined:
+        return "d_joined"
+    mk = np.zeros_like(gray, np.uint8)
+    cv2.fillPoly(mk, [p.reshape(-1, 1, 2)], 1)
+    ring = cv2.dilate(mk, np.ones((9, 9), np.uint8)).astype(bool) & ~mk.astype(bool)
+    if ring.any() and gray[ring].mean() < 150:
+        return "e_dark_bg"
+    _, _, ang = cv2.minAreaRect(p.astype(np.float32))
+    if abs(((ang + 45) % 90) - 45) >= 25:
+        return "f_rotated"
+    if long < 40:
+        return "g_tiny"
+    if len(re.sub(r"\s", "", text)) <= 1:
+        return "h_one_char"
+    return "i_plain"
+
+
+def build_missed(a, derived: Path):
+    """``--missed`` → ``manifest_sfxp_missed.parquet``: the train COO polygons no detector
+    box covers (``sfxp_types_train.parquet`` type ``missed``, written by ``--clean``),
+    each with its :func:`missed_sub` type and ``o_sfx``, the largest share of another COO
+    polygon's bbox inside this polygon's capped-margin bbox. The ``--missed_keep`` types
+    are cut from the polygon as the gate crops are (``pilot.deskew_crop``, capped margin)
+    and carry a ``path``, except ``--missed_alone`` types with ``o_sfx ≥ 0.1`` (another
+    SFX in the crop); ``load_sfxp(missed_manifest=…)`` adds those as ``SFX:`` rows."""
+    import pilot
+
+    allty = pd.read_parquet(derived / "sfxp_types_train.parquet")
+    page_polys = {
+        k: [(str(c), json.loads(q)) for c, q in zip(g.coo_id, g.poly)]
+        for k, g in allty.groupby(["book", "page"])
+    }
+    ty = allty[allty.type == "missed"]
+
+    def bb(q):
+        q = np.asarray(q).reshape(-1, 2)
+        return q[:, 0].min(), q[:, 1].min(), q[:, 0].max(), q[:, 1].max()
+
+    def o_sfx(book, page, cid, poly):
+        x0, y0, x1, y1 = bb(poly)
+        m = min(4, 0.3 * min(x1 - x0, y1 - y0))
+        best = 0.0
+        for oid, q in page_polys[(book, page)]:
+            if oid == cid:
+                continue
+            a = bb(q)
+            iw = max(0, min(a[2], x1 + m) - max(a[0], x0 - m))
+            ih = max(0, min(a[3], y1 + m) - max(a[1], y0 - m))
+            best = max(best, iw * ih / max(1, (a[2] - a[0]) * (a[3] - a[1])))
+        return best
+
+    rows, cur, img, gray, lost = [], None, None, None, 0
+    for r in ty.sort_values(["book", "page"]).itertuples():
+        if cur != (r.book, r.page):
+            img, cur = cv2.imread(str(m109.page_path(r.book, r.page))), (r.book, r.page)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        poly = json.loads(r.poly)
+        sub = missed_sub(gray, poly, r.coo_text, bool(r.joined))
+        ov = o_sfx(r.book, r.page, str(r.coo_id), poly)
+        d = dict(
+            split="train",
+            kind="sfx",
+            id=str(r.coo_id),
+            book=r.book,
+            page=int(r.page),
+            text=r.coo_text,
+            sub=sub,
+            o_sfx=round(float(ov), 3),
+            source=f"missed_{sub}",
+            orient=None,
+            w=0,
+            h=0,
+            path=None,
+        )
+        if sub in a.missed_keep and not (sub in a.missed_alone and ov >= 0.1):
+            crop, ori = pilot.deskew_crop(img, poly, cap_frac(poly), 1)
+            if crop is None:
+                lost += 1
+            else:
+                rel = (
+                    f"crops_sfxp/missed/train/{r.book}_{int(r.page):03d}_{r.coo_id}.png"
+                )
+                (derived / rel).parent.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(derived / rel), crop)
+                d.update(orient=ori, w=crop.shape[1], h=crop.shape[0], path=rel)
+        rows.append(d)
+    df = pd.DataFrame(rows)
+    df.to_parquet(derived / "manifest_sfxp_missed.parquet", index=False)
+    print(
+        f"[missed] {df['sub'].value_counts().sort_index().to_dict()}; "
+        f"cut {df[df.path.notna()]['sub'].value_counts().to_dict()}; lost {lost}",
+        flush=True,
+    )
+
+
 def build_kozh(a, derived: Path):
     gel = {}
     for line in open(GELNOTE / "manifest.jsonl", encoding="utf-8"):
@@ -629,6 +748,25 @@ def main():
         "--clean", action="store_true", help="det manifest → manifest_sfxp_det_clean"
     )
     ap.add_argument("--gt", nargs="+", help="splits to re-cut for the gate evals")
+    ap.add_argument(
+        "--missed",
+        action="store_true",
+        help="train COO polygons the detector misses → manifest_sfxp_missed (needs --clean's "
+        "sfxp_types_train)",
+    )
+    ap.add_argument(
+        "--missed_keep",
+        nargs="+",
+        default=["i_plain", "a_punct", "g_tiny", "e_dark_bg"],
+        help="missed sub-types cut as SFX: rows (missed_sub)",
+    )
+    ap.add_argument(
+        "--missed_alone",
+        nargs="+",
+        default=["g_tiny", "e_dark_bg"],
+        help="of --missed_keep, the types cut only when no other COO SFX reaches the crop "
+        "(o_sfx < 0.1)",
+    )
     ap.add_argument("--splits", nargs="+", default=["train", "val"])
     ap.add_argument(
         "--neg_keep", type=float, default=0.15, help="share of neg_speech crops written"
@@ -651,6 +789,8 @@ def main():
         build_det(a, derived)
     if a.clean:
         build_clean(a, derived)
+    if a.missed:
+        build_missed(a, derived)
 
 
 if __name__ == "__main__":

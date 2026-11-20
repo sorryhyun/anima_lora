@@ -128,6 +128,7 @@ def load_sfxp(
     limit: int | None = None,
     seed: int = 0,
     det_manifest: str = "sfxp_det_clean",
+    missed_manifest: str | None = None,
 ) -> pd.DataFrame:
     """The two-prompt mix (``docs/proposal/ocr_sfx_prefix.md``; crops from
     ``build_sfx_prefix.py``). Column ``task`` is the prompt, ``metric`` the val group.
@@ -136,6 +137,10 @@ def load_sfxp(
       mixed boxes; negatives (target ``""``) = detector boxes holding only SFX.
     * ``SFX:`` — detector boxes with SFX (mixed boxes: the SFX alone); negatives =
       detector speech boxes and KO / ZH crops, half each where both exist.
+
+    ``missed_manifest`` (``sfxp_missed``, ``build_sfx_prefix.py --missed``) adds the COO
+    polygons the detector misses, cut from the polygon, as ``SFX:`` rows (source
+    ``missed_<sub>``; rows without a crop skipped).
 
     Negatives are at most ``neg_share`` of each task's rows. ``limit`` caps every
     ``metric`` group (val / smoke).
@@ -180,6 +185,13 @@ def load_sfxp(
     sfx_pos = rows(
         sfx_det, SFX_TASK, "sfx", "sfx", sfx_det.sfx_text, "det_" + sfx_det.cat
     )
+    if missed_manifest:
+        mi = pd.read_parquet(d / f"manifest_{missed_manifest}.parquet")
+        mi = mi[(mi.split == split) & mi.path.notna()]
+        if len(mi):
+            sfx_pos = pd.concat(
+                [sfx_pos, rows(mi, SFX_TASK, "sfx", "sfx", mi.text, mi.source)]
+            )
     cap = neg_share / (1 - neg_share)
     only_sfx = det[det.cat == "pos"]
     ocr_neg = draw(
