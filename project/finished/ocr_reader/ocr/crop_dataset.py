@@ -55,7 +55,7 @@ def cap_targets(out: pd.DataFrame, what: str) -> pd.DataFrame:
     return out[~long]
 
 
-TARGET_NORM = 8
+TARGET_NORM = 9
 """Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
 (every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
 (``vl16_b2_norm2``); 3 = ``textnorm.fold_glyphs`` first — hearts → ``♡``, dot
@@ -70,7 +70,8 @@ compatibility jamo (``ᄏᄏ`` → ``ㅋㅋ``; norm 3–5 taught ``ᄏ``) (2026-
 7 = norm 6 without the dot-run fold — ``...`` / ``・・・`` / ``…`` trained as
 labelled, ``…`` kept from NFKC's ``...``, ``‥`` → ``..`` (2026-11-18; scoring keys
 still fold); 8 = norm 7 with a Hangul string's dashes (``―`` / ``—`` / ``–`` …) → ``-``
-(2026-11-20, ``textnorm`` fold 5)."""
+(2026-11-20, ``textnorm`` fold 5); 9 = norm 8 with ``◯`` / ``〇`` → ``○`` (2026-11-20,
+``textnorm`` fold 4)."""
 
 
 def normalize_target(s: str) -> str:
@@ -138,6 +139,7 @@ def load_split(
 
 
 OCR_TASK, SFX_TASK = "OCR:", "SFX:"
+KOZH_SFX = Path(__file__).resolve().parents[1] / "assets" / "kozh_sfx.tsv"
 
 
 def load_sfxp(
@@ -161,6 +163,10 @@ def load_sfxp(
     polygons the detector misses, cut from the polygon, as ``SFX:`` rows (source
     ``missed_<sub>``; rows without a crop skipped).
 
+    ``assets/kozh_sfx.tsv`` (source, id, text): KO / ZH crops that also hold SFX
+    lettering. Each gives an ``SFX:`` row with that text (source ``kozh_sfx``) and leaves
+    the ``SFX:`` negative pool, which would otherwise train it to ``""``.
+
     Negatives are at most ``neg_share`` of each task's rows. ``limit`` caps every
     ``metric`` group (val / smoke).
     """
@@ -172,6 +178,16 @@ def load_sfxp(
     speech = speech[speech.split == split]
     kozh = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
     kozh = kozh[kozh.split == split]
+    ks = (
+        pd.read_csv(KOZH_SFX, sep="\t", dtype=str, keep_default_na=False, quoting=3)
+        if KOZH_SFX.exists()
+        else pd.DataFrame(columns=["source", "id", "text"])
+    )
+    ks_text = {
+        (s, i): t.replace("\\n", "\n") for s, i, t in zip(ks.source, ks.id, ks.text)
+    }
+    ks_mask = np.array([k in ks_text for k in zip(kozh.source, kozh.id)], dtype=bool)
+    kozh_sfx = kozh[ks_mask]
 
     def rows(df, task, metric, kind, text, source):
         cols = ["book", "page", "id", "orient", "w", "h", "path"]
@@ -204,6 +220,11 @@ def load_sfxp(
     sfx_pos = rows(
         sfx_det, SFX_TASK, "sfx", "sfx", sfx_det.sfx_text, "det_" + sfx_det.cat
     )
+    if len(kozh_sfx):
+        t = [ks_text[k] for k in zip(kozh_sfx.source, kozh_sfx.id)]
+        sfx_pos = pd.concat(
+            [sfx_pos, rows(kozh_sfx, SFX_TASK, "sfx", "sfx", t, "kozh_sfx")]
+        )
     if missed_manifest:
         mi = pd.read_parquet(d / f"manifest_{missed_manifest}.parquet")
         mi = mi[(mi.split == split) & mi.path.notna()]
@@ -218,7 +239,7 @@ def load_sfxp(
     )
     n_sfx_neg = cap * len(sfx_pos)
     det_sp = det[det.cat == "neg_speech"]
-    pools = [p for p in (det_sp, kozh) if len(p)]
+    pools = [p for p in (det_sp, kozh[~ks_mask]) if len(p)]
     sfx_neg = []
     for i, p in enumerate(pools):
         share = n_sfx_neg / len(pools)

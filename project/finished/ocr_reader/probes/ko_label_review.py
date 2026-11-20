@@ -8,7 +8,7 @@ browser (localStorage) and leave as a TSV through the page's Export button
 
 Every editable row has an ``SFX`` checkbox (exported as the ``sfx`` column;
 ``apply_ko_review.py`` keeps the marks in ``assets/sfx_marks.tsv``, training does not read
-them). ``m109_sfx`` / ``m109_speech`` are read-only references: a seeded sample of the
+them); a row the ``--flags`` reader read under ``SFX:`` comes up checked. ``m109_sfx`` / ``m109_speech`` are read-only references: a seeded sample of the
 Manga109 COO onomatopoeia and the speech text (``manifest.parquet``), to compare against.
 
 ``linebreak_suspicious`` (``linebreak_auto.py apply``): JA speech rows whose automatic line
@@ -117,6 +117,7 @@ header .pager { margin:0; }
   <label>sort <select id="sort"><option value="sus">suspicion</option>
     <option value="lp">lowest logprob first (hito)</option>
     <option value="sfx">SFX-marked only</option>
+    <option value="rsfx">__READER__ read under SFX: only</option>
     <option value="nolf">no line break, longest first</option>
     <option value="edge">edge text (label beyond __READER__'s read)</option>
     <option value="dis">__READER__ disagrees, lowest confidence first</option>
@@ -143,6 +144,15 @@ try { marks = JSON.parse(localStorage.getItem(KEY + ":sfx") || "{}"); } catch (e
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store));
   localStorage.setItem(KEY + ":sfx", JSON.stringify(marks)); } catch (e) {} };
 const $ = (id) => document.getElementById(id);
+// a read from the reader's SFX: pass checks the row's SFX box once; an uncheck is kept as 0
+(() => {
+  let n = 0;
+  for (const [s, rows] of Object.entries(DATA)) for (const x of rows) {
+    const k = s + ":" + x.id;
+    if (x.rsfx && !(k in marks)) { marks[k] = 1; n++; }
+  }
+  if (n) save();
+})();
 // edits already applied to the manifests come back as the label itself: keep them as reviewed
 (() => {
   const norm = t => t.replace(/\\n/g, "\n").split("\n").map(l => l.trim().replace(/\s+/g, " "))
@@ -183,6 +193,7 @@ function rows() {
   let r = DATA[s].filter(x => x.run >= n);
   const k = sortSel.value;
   if (k === "sfx") r = r.filter(x => marks[s + ":" + x.id]);
+  else if (k === "rsfx") r = r.filter(x => x.rsfx).sort((a, b) => a.conf - b.conf);
   else if (k === "lp") r = r.slice().sort((a, b) => (a.lp ?? 0) - (b.lp ?? 0) || a.id.localeCompare(b.id));
   else if (k === "sus") r = r.slice().sort((a, b) => b.sus - a.sus || a.id.localeCompare(b.id));
   else if (k === "edge") r = r.filter(x => x.edge).sort((a, b) => b.edge.length - a.edge.length);
@@ -222,7 +233,7 @@ function render() {
         ${x.page ? `· <a href="${x.page}" target="_blank">page</a>` : ""} box ${x.box.join(",")}</div>
       <div class="orig">${marked(x.text, +minIn.value || 0)}</div>
       ${x.note ? `<div class="meta">${esc(x.note)}</div>` : ""}
-      ${x.rd != null ? `<div class="meta">__READER__ (${x.conf.toFixed(2)}): ${esc(x.rd || "—").replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
+      ${x.rd != null ? `<div class="meta">__READER__${x.rsfx ? " SFX:" : ""} (${x.conf.toFixed(2)})${x.rwhy ? " [" + x.rwhy + "]" : ""}: ${esc(x.rd || "—").replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
       ${x.twin_img ? `<div class="twin"><img loading="lazy" src="${x.twin_img}"><div class="meta">twin (${esc(x.twin_lang)}) v4: ${esc(x.twin || "—").replace(/\n/g, " ⏎ ")}</div></div>` : ""}
       <textarea rows="${Math.max(2, x.text.split("\n").length + 1)}"></textarea>
       <div class="btns"><button class="okb">✓ ok</button><button class="drb">✗ drop row</button>
@@ -232,7 +243,8 @@ function render() {
     const okb = d.querySelector(".okb"), drb = d.querySelector(".drb");
     const sfxb = d.querySelector(".sfxb");
     sfxb.checked = !!marks[key];
-    sfxb.onchange = () => { if (sfxb.checked) marks[key] = 1; else delete marks[key]; save(); paint(); };
+    sfxb.onchange = () => { if (sfxb.checked) marks[key] = 1; else if (x.rsfx) marks[key] = 0;
+      else delete marks[key]; save(); paint(); };
     const paint = () => { const w = store[key];
       d.className = "row" + (w ? " " + w.status : "") + (marks[key] ? " sfx" : "");
       okb.classList.toggle("on", !!w && w.status === "ok"); okb.classList.toggle("ok", true);
@@ -259,6 +271,7 @@ function render() {
 $("export").onclick = () => {
   const lines = ["source\tid\tstatus\torig\tnew\tsfx"];
   for (const k of new Set([...Object.keys(store), ...Object.keys(marks)])) {
+    if (!store[k] && !marks[k]) continue;  // an unchecked SFX: read, nothing else
     const v = store[k] || {status: "", text: null};
     const i = k.indexOf(":"), s = k.slice(0, i), id = k.slice(i + 1);
     const x = (DATA[s] || []).find(y => y.id === id); if (!x) continue;
@@ -329,13 +342,17 @@ def suspicion(t: str, w: int, h: int, lang: str = "ko") -> tuple[float, str]:
 
 
 def read_fields(f) -> dict:
-    """The flags row's read, confidence and edge text (``rd = None``: no read)."""
+    """The flags row's read, confidence and edge text (``rd = None``: no read), whether
+    the read came from the ``SFX:`` pass (``rsfx``; the page pre-checks the row's SFX box)
+    and ``ko_read.py``'s guard note (``rwhy``: ``length`` / ``runaway`` / ``empty``)."""
     if f is None:
-        return dict(rd=None, conf=0.0, edge="")
+        return dict(rd=None, conf=0.0, edge="", rsfx=False, rwhy="")
     return dict(
         rd=f.read,
         conf=round(float(f.conf), 3) if f.conf == f.conf else 0.0,
         edge=f.edge if f.edge else "",
+        rsfx=getattr(f, "task", "") == "SFX:",
+        rwhy=getattr(f, "why", "") or "",
     )
 
 

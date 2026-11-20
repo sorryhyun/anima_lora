@@ -108,7 +108,11 @@ def main():
     out = a.reads.with_name(a.reads.stem + "_flags.parquet")
     if "reader" not in df:
         df["reader"] = "v6"  # reads from before ko_read.py named the reader
-    df[["source", "id", "read", "conf", "edge", "reader"]].to_parquet(out, index=False)
+    for c in ("task", "why"):  # reads from before ko_read.py recorded them
+        if c not in df:
+            df[c] = ""
+    cols = ["source", "id", "read", "conf", "edge", "reader", "task", "why"]
+    df[cols].to_parquet(out, index=False)
     print(f"[flags] → {out}")
 
 
