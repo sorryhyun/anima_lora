@@ -179,4 +179,8 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
         from library.training.repa import REPAMethodAdapter
 
         adapters.append(REPAMethodAdapter())
+    if getattr(network, "_xattn_align_on", False):
+        from library.training.xattn_align import XattnAlignMethodAdapter
+
+        adapters.append(XattnAlignMethodAdapter())
     return adapters

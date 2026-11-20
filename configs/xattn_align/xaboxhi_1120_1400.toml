@@ -1,0 +1,32 @@
+# xaboxhi_1120_1400: xattn_align A/B arm `box_hi` (bench/xattn_align/run_ab.py,
+# docs/anima/proposal/xattn_align_loss.md § 5). configs/methods/lora.toml
+# on channel caststation + the adapter: {"use_xattn_align": true, "xattn_align_weight": 0.02347, "seed": 42}
+network_alpha = 128
+network_dim = 32
+learning_rate = 5e-5
+lr_scheduler = "constant_with_warmup"
+gradient_accumulation_steps = 2
+clip_mode = "median"
+clip_k = 2.0
+clip_per_micro = true
+clip_sigma_bands = "0.2,0.4,0.6,0.8"
+max_train_epochs = 8
+save_every_n_epochs = 8
+checkpointing_epochs = 8
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+output_name = "xaboxhi_1120_1400"
+down_init = "weight_svd"
+svd_slice = 0
+svd_slice_count = 0
+path_pattern = "channel_(caststation)/*"
+use_repa = false
+repa_mode = "relational"
+repa_weight = 0.05
+repa_layer = 8
+repa_encoder = "pe_spatial"
+use_xattn_align = true
+xattn_align_weight = 0.02347
+seed = 42
+output_dir = "output/ckpt/xattn_align"

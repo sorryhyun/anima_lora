@@ -200,6 +200,28 @@ def create_network(
     # library/training/repa.py.
     from networks.lora_anima.config import _as_bool
 
+    # Cross-attn alignment of quoted OCR strings to their line boxes
+    # (library/training/xattn_align.py; docs/anima/proposal/xattn_align_loss.md).
+    # Weight 0 with calib on = measure-only.
+    network._xattn_align_on = _as_bool(kwargs.get("use_xattn_align"))
+    if network._xattn_align_on:
+        network._xattn_align_weight = float(
+            kwargs.get("xattn_align_weight", 0.0) or 0.0
+        )
+        network._xattn_align_form = str(kwargs.get("xattn_align_form", "box")).lower()
+        network._xattn_align_blocks = tuple(
+            int(b)
+            for b in str(kwargs.get("xattn_align_blocks", "8,13,14,15")).split(",")
+            if b.strip()
+        )
+        network._xattn_align_sigma_min = float(
+            kwargs.get("xattn_align_sigma_min", 0.6) or 0.0
+        )
+        network._xattn_align_calib = _as_bool(kwargs.get("xattn_align_calib"))
+        network._xattn_align_tags = _as_bool(
+            kwargs.get("xattn_align_tags"), default=True
+        )
+
     if _as_bool(kwargs.get("use_repa")):
         network._repa_mode = str(kwargs.get("repa_mode", "relational")).lower()
         network._repa_weight = float(kwargs.get("repa_weight", 0.05) or 0.0)

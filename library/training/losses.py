@@ -368,6 +368,21 @@ def _repa_loss(ctx: LossContext) -> torch.Tensor:
     return weight * repa.float()
 
 
+def _xattn_align_loss(ctx: LossContext) -> torch.Tensor:
+    """Cross-attn alignment of quoted OCR strings to their line boxes.
+
+    Computed by ``XattnAlignMethodAdapter`` under ``aux["xattn_align"]``
+    (term-bearing steps only); weighted by ``network._xattn_align_weight``.
+    """
+    if not ctx.is_train:
+        return ctx.model_pred.new_zeros(())
+    weight = float(getattr(ctx.network, "_xattn_align_weight", 0.0) or 0.0)
+    term = ctx.aux.get("xattn_align")
+    if weight <= 0.0 or term is None:
+        return ctx.model_pred.new_zeros(())
+    return weight * term.float()
+
+
 def _soft_tokens_contrastive_loss(ctx: LossContext) -> torch.Tensor:
     """SoftREPA-style contrastive term on the soft-tokens bank.
 
@@ -410,6 +425,7 @@ LOSS_REGISTRY: dict[str, LossFn] = {
     "multiscale": _multiscale_loss,
     "soft_tokens_contrastive": _soft_tokens_contrastive_loss,
     "repa": _repa_loss,
+    "xattn_align": _xattn_align_loss,
 }
 
 
@@ -430,6 +446,8 @@ _LIVENESS_PROBES: dict[str, Callable[[dict], bool]] = {
         aux.get("soft_tokens_contrastive") is not None
     ),
     "repa": lambda aux: aux.get("repa") is not None,
+    # Partial by construction: only text items at σ ≥ the gate carry it.
+    "xattn_align": lambda aux: aux.get("xattn_align") is not None,
 }
 
 
@@ -521,6 +539,7 @@ _STAGE_SCALAR_BROADCAST = (
     "functional",
     "soft_tokens_contrastive",
     "repa",
+    "xattn_align",
 )
 _STAGE_SCALAR_POST = ("multiscale",)
 __all__ = [
@@ -628,5 +647,7 @@ def build_loss_composer(
         active.append("soft_tokens_contrastive")
     if float(getattr(network, "_repa_weight", 0.0) or 0.0) > 0.0:
         active.append("repa")
+    if float(getattr(network, "_xattn_align_weight", 0.0) or 0.0) > 0.0:
+        active.append("xattn_align")
 
     return LossComposer(active_losses=active, ledger=ledger)
