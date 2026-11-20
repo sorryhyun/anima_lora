@@ -29,12 +29,16 @@ Folds, in order:
    double quotes ``“`` / ``”`` → ASCII ``"`` (``TARGET_NORM = 6``, 2026-11-17: one
    quote, three spellings across the manifests; swaprelax_v5 had 75 ``”`` rows
    to 3 ``"``).
-5. **Dot runs** — ``[.・…‥]{2,}`` and a lone ``‥`` → one ``…``. Scoring keys
+5. **Korean dashes** (``TARGET_NORM = 8``, 2026-11-20) — in a string holding Hangul,
+   every dash (``―`` after fold 4, ``–``, ``‒``, ``‐``) → ASCII ``-``, run length kept.
+   The KO labels spell one dash four ways (swaprelax_v5: ``-`` 289, ``―`` 161, ``—`` 38,
+   ``–`` 4); the user's call. Japanese keeps ``―``.
+6. **Dot runs** — ``[.・…‥]{2,}`` and a lone ``‥`` → one ``…``. Scoring keys
    only since ``TARGET_NORM = 7`` (2026-11-18): the training target keeps
    ``...`` / ``・・・`` / ``…`` as labelled (``…`` shielded from NFKC, which
    spells it ``...``); ``‥`` takes NFKC's ``..``.
 
-The **training target** (:func:`training_target`, ``TARGET_NORM = 7``) keeps
+The **training target** (:func:`training_target`, ``TARGET_NORM = 8``) keeps
 the label's line breaks as ``\\n`` (one token, id 23; norm 4 collapsed them to a
 space, so v4 answers one line) and writes the heart as ``♥``: in the VL-1.6 tokenizer ``♥`` is
 one token and ``♡`` is three bytes, and ``TARGET_NORM = 3`` (``♡`` in the
@@ -72,6 +76,12 @@ HEART_FOLD = str.maketrans(
 dash and quote folds but every consumer imported it under this name."""
 
 
+HANGUL_RE = re.compile(r"[\uac00-\ud7a3\u3131-\u318e]")
+KO_DASH_FOLD = str.maketrans({c: "-" for c in "―–‒‐"})
+"""Fold 5: the dashes of a Hangul string → ``-`` (applied after :data:`HEART_FOLD`, so
+``—`` / ``─`` arrive as ``―``)."""
+
+
 def _jamo_fold() -> dict[int, int]:
     out = {}
     for cp in range(0x1100, 0x1200):
@@ -103,11 +113,13 @@ from 4 books, no hand label."""
 
 def fold_glyphs(s: str, *, dots: bool = True) -> str:
     """The canonical spelling of ``s`` with whitespace untouched. ``dots=False``
-    skips fold 5: ``...``, ``・・・`` and ``…`` stay as written, ``‥`` → ``..``."""
+    skips fold 6: ``...``, ``・・・`` and ``…`` stay as written, ``‥`` → ``..``."""
     if not dots:
         s = s.translate(_DOT_KEEP)
     s = unicodedata.normalize("NFKC", s.translate(_DAKUTEN_FOLD)).translate(JAMO_FOLD)
     s = s.translate(HEART_FOLD)
+    if HANGUL_RE.search(s):
+        s = s.translate(KO_DASH_FOLD)
     if not dots:
         return s.translate(_DOT_RESTORE)
     return ELLIPSIS_RE.sub(ELLIPSIS, s)
@@ -132,7 +144,7 @@ def collapse_keep_lines(s: str) -> str:
 
 
 def training_target(s: str) -> str:
-    """The training target (``TARGET_NORM = 7``): :func:`fold_glyphs` without
+    """The training target (``TARGET_NORM = 8``): :func:`fold_glyphs` without
     the dot-run fold (``dots=False``), line breaks kept as ``\\n``
     (:func:`collapse_keep_lines`), the heart as :data:`TRAIN_HEART`.
     ``exact_key`` / ``space_key`` stay ``♡``-spelled, whitespace-blind and

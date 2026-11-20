@@ -115,3 +115,18 @@ def test_dash_glyphs_are_the_ones_the_corpus_uses():
     m = _mod()
     assert ord("―") == 0x2015 and ord("─") == 0x2500 and ord("—") == 0x2014
     assert m.exact_key("─") == m.exact_key("—") == "―"
+
+
+@pytest.mark.parametrize(
+    "raw, target",
+    [
+        ("짜안―\n손님용", "짜안-\n손님용"),
+        ("촬영은 커녕——…", "촬영은 커녕--…"),
+        ("유즈–", "유즈-"),
+        ("스기야마-참모-총장", "스기야마-참모-총장"),
+        ("だから――――", "だから――――"),
+    ],
+)
+def test_korean_dashes_fold_to_hyphen(raw, target):
+    # TARGET_NORM 8: a Hangul string's dashes → "-", run length kept; Japanese keeps ―
+    assert _mod().training_target(raw) == target

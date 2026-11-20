@@ -55,7 +55,7 @@ def cap_targets(out: pd.DataFrame, what: str) -> pd.DataFrame:
     return out[~long]
 
 
-TARGET_NORM = 7
+TARGET_NORM = 8
 """Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
 (every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
 (``vl16_b2_norm2``); 3 = ``textnorm.fold_glyphs`` first — hearts → ``♡``, dot
@@ -69,7 +69,8 @@ quotes ``“`` / ``”`` → ``"`` and lone conjoining jamo back to the typed
 compatibility jamo (``ᄏᄏ`` → ``ㅋㅋ``; norm 3–5 taught ``ᄏ``) (2026-11-17);
 7 = norm 6 without the dot-run fold — ``...`` / ``・・・`` / ``…`` trained as
 labelled, ``…`` kept from NFKC's ``...``, ``‥`` → ``..`` (2026-11-18; scoring keys
-still fold)."""
+still fold); 8 = norm 7 with a Hangul string's dashes (``―`` / ``—`` / ``–`` …) → ``-``
+(2026-11-20, ``textnorm`` fold 5)."""
 
 
 def normalize_target(s: str) -> str:
