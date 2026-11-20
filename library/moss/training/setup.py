@@ -236,21 +236,54 @@ def clause_offsets(
             "off, preserve_weight 0, trigger_registers 0"
         )
     if cache_token_split(samples) != "off":
-        raise SystemExit("clause_hw / text_box_hw find rows on the default tokenization")
+        raise SystemExit(
+            "clause_hw / text_box_hw find rows on the default tokenization"
+        )
     from library.moss.loader import load_tokenizer
     from library.moss.prompt_tail import with_prompt_tail
     from library.moss.training.grounding import text_hw
 
     tok = with_prompt_tail(load_tokenizer(req.model_dir), prompt_tail)
+    centres, placed, named = {}, 0, 0
+    if req.clause_centres:
+        if not req.clause_hw:
+            raise SystemExit("clause_centres places the clauses clause_hw moves")
+        from library.env import resolve_under_home
+        from library.moss.training.grounding import clause_ranges, subject_centres
+
+        centres = subject_centres(resolve_under_home(req.clause_centres))
+        if not centres:
+            raise SystemExit(f"{req.clause_centres}: no analysis records with subjects")
     rows = 0
     for s in samples:
         if s.te_path is None or s.latent_hw is None:
-            raise SystemExit(f"{s.stem}: clause_hw / text_box_hw need the cache's TE files")
+            raise SystemExit(
+                f"{s.stem}: clause_hw / text_box_hw need the cache's TE files"
+            )
+        own = centres.get(s.stem)
         for kind, caption in sample_captions(s.te_path).items():
-            hw = text_hw(tok, caption, s.latent_hw, req.clause_hw, req.text_box_hw)
+            hw = text_hw(
+                tok,
+                caption,
+                s.latent_hw,
+                req.clause_hw,
+                req.text_box_hw,
+                own,
+                req.clause_header,
+            )
             if hw is not None:
                 out[s.stem, kind] = hw
                 rows += int(hw.any(1).sum()) if kind == "full" else 0
+            if centres and kind == "full":
+                names = [p for _, _, p in clause_ranges(caption)]
+                named += len(names)
+                placed += sum(p in (own or {}) for p in names)
+    if centres:
+        print(
+            f"clause_centres: {placed}/{named} clauses of the full captions at their "
+            "subject's centre, the rest at their cell",
+            flush=True,
+        )
     full = sum(1 for (_, kind) in out if kind == "full")
     print(
         f"clause_hw {req.clause_hw:g}, text_box_hw {req.text_box_hw:g}: {full}/"
@@ -533,6 +566,10 @@ def run_metadata(
         meta["init_lora"] = Path(req.init_lora).name
     if req.clause_hw:
         meta["clause_hw"] = req.clause_hw
+        if req.clause_centres:
+            meta["clause_centres"] = "sam3_mask"
+        # Absent in LoRAs trained before 2026-11-20, whose headers moved.
+        meta["clause_header"] = req.clause_header
     if req.text_box_hw:
         meta["text_box_hw"] = req.text_box_hw
     if n_refs:

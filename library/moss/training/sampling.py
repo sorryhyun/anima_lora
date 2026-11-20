@@ -126,17 +126,6 @@ class Sampler:
             token_split,
             prompt_tail,
         )
-        self.hw = {}
-        if req.clause_hw or req.text_box_hw:
-            # The cond prompt's RoPE (h, w) as training sets it (setup.clause_offsets).
-            from library.moss.loader import load_tokenizer
-            from library.moss.prompt_tail import with_prompt_tail
-            from library.moss.training.grounding import text_hw
-
-            tok = with_prompt_tail(load_tokenizer(model_dir), prompt_tail)
-            grid = (req.sample_height // 16, req.sample_width // 16)
-            for p in prompts:
-                self.hw[p] = text_hw(tok, p, grid, req.clause_hw, req.text_box_hw)
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="moss-vae")
         self.model_dir = model_dir
         self._vae = None
@@ -191,7 +180,6 @@ class Sampler:
                     uncond_skip=DEFAULT_UNCOND_SKIP,
                     sampler="er_sde",
                     seed=seed,
-                    cond_hw=self.hw.get(prompt),
                 ).cpu()
                 path = self.out_dir / f"{tag}_{k:02d}.png"
                 self.pool.submit(self._decode, latent, path)

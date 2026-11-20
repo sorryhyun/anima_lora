@@ -1,7 +1,7 @@
 # MOSS: grounding prompt tokens in RoPE space (CDPE, after SpaG-DiT)
 
-Status: proposal, 2026-11-16. A training-only form on position clauses (and boxed text lines) is built and ran twice
-([First run](#first-run-training-only-on-position-clauses-2026-11-16)); the rest is not built. Source: SpaG-DiT
+Status: proposal, 2026-11-16. A training-only form on position clauses (and boxed text lines) is built and shipped
+(`clause_hw`, [runs](../reports/clause_hw.md)); P0 – P2 and the extension are not built. Source: SpaG-DiT
 ("Enhancing Spatial Grounding for Diffusion Transformers", Westlake / Alibaba Yuvion, NeurIPS 2026),
 camera-ready paper and supplementary material, read 2026-11-19. Code is announced at
 `github.com/Alibaba-VELLDEPTH/SPaG-DiT` and not yet released. The design below was first drawn
@@ -118,7 +118,8 @@ inference mismatch. This applies to every prompt that carries image positions:
   (`키리노` above `힘내라`).
 - **Token extent.** The text value only, or also the item's `caption` / `label` tokens. The
   paper moves only the quoted tokens (the string, the class name) and leaves the position words
-  at `(0, 0)`; `clause_hw` moves the whole clause, its `On the left,` header included.
+  at `(0, 0)`. `clause_hw` follows it since 2026-11-20: a clause's tags move and its `On the left`
+  header stays (`clause_header` off; the user's decision, [runs](../reports/clause_hw.md)).
 - **Spatial extent.** Each token gets the box centre, or tokens spread along the line's
   width. OCR boxes give one centre per box; VLM-GG gives each token its own centroid.
 - **Prior source for captions without positions.** VLM-GG-style attention centroids would give
@@ -156,77 +157,59 @@ inference mismatch. This applies to every prompt that carries image positions:
 (`casbox_1115_1226`) and layout-JSON object boxes. Generate with offsets from a user-written
 layout and read placement.
 
-## First run: training-only on position clauses (2026-11-16)
+## Extension: positions for objects outside the clauses (proposed 2026-11-20)
 
-The paper's setting instead of P0 / P1: coarse positions, offsets during training only,
-plain prompts at inference. `TrainRequest.clause_hw` (0 = off) moves the tokens of each position
-clause (`On the top right, …`) to their 3×3 cell's centre, a third of the grid side per cell times
-`clause_hw`, in the blocks' RoPE. The text refiner keeps `(0, 0)`: no adapter reaches it. Text
-clauses are not moved. Code: `library/moss/training/grounding.py`.
+The user's idea. Today a token moves only if it sits in a position clause (a subject) or inside a
+boxed text line. A thing the caption names anywhere else stays at `(0, 0)`: a prop in the shared
+bag, furniture, a held item. SAM3 can find such a thing from its tag, and its tokens can take the
+mask's centroid the same way a clause takes its subject's (`clause_centres`).
 
-Caststation (30 images, the `casbox_1115_1226` recipe, 480 steps, same seed). Arms: the control,
-the control trained again (`casboxr_1116_1149`), `clause_hw` 0.25 (`cashwq_1116_1110`, about 5
-cells at 1024 px) and 1.0 (`cashw_1116_1110`, about 21 cells). Renders without offsets, sheets in
-`output/tests/caststation_thin/cashw_sheets/`.
+Measured, for scale:
 
-| read | control | retrain | 5 cells | 21 cells |
-|---|---|---|---|---|
-| training loss at σ 0.85–0.95, against the control | | +0.0002 | −0.0002 | +0.0015 (0.45 %) |
-| training loss below σ 0.85 | | same | same | same |
-| boxed `初音ミクです` written as the plain string (Base: 0 / 6, it draws the official logo) | 2 / 8 | 2 / 8 | 0 / 8 | 8 / 8 |
-| general tag prompts, left / right placement in clause prompts | | same | same | same |
+- Position-stage records in `workspace/captions/position/analysis` (local), 1,182 images: 528
+  `proposed`, 536 `skip:too-few-instances`, 88 `skip:count-mismatch`, 30
+  `skip:no-discriminative-tags`. A single-subject image gets no clause, so nothing in its caption
+  moves.
+- ama: 40 of 106 captions carry no clause. casbox: 3 of 30.
+- Paper, Table S1: attention-centroid priors keep about 85 % of the OCR-box gain, so a prior does
+  not have to be exact.
 
-- The loss is paired by step (same samples, σ and noise in every run). 5 cells cannot be told from
-  a retrain. 21 cells is felt only where layout is decided.
-- Invented cm ruler labels on the height-chart prompt (control 8 / 8) and one broken hand looked
-  like offset effects until the retrain: it draws the rulers 1 / 8 and the hand whole.
-- Open: other strings and characters, a longer set.
+What gets a position:
 
-**Text lines on their boxes too** (`cashwb_1116_1219`, `clause_hw 1` + `text_box_hw 1`). The
-tokens inside each boxed text line's quotes (`"…" [y0,x0,y1,x1]`) take the box centre in latent
-cells, beside the clause offsets: 27 / 30 captions, 4,387 rows off `(0, 0)`, 171 of them text. Same
-recipe, renders without offsets.
+| tokens | position | status |
+|---|---|---|
+| a subject's clause | 3×3 cell (default), or the SAM3 mask centroid (`clause_centres`) | built; no winner on caststation 2026-11-20, the cell stays |
+| a boxed text line | the OCR box centre (`text_box_hw`) | built |
+| an object tag in the shared bag (a prop, furniture, a vehicle, an animal) | centroid of the SAM3 mask its tag finds | this proposal |
+| an object tag inside a subject's clause (a held phone, a straw) | its own mask centroid in place of the subject's | this proposal |
+| a part of a character (eyes, hair, a hand) | stays with its clause | left out: the user reads part-level positions as ambiguous |
+| scene and whole-image tags (`white background`, `indoors`, the artist, the rating) | `(0, 0)` | unchanged |
 
-| read | control | retrain | clause only | clause + box |
-|---|---|---|---|---|
-| training loss at σ 0.85–0.95, against the control | | +0.0002 | +0.0015 | +0.0005 |
-| training loss at σ ≥ 0.95 | | +0.0007 | +0.0028 | +0.0006 |
-| boxed `初音ミクです` written plain (`prompts_text_more`, 6 seeds) | 1 / 6 | 2 / 6 | 6 / 6 | 1 / 6 |
-| invented cm ruler labels, height chart (2 seeds) | 2 / 2 | 0 / 2 | 0 / 2 | 2 / 2 |
-| general tag and clause prompts (16) | | same | same | same |
+Rules to settle before building:
 
-Adding the boxes returns every read to the control: the high-σ loss cost, the plain string and the
-ruler habit. Neither arm moves the general renders. Sheets: `output/tests/caststation_thin/cashwb_sheets/`.
+- **Which tags count as objects.** A list drawn from anime_tools' tag groups, fixed before the run.
+  A tag off the list is never prompted.
+- **One tag, several masks** (three `chair`s): the tag has one token span and no single centre. It
+  stays where it was (`(0, 0)` in the bag, the subject's centre in a clause).
+- **No detection, or a score under the stage's threshold:** the tag stays where it was.
+- **Where it is computed.** In the position stage (anime_tools), beside the subject pass, written to
+  the same analysis record as an `objects` list (tag, box, score) with its own label indices. The
+  trainer reads it as it reads the subjects. This needs an anime_tools release and a pin bump.
+- **Single-subject captions.** Whether the subject's own tags take the subject's centroid when the
+  caption has no clause is a separate choice: the bag does not say which tags belong to the subject.
 
-## Controls for the ama read (2026-11-17)
+Order: the centre-against-cell read on caststation (2026-11-20) found no winner overall, the
+centroid ahead only on prompts that carry clauses. The finer positions come after the same A/B on a
+second set (ama), not before.
+Read: the clause A/B's sheets, plus prompts that name a held item or a prop (the caststation
+`drinking straw` / `holding phone` cases), rendered without offsets.
 
-Is the ama gain grounding, or a perturbation of half the prompt? On the ama cache 66 of 106 full
-captions carry clauses and 31 % of all prompt tokens move (casbox: 27 of 30, 50 %).
+## Runs
 
-- **Offsets at inference** on `amahw_1116_1239`, clause prompts: none, true cells
-  (`--clause_hw 1`, `amahw_clause_inf`), mirrored cells (`--clause_hw -1`, `amahw_clause_infmir`).
-  The layout does not follow the cells: with mirrored offsets the close-up stays left and the figure
-  right in 6 / 6 clause renders. Either sign changes a render by about a re-roll. The user's read:
-  no difference worth having. Generation stays without offsets.
-- **Mirrored-cell training arm** `amamir_1117_1257`: `clause_hw = -1.0` (each clause at the cell
-  opposite its own, same distance from `(0, 0)`), otherwise the `amahw` config; 66 / 106 captions,
-  5,301 rows off `(0, 0)`. Rendered without offsets as the other arms (`amamir_anima`,
-  `amamir_clause`). Trained a day after `amahw`, with commits to the MOSS training code between.
-- **Panty-line prompts** (`prompts_pantyline.txt`: `pantylines` + `tight pants`, a tag in none of
-  the 106 training captions): `amahw_pl`, `amamir_pl`. The `amathin` / `amathinr` checkpoints are
-  gone, so this set has no arm without `clause_hw`.
-- **The user's read (2026-11-17): `amahw` beats `amamir`.** The true-cell arm is clearly better
-  than the mirrored one, so the ama gain needs each clause at its own cell: grounding, not
-  perturbation. One mirror arm against one true arm, and no retrain of either.
-- **Inference offsets stay open.** Whether `--clause_hw 1` at generation helps the true-cell LoRA
-  is not settled (the first read found no difference worth having). Generation keeps running
-  without offsets.
-- From reading the code: the epoch sample renders apply the offsets (`training/sampling.py`) while
-  `generate` runs without them; on a `tags` cache a clause caption never trains unshifted; a row of
-  four or more columns is spread over ±⅓ of the width (five columns reach ±0.4).
-
-Renders and sheets: `output/tests/ama_clause/` (`sheets_1117_full/`, 1024 px per render). Config:
-`_archive/configs/pe_lora/amamir_1117_1257.toml`.
+Run records moved to [`../reports/clause_hw.md`](../reports/clause_hw.md): the first caststation runs
+(2026-11-16, clauses alone and with text boxes), the ama controls (2026-11-17: inference offsets,
+the mirrored-cell arm, the user's read that set `clause_hw = 1.0`), and the placement and header A/Bs
+(2026-11-20: mask centroids against cells, header moving against staying).
 
 ## Implementation notes
 

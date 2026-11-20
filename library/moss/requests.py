@@ -895,10 +895,27 @@ class TrainRequest(Request):
     )
     clause_hw: float = _f(
         0.0,
-        "training only: the tokens of each position clause (On the left, …) take "
+        "training only: the tags of each position clause (On the left, …) take "
         "their 3×3 cell's centre on RoPE's h / w axes, times this (1 = a third of "
-        "the grid side per cell); every other token stays at (0, 0). Generation "
-        "runs without it. 0 = off. docs/moss/proposal/cdpe_text_grounding.md",
+        "the grid side per cell); the clause's header and every other token stay "
+        "at (0, 0). Generation runs without it. 0 = off. "
+        "docs/moss/methods/clause_hw.md",
+        advanced=True,
+    )
+    clause_centres: str = _f(
+        "",
+        "with clause_hw: the position stage's report directory of the cache's "
+        "captions (<captions>/_position_report). Each position clause's tokens take "
+        "the centroid of its subject's SAM3 mask there instead of the 3×3 cell's "
+        "centre; a clause with no record keeps its cell. Empty = cells",
+        advanced=True,
+    )
+    clause_header: bool = _f(
+        False,
+        "with clause_hw: a clause's header (On the left) moves with its tags. "
+        "Off by default: the header stays at (0, 0) and the tags move, as SpaG-DiT "
+        "moves the grounded tokens and leaves the position words. On = the form "
+        "trained before 2026-11-20",
         advanced=True,
     )
     text_box_hw: float = _f(
