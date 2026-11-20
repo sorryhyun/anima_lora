@@ -99,6 +99,21 @@ same rules to the 200 det pages (bbox coverage; `covered` = ≥ 0.8).
 - The restored rows raise `SFX:` positives from 21,332 to about 26k, so the `SFX:` negatives rise with them
   (`neg_share`).
 
+## 4. Training target cap
+
+### Facts
+
+- `crop_dataset.MAX_TARGET_CHARS` was 96, and longer targets were sliced. 53 KO labels
+  (swaprelax_v5 afterword / colophon paragraphs, 2–14 lines) and 14 Manga109 train speech labels
+  were longer. 2348 reads 6 of the 53 to exactly 96 characters. `660538_0027_ko_2` (265 characters) stops at 193,
+  at the reader's 200-token decode cap (`anime_tools.ocr.reader.MAX_NEW_TOKENS`).
+- AnimeText boxes 52 of the 53 paragraphs as one block, with no smaller box inside
+  (`post_image_dataset/i2i/swap_text_relax/det.json`, local).
+- Counts over a cap (KO / Manga109 train speech): 120 → 26 / 4, 150 → 14 / 3, 200 → 10 / 2.
+- The user's decision: cap 150, longer rows dropped instead of cut (`cap_targets`). `load_sfxp`
+  train drops 17 rows (109,356 → 109,339); val unchanged (5,328). The eval decode cap
+  (`eval_manga109.MAX_NEW_TOKENS` 96) is unchanged.
+
 ## State
 
 The Manga109 side of the reader has been reviewed through. Next: the Korean label set (the review page loop,

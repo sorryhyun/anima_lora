@@ -35,7 +35,26 @@ import manga109 as m109  # noqa: E402
 import textnorm  # noqa: E402
 from augment import Augment  # noqa: E402
 
-MAX_TARGET_CHARS = 96
+MAX_TARGET_CHARS = 150
+"""Longest training target, in characters after :func:`normalize_target`. A longer label is
+dropped, not cut (96 and sliced until 2026-11-20: 53 KO afterword / colophon paragraphs trained
+cut mid-sentence; 14 KO and 3 Manga109 speech rows are over 150). Stays under the reader's
+200-token decode cap."""
+
+
+def cap_targets(out: pd.DataFrame, what: str) -> pd.DataFrame:
+    """``target`` = the normalized label; rows over :data:`MAX_TARGET_CHARS` dropped."""
+    out = out.copy()
+    out["target"] = out.text.map(normalize_target)
+    long = out.target.str.len() > MAX_TARGET_CHARS
+    if long.any():
+        print(
+            f"[data] {what}: {int(long.sum())} rows over {MAX_TARGET_CHARS} chars dropped",
+            flush=True,
+        )
+    return out[~long]
+
+
 TARGET_NORM = 7
 """Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
 (every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
@@ -110,8 +129,7 @@ def load_split(
                 for _, g in out.groupby("kind")
             ]
         )
-    out = out.copy()
-    out["target"] = out.text.map(normalize_target).str.slice(0, MAX_TARGET_CHARS)
+    out = cap_targets(out, split)
     out = out[out.target.str.len() > 0]
     return out.sort_values(["source", "kind", "book", "page", "id"]).reset_index(
         drop=True
@@ -206,7 +224,7 @@ def load_sfxp(
         src = "det_speech" if p is det_sp else p.source
         sfx_neg.append(draw(rows(p, SFX_TASK, "sfx_neg", "speech", "", src), share))
     out = pd.concat([ocr_pos, ocr_neg, sfx_pos, *sfx_neg], ignore_index=True)
-    out["target"] = out.text.map(normalize_target).str.slice(0, MAX_TARGET_CHARS)
+    out = cap_targets(out, f"sfxp {split}")
     is_neg = out.metric.str.endswith("_neg")
     out = out[is_neg | (out.target.str.len() > 0)]
     if limit:
