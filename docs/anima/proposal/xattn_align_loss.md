@@ -196,6 +196,47 @@ Preconditions, each checked at smoke scale:
 Cost: the adapter and its checks, then five runs of a few minutes each plus renders and reads.
 One to two hours in all.
 
+## 5a. Runs (2026-11-20)
+
+### Facts
+
+- Caststation (`bench/xattn_align/run_ab.py table`, 12 text prompts × seeds 0 – 2, n = 36
+  renders per arm): plain `xaplain_1120_1357`, twin `xatwin_1120_1358`, box_lo
+  `xaboxlo_1120_1359` (λ 0.00469), box_hi `xaboxhi_1120_1400` (λ 0.02347), contrast
+  `xacon_1120_1451` (box_lo's λ).
+
+  | arm | g_p | g_r | g_f1 | drawn | a_p | text_area |
+  |---|---|---|---|---|---|---|
+  | plain | 0.303 | 0.569 | 0.372 | 31.9 | 0.293 | 0.041 |
+  | twin | 0.344 | 0.323 | 0.291 | 13.7 | 0.338 | 0.018 |
+  | box_lo | 0.410 | 0.445 | 0.399 | 17.9 | 0.494 | 0.021 |
+  | box_hi | 0.267 | 0.286 | 0.249 | 14.9 | 0.168 | 0.017 |
+  | contrast | 0.324 | 0.490 | 0.371 | 24.9 | 0.367 | 0.037 |
+
+  The user's partial picks: box_lo 9 : 7 against plain (2 ties; 12 of 18 sheets were style),
+  box_hi 5 : 6 or 4 : 7. box_hi dropped.
+- Sincos, at caststation's λ (`--set sincos`; plain `xsplain_1120_1511`, box_lo
+  `xsboxlo_1120_1512`, n = 36): plain g_p 0.167, g_r 0.493, g_f1 0.216, drawn 43.8, a_p 0.188,
+  text_area 0.061; box_lo 0.199, 0.485, 0.242, 33.4, 0.228, 0.081, one exact string of 36.
+- Sincos blind set `s44_XATTN_sincos` (24 pairs: 12 text prompts at seed 0, 4 style prompts ×
+  3 seeds; sides shuffled; key and verdicts in `output/blind/s44_XATTN_sincos/` (local), the set
+  removed from the blind repo after scoring): box_lo 11, plain 12, tie 1; text box_lo 8 : 4;
+  style plain 8 : 3 + 1 tie (style 3 plain 3 : 0, style 0 box_lo 2 : 1).
+- The user's read (2026-11-20): "파볼만한 가치는 있는거같아 이를테면 ぱん 이 p쪽은 パン 식으로
+  '외워서 낸듯한' 글자가 나왔거든" — on the prompt quoting `ぱん` (sincos prompt 11, pair
+  p11), plain drew `パン`.
+- Bars: the caststation plain / twin gap on g_f1 is 0.08; no twin on sincos, so its spread
+  is unknown.
+
+### Interpretation
+
+- On text the term reads as a gain on both sets' g_f1 (inside the caststation twin gap) and on
+  the user's text picks on sincos (8 : 4); style lost 3 : 8 on sincos, which the term was meant
+  to leave alone. Whether the style losses are distortion (the user's first criterion) or a
+  style shift is not separated.
+- The `ぱん` → `パン` case is the failure the term targets: a string written as a word the model
+  has memorised rather than as the quoted letters. The line goes on (§ 6).
+
 ## 6. After the A/B
 
 - The 694-page set: one LoRA on every page with OCR text, where the term has thousands of

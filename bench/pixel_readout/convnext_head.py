@@ -191,6 +191,9 @@ def real_pixels(item) -> torch.Tensor:
         w, h = (int(v) for v in meta["size"].split("x"))
         im = Image.open(meta["source"]).convert("RGB").resize((w, h), Image.LANCZOS)
         return torch.from_numpy(np.array(im)).permute(2, 0, 1)
+    if item.image_path:  # x2_flex.py's rows name their ×1 image
+        im = Image.open(item.image_path).convert("RGB")
+        return torch.from_numpy(np.array(im)).permute(2, 0, 1)
     src = caption_path(item)
     hits = [
         q

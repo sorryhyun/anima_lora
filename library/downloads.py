@@ -108,6 +108,13 @@ MOSS_DIT_INT8_REPO = "sorryhyun/MOSS-Image-Base-int8"
 MOSS_DIT_INT8_FILE = "moss_image_base_int8_gptq.safetensors"
 
 
+def default_anima_path(kind: str) -> Path:
+    """``<models_dir>/<kind dir>/<file>`` for an Anima base weight (``dit`` /
+    ``te`` / ``vae``) — the ``inference.py`` default when its flag is unset."""
+    name = {"dit": ANIMA_DIT_FILE, "te": ANIMA_TE_FILE, "vae": ANIMA_VAE_FILE}[kind]
+    return models_dir() / kind_dir(kind) / name
+
+
 def default_pixel_head_path() -> Path:
     """``<models_dir>/vae/anima_pixel_head.safetensors`` — the pixel head beside the VAE."""
     return models_dir() / kind_dir("vae") / ANIMA_PIXEL_HEAD_FILE

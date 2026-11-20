@@ -31,9 +31,8 @@ import argparse
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Sequence, Tuple, Union
 
-# The parser requires --text_encoder and --save_path; placeholders let
-# latent-only / non-saving requests build a namespace.
-_PLACEHOLDER_TEXT_ENCODER = "__unset_text_encoder__"
+# The parser requires --save_path; the placeholder lets non-saving requests
+# build a namespace. An unset dit / text_encoder / vae takes the catalog default.
 _PLACEHOLDER_SAVE_PATH = "__unset_save_path__"
 
 
@@ -97,7 +96,8 @@ class GenerationRequest:
         """Render as CLI tokens; ``extra_argv`` goes last so it overrides."""
         argv: list[str] = []
 
-        argv += ["--text_encoder", self.text_encoder or _PLACEHOLDER_TEXT_ENCODER]
+        if self.text_encoder is not None:
+            argv += ["--text_encoder", self.text_encoder]
         argv += ["--save_path", self.save_path or _PLACEHOLDER_SAVE_PATH]
 
         argv += ["--negative_prompt", self.negative_prompt]

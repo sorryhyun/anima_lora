@@ -78,6 +78,7 @@ from library.env import resolve_under_home
 from library.inference.sampling import get_timesteps_sigmas
 from library.inference.text import prepare_text_inputs
 from library.io.cache import (
+    CachedImage,
     discover_cached_pairs,
     load_cached_latents,
     load_cached_text_features,
@@ -280,6 +281,43 @@ def main():
         "--critic_crop", type=int, default=256, help="×2 px, multiple of 256"
     )
     p.add_argument(
+        "--lambda_pegan",
+        type=float,
+        default=0.0,
+        help="the PE-Spatial discriminator's generator term (x2_pegan.py; needs "
+        "--x2_target real: the real 2× image is its real)",
+    )
+    p.add_argument(
+        "--pegan",
+        action="store_true",
+        help="build and train the PE-Spatial discriminator even at --lambda_pegan 0 "
+        "(with --term_log: size the weight)",
+    )
+    p.add_argument("--pegan_crop", type=int, default=512, help="×2 px, multiple of 16")
+    p.add_argument("--pegan_layers", default="3,7,11", help="PE blocks tapped, 0-based")
+    p.add_argument("--pegan_lr", type=float, default=1e-4)
+    p.add_argument(
+        "--pegan_r", type=float, default=0.1, help="R1 / R2 (noise form) weight"
+    )
+    p.add_argument("--pegan_r_sigma", type=float, default=0.01)
+    p.add_argument(
+        "--pegan_ratio",
+        type=float,
+        default=0.0,
+        help="> 0: set the PE-GAN weight each step so its gradient at the ×2 output is "
+        "this times rec2's (in place of --lambda_pegan; capped at --pegan_lambda_max)",
+    )
+    p.add_argument("--pegan_lambda_max", type=float, default=0.1)
+    p.add_argument(
+        "--pegan_param_ratio",
+        type=float,
+        default=0.0,
+        help="> 0: once per rollout, set the PE-GAN weight so its gradient norm over the "
+        "head's parameters is this times that of the ×2 loss (rec2 + λ_lpips·LPIPS + "
+        "λ_dc·dc, one summed loss), measured eagerly on a replay sample (in place of "
+        "--lambda_pegan / --pegan_ratio; capped at --pegan_lambda_max)",
+    )
+    p.add_argument(
         "--critic_k", type=int, default=1, help="critic updates per head update"
     )
     p.add_argument("--critic_lr", type=float, default=5e-5)
@@ -339,7 +377,23 @@ def main():
     )
     p.add_argument("--teacher_repo", default=TEACHER_REPO)
     p.add_argument("--teacher_dir", default=TEACHER_DIR)
+    p.add_argument(
+        "--x2flex",
+        default=None,
+        help="x2_flex.py's manifest.json: train / test / text items from it (each with "
+        "its real 2× image), in place of the P1 split; the ×2 meters and sheets then "
+        "read against the real 2× image",
+    )
+    p.add_argument(
+        "--x2_target",
+        choices=["teacher", "real"],
+        default="teacher",
+        help="the ×2 training target: the teacher on VAE(x̂0), or (with --x2flex) the "
+        "real 2× image at the same window (arm B)",
+    )
     args = p.parse_args()
+    assert args.x2_target == "teacher" or args.x2flex, "--x2_target real needs --x2flex"
+    assert not (args.pegan_ratio > 0 and args.pegan_param_ratio > 0), "one pegan ratio"
     start_heartbeat(label="x2head")
     device = torch.device(args.device)
     torch.manual_seed(args.seed)
@@ -347,29 +401,61 @@ def main():
 
     # --- data: the parent recipe's split (convnext_head.py) ---
     cache_root = Path(resolve_under_home(args.cache_root))
-    p1 = json.loads((Path(resolve_under_home(args.p1_run)) / "result.json").read_text())
-    a1 = p1["args"]
-    p1_train, test, test_artists = pick_samples(
-        cache_root,
-        a1["n_train"],
-        a1["n_test_artists"],
-        a1["per_artist"],
-        a1["max_tokens"],
-        a1["seed"],
-    )
-    assert test_artists == p1["metrics"]["test_artists"], (
-        "P1 test set did not reproduce"
-    )
-    text = pick_text(cache_root, {ci.npz_path for ci in p1_train})
-    held = set(test_artists)
-    held_paths = {ci.npz_path for ci in text}
-    train = [
-        ci
-        for a in sorted(d.name for d in cache_root.iterdir() if d.is_dir())
-        if a not in held
-        for ci in discover_cached_pairs(str(cache_root / a))
-        if ci.npz_path not in held_paths
-    ]
+    x2_paths: dict[str, Path] = {}  # npz path → the real 2× image (--x2flex)
+    if args.x2flex:
+        man = json.loads(Path(resolve_under_home(args.x2flex)).read_text())
+        split: dict[str, list] = {"train": [], "test": [], "text": []}
+        for row in man:
+            if row["split"] not in split:
+                continue
+            ci = CachedImage(
+                stem=row["stem"],
+                image_path=str(resolve_under_home(row["x1"])),
+                npz_path=str(resolve_under_home(row["npz"])),
+                te_path=str(resolve_under_home(row["te"])),
+            )
+            assert Path(ci.npz_path).exists(), f"no latent {ci.npz_path} (encode x1/)"
+            x2_paths[ci.npz_path] = Path(resolve_under_home(row["x2"]))
+            split[row["split"]].append(ci)
+        train, test, text = split["train"], split["test"], split["text"]
+    else:
+        p1 = json.loads(
+            (Path(resolve_under_home(args.p1_run)) / "result.json").read_text()
+        )
+        a1 = p1["args"]
+        p1_train, test, test_artists = pick_samples(
+            cache_root,
+            a1["n_train"],
+            a1["n_test_artists"],
+            a1["per_artist"],
+            a1["max_tokens"],
+            a1["seed"],
+        )
+        assert test_artists == p1["metrics"]["test_artists"], (
+            "P1 test set did not reproduce"
+        )
+        text = pick_text(cache_root, {ci.npz_path for ci in p1_train})
+        held = set(test_artists)
+        held_paths = {ci.npz_path for ci in text}
+        train = [
+            ci
+            for a in sorted(d.name for d in cache_root.iterdir() if d.is_dir())
+            if a not in held
+            for ci in discover_cached_pairs(str(cache_root / a))
+            if ci.npz_path not in held_paths
+        ]
+    REF = "real" if args.x2flex else "teacher"  # what the ×2 meters read against
+
+    def real_x2(item, like: torch.Tensor) -> torch.Tensor:
+        """The item's real 2× image in [-1, 1] on ``like``'s device, (3, 2H, 2W)."""
+        px = np.array(Image.open(x2_paths[item.npz_path]).convert("RGB"))
+        t = torch.from_numpy(px).permute(2, 0, 1).to(like.device).float() / 127.5 - 1
+        assert t.shape[-2:] == (2 * like.shape[-2], 2 * like.shape[-1]), (
+            item,
+            t.shape,
+            like.shape,
+        )
+        return t
     page_train: list[Path] = []
     page_eval: list[Path] = []
     if args.pages:
@@ -527,9 +613,11 @@ def main():
                     tot += lp(ta, tb).mean().item() * ta.shape[-2] * ta.shape[-1]
         return tot / (h * w)
 
-    # (item, set key, f, lat, VAE(x̂0), teacher ×2, bicubic dB, twin dB, chain | None)
+    # (item, set key, f, lat, VAE(x̂0), ×2 reference (teacher ×2, or the real 2× image
+    # with --x2flex), bicubic dB, twin dB, chain | None)
     held_feats = []
-    chain_rows = []  # (set key, dB, LPIPS, luma, dark luma) vs the teacher
+    chain_rows = []  # (set key, dB, LPIPS, luma, dark luma) vs the ×2 reference
+    teacher_rows = []  # the same, the teacher on VAE(x̂0) vs the real 2× image
     t_teacher = []
     head.eval()
     for name, sigma, adapter_on in points:  # the same noise per item at every point
@@ -549,6 +637,13 @@ def main():
             # function of the input (the ceiling a regression can reach)
             first = j == 0 or held_items[j - 1][1] != key  # each set's first image
             twin = psnr(up2(img, 1), t2) if first or j % 4 == 0 else None
+            ref = t2
+            if args.x2flex:  # the meters read against the real 2× image
+                ref = real_x2(item, img)
+                lum, dark = tone_stats(t2, ref)
+                teacher_rows.append(
+                    (f"{name}.{key}", psnr(t2, ref), lpips_img(t2, ref), lum, dark)
+                )
             held_feats.append(
                 (
                     item,
@@ -556,19 +651,19 @@ def main():
                     f.to("cpu", torch.bfloat16),
                     lat.cpu(),
                     img.to("cpu", torch.float16),
-                    t2.to("cpu", torch.float16),
-                    psnr(bicubic2(img), t2),
+                    ref.to("cpu", torch.float16),
+                    psnr(bicubic2(img), ref),
                     twin,
                     None if chain is None else chain.to("cpu", torch.float16),
                 )
             )
             if chain is not None:  # chain meters, once
-                lum, dark = tone_stats(chain, t2)
+                lum, dark = tone_stats(chain, ref)
                 chain_rows.append(
                     (
                         f"{name}.{key}",
-                        psnr(chain, t2),
-                        lpips_img(chain, t2),
+                        psnr(chain, ref),
+                        lpips_img(chain, ref),
                         lum,
                         dark,
                     )
@@ -582,10 +677,11 @@ def main():
         refs[f"{st}_psnr_teacher_twin"] = float(
             np.mean([h[7] for h in rows_ if h[7] is not None])
         )
-        cr = [c for c in chain_rows if c[0] == st]
-        if cr:
-            for i, col in enumerate(("psnr", "lpips", "luma", "dark"), 1):
-                refs[f"{st}_chain_{col}"] = mean_or_none([c[i] for c in cr])
+        for tag, src in (("chain", chain_rows), ("teacher", teacher_rows)):
+            cr = [c for c in src if c[0] == st]
+            if cr:
+                for i, col in enumerate(("psnr", "lpips", "luma", "dark"), 1):
+                    refs[f"{st}_{tag}_{col}"] = mean_or_none([c[i] for c in cr])
     if args.resume_x2:
         rx = resolve_run(args.resume_x2) / "head_x2.safetensors"
         head.load_state_dict(load_file(str(rx), device=str(device)))
@@ -597,13 +693,22 @@ def main():
         flush=True,
     )
     print(
-        "vs teacher ×2 — bicubic / second teacher draw: "
-        + "  ".join(
-            f"{st} {refs[f'{st}_psnr_bicubic']:.2f} / {refs[f'{st}_psnr_teacher_twin']:.2f}"
-            for st in sets
-        ),
+        f"vs the ×2 reference ({REF}) — bicubic dB: "
+        + "  ".join(f"{st} {refs[f'{st}_psnr_bicubic']:.2f}" for st in sets)
+        + "; second teacher draw vs the teacher, dB: "
+        + "  ".join(f"{st} {refs[f'{st}_psnr_teacher_twin']:.2f}" for st in sets),
         flush=True,
     )
+    if teacher_rows:
+        print(
+            "teacher on VAE(x̂0) vs the real 2× image — dB / LPIPS / dark: "
+            + "  ".join(
+                f"{st} {refs[f'{st}_teacher_psnr']:.2f} / "
+                f"{refs[f'{st}_teacher_lpips']:.4f} / {refs[f'{st}_teacher_dark'] or 0:+.2f}"
+                for st in sets
+            ),
+            flush=True,
+        )
 
     def okey(item) -> str:
         return str(item) if isinstance(item, Path) else item.npz_path
@@ -672,6 +777,19 @@ def main():
             use_dmd=args.lambda_dmd > 0 or args.critic,
             use_gan=args.lambda_gan > 0 or args.critic,
         )
+    pe_disc = None
+    if args.lambda_pegan > 0 or args.pegan:
+        assert args.x2_target == "real", "--lambda_pegan / --pegan need --x2_target real"
+        assert args.pegan_crop % 16 == 0, "--pegan_crop: a multiple of 16"
+        from bench.pixel_readout.x2_pegan import PEDisc
+
+        pe_disc = PEDisc(
+            device,
+            layers=tuple(int(v) for v in args.pegan_layers.split(",")),
+            lr=args.pegan_lr,
+            r_weight=args.pegan_r,
+            r_sigma=args.pegan_r_sigma,
+        )
     peak_setup = torch.cuda.max_memory_allocated() / 1e9
     torch.cuda.reset_peak_memory_stats()
     print(f"peak VRAM before training {peak_setup:.2f} GB", flush=True)
@@ -691,7 +809,10 @@ def main():
             weights["dmd"] = args.lambda_dmd
         if critic.use_gan:
             weights["gan"] = args.lambda_gan
+    if pe_disc is not None:
+        weights["pegan"] = args.lambda_pegan
     crit_rng = random.Random(args.seed + 8)
+    pegan_rng = random.Random(args.seed + 9)
 
     def critic_crops(p2, blq, t2_):
         """One random --critic_crop crop of the loss region → (×2 output, bicubic ×2
@@ -737,6 +858,14 @@ def main():
         if critic is not None:
             dmd, gan = critic.gen_terms(*critic_crops(p2, blq, t2_))
             out.update({k: v for k, v in (("dmd", dmd), ("gan", gan)) if v is not None})
+        if pe_disc is not None:  # paired crops: ×2 output and the real 2× image
+            c = args.pegan_crop
+            h, w = p2.shape[-2:]
+            assert min(h, w) >= c, (h, w, c)
+            y, x = pegan_rng.randint(0, h - c), pegan_rng.randint(0, w - c)
+            sl = (..., slice(y, y + c), slice(x, x + c))
+            out["pegan"] = pe_disc.gen_term(p2[None].float()[sl], t2_[None][sl])
+            out["_p2"] = p2  # for --pegan_ratio: the gradients at the ×2 output
         if breal and args.lambda_lpips_x1 > 0:
             cl = torch.channels_last
             a = crop_margin(x1, bmar, PATCH)[None].float()
@@ -782,6 +911,7 @@ def main():
     t_critic = 0.0
     peak_steps, evaluated = None, False
     crit_keys = ("dmd", "gan", "c_fake", "c_gan_d", "d_real", "d_fake")
+    crit_keys += ("pegan", "lam_pegan", "d_loss", "d_margin", "d_r1", "d_r2")
     t0 = time.perf_counter()
     for r in range(args.rollouts):
         if page_train and page_rng.random() < args.page_share:
@@ -813,7 +943,12 @@ def main():
             slice(x0 * PATCH, (x0 + ww) * PATCH),
         )
         win = img[:, ys, xs]
-        t2 = up2(win, r)
+        if args.x2_target == "real":  # arm B: the real 2× image at the same window
+            ys2 = slice(2 * ys.start, 2 * ys.stop)
+            xs2 = slice(2 * xs.start, 2 * xs.stop)
+            t2 = real_x2(item, img)[:, ys2, xs2]
+        else:
+            t2 = up2(win, r)
         win1 = win  # the ×1 target: VAE(x̂0), or the original image at a :real point
         if real:
             px = real_pixels(item)
@@ -830,11 +965,35 @@ def main():
                 crop_margin(win, mar, PATCH).half().clone(),  # VAE(x̂0): the critic's LQ
             )
         )
+        if pe_disc is not None and args.pegan_param_ratio > 0:
+            pg_params = [q for q in head.parameters() if q.requires_grad]
+            t_ = loss_terms(*replay_rng.choice(replay), model=head, lp_fn=lp)
+            l_x2 = t_["rec2"] + weights["lpips"] * t_["lpips"] + weights["dc"] * t_["dc"]
+            g_x2 = torch.autograd.grad(l_x2, pg_params, retain_graph=True, allow_unused=True)
+            g_pg = torch.autograd.grad(t_["pegan"], pg_params, allow_unused=True)
+
+            def _norm(gs):
+                return torch.sqrt(sum((g.float() ** 2).sum() for g in gs if g is not None))
+
+            lam = args.pegan_param_ratio * _norm(g_x2) / (_norm(g_pg) + 1e-12)
+            weights["pegan"] = min(lam.item(), args.pegan_lambda_max)
+            del t_, l_x2, g_x2, g_pg
         for _ in range(args.opt_steps):
             set_lr(step)
             opt.zero_grad(set_to_none=True)
             terms = loss_terms(*replay_rng.choice(replay))
-            loss = sum(w * terms[k] for k, w in weights.items() if k in terms)
+            wts = weights
+            if pe_disc is not None and args.pegan_param_ratio > 0:
+                terms["lam_pegan"] = torch.tensor(weights["pegan"])
+            if pe_disc is not None and args.pegan_ratio > 0:
+                p2_ = terms.pop("_p2")
+                g_r = torch.autograd.grad(terms["rec2"], p2_, retain_graph=True)[0]
+                g_g = torch.autograd.grad(terms["pegan"], p2_, retain_graph=True)[0]
+                lam = args.pegan_ratio * g_r.norm() / (g_g.norm() + 1e-12)
+                wts = {**weights, "pegan": min(lam.item(), args.pegan_lambda_max)}
+                terms["lam_pegan"] = torch.tensor(wts["pegan"])
+            terms.pop("_p2", None)
+            loss = sum(w * terms[k] for k, w in wts.items() if k in terms)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
             opt.step()
@@ -856,10 +1015,14 @@ def main():
                 if args.term_log:
                     torch.cuda.synchronize()
                 t_critic += time.perf_counter() - tc
+            if pe_disc is not None:
+                tc = time.perf_counter()
+                clog = pe_disc.step()  # on this step's paired crops, detached
+                t_critic += time.perf_counter() - tc
         for k, v in terms.items():
             v = v.item()
             ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
-        if critic is not None:
+        if critic is not None or pe_disc is not None:
             for k, v in clog.items():
                 ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
         if (r + 1) % 50 == 0:
@@ -869,7 +1032,7 @@ def main():
                 extra = "  " + " ".join(
                     f"{k} {ema[k]:.4f}" for k in ("lpips", "dc", "lpips1") if k in ema
                 )
-            if critic is not None:
+            if critic is not None or pe_disc is not None:
                 extra += "  " + " ".join(
                     f"{k} {ema[k]:.4g}" for k in crit_keys if k in ema
                 )
@@ -914,25 +1077,26 @@ def main():
                 "stem": item.stem,
                 "artist": "pages" if is_page else Path(item.npz_path).parent.name,
                 "set": key,
-                "psnr_x2_vs_teacher": psnr(x2, t2),
-                "lpips_x2_vs_teacher": lpips_img(x2, t2),
-                "luma_x2_vs_teacher": lum,
-                "dark_x2_vs_teacher": dark,
-                "psnr_bicubic_vs_teacher": bic,
+                f"psnr_x2_vs_{REF}": psnr(x2, t2),
+                f"lpips_x2_vs_{REF}": lpips_img(x2, t2),
+                f"luma_x2_vs_{REF}": lum,
+                f"dark_x2_vs_{REF}": dark,
+                f"psnr_bicubic_vs_{REF}": bic,
                 "psnr_teacher_twin": twin,
                 "psnr_x1_vs_vae": psnr(x1, img),
                 "psnr_down_vs_vae": psnr(down2(x2), img),
-                "psnr_teacher_down_vs_vae": psnr(down2(t2), img),
+                f"psnr_{REF}_down_vs_vae": psnr(down2(t2), img),
             }
         )
         if chain is not None:
             chain = chain.to(device).float()
-            rows[-1]["psnr_chain_vs_teacher"] = psnr(chain, t2)
+            rows[-1][f"psnr_chain_vs_{REF}"] = psnr(chain, t2)
         n = counters.get(key, 0)
         counters[key] = n + 1
         if n >= args.n_sheets and not key.endswith(".text"):
             continue
-        cols = [("VAE -> ResShift x2", t2), ("x2 head", x2)]
+        ref_label = "original 2x" if args.x2flex else "VAE -> ResShift x2"
+        cols = [(ref_label, t2), ("x2 head", x2)]
         if chain is not None:
             cols = [("chain: head x1 -> ResShift x2", chain), ("x2 head", x2)]
         stem = f"{key.replace('.', '_')}_{n:02d}_{item.stem}"
@@ -971,7 +1135,9 @@ def main():
             "adapter": args.adapter or "",
             "init": args.init,
             "lambda_lpips_x1": str(args.lambda_lpips_x1),
+            "lambda_pegan": str(args.lambda_pegan),
             "teacher": TEACHER_FILE,
+            "x2_target": args.x2_target,
         },
     )
     artifacts.append("head_x2.safetensors")
@@ -979,15 +1145,15 @@ def main():
     set_metrics = {}
     for st in sets:
         for col in (
-            "psnr_x2_vs_teacher",
-            "lpips_x2_vs_teacher",
-            "luma_x2_vs_teacher",
-            "dark_x2_vs_teacher",
-            "psnr_bicubic_vs_teacher",
+            f"psnr_x2_vs_{REF}",
+            f"lpips_x2_vs_{REF}",
+            f"luma_x2_vs_{REF}",
+            f"dark_x2_vs_{REF}",
+            f"psnr_bicubic_vs_{REF}",
             "psnr_x1_vs_vae",
             "psnr_down_vs_vae",
-            "psnr_teacher_down_vs_vae",
-            *(["psnr_chain_vs_teacher"] if args.chain else []),
+            f"psnr_{REF}_down_vs_vae",
+            *([f"psnr_chain_vs_{REF}"] if args.chain else []),
         ):
             set_metrics[f"{st}_{col}"] = mean_or_none(
                 [row[col] for row in rows if row["set"] == st]
@@ -1013,6 +1179,8 @@ def main():
         "peak_vram_steps_gb": peak_steps,
         "peak_vram_reserved_gb": torch.cuda.max_memory_reserved() / 1e9,
         "critic_ms_per_step": t_critic / max(1, step) * 1e3,
+        "x2_target": args.x2_target,
+        "x2_reference": REF,
         **refs,
         **set_metrics,
         "loss_weights": weights,
@@ -1021,10 +1189,10 @@ def main():
         "per_image": rows,
     }
     print(
-        "×2 head vs teacher (bicubic | second teacher draw): "
+        f"×2 head vs {REF} (bicubic | second teacher draw): "
         + " | ".join(
-            f"{st}: {set_metrics[f'{st}_psnr_x2_vs_teacher']:.2f} "
-            f"lpips {set_metrics[f'{st}_lpips_x2_vs_teacher']:.4f} "
+            f"{st}: {set_metrics[f'{st}_psnr_x2_vs_{REF}']:.2f} "
+            f"lpips {set_metrics[f'{st}_lpips_x2_vs_{REF}']:.4f} "
             f"({refs[f'{st}_psnr_bicubic']:.2f} | {refs[f'{st}_psnr_teacher_twin']:.2f})"
             for st in sets
         ),
@@ -1032,7 +1200,7 @@ def main():
     )
     if args.chain:
         print(
-            "chain (teacher on the --init head's ×1 output) vs teacher: "
+            f"chain (teacher on the --init head's ×1 output) vs {REF}: "
             + " | ".join(
                 f"{st}: {refs[f'{st}_chain_psnr']:.2f} lpips {refs[f'{st}_chain_lpips']:.4f} "
                 f"dark {refs[f'{st}_chain_dark'] or 0:+.2f}"

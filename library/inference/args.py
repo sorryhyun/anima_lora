@@ -18,8 +18,18 @@ def build_parser() -> argparse.ArgumentParser:
     append their own flags."""
     parser = argparse.ArgumentParser(description="HunyuanImage inference script")
 
-    parser.add_argument("--dit", type=str, default=None, help="DiT directory or path")
-    parser.add_argument("--vae", type=str, default=None, help="VAE directory or path")
+    parser.add_argument(
+        "--dit",
+        type=str,
+        default=None,
+        help="DiT path (default: the catalog's anima_dit, models/diffusion_models/).",
+    )
+    parser.add_argument(
+        "--vae",
+        type=str,
+        default=None,
+        help="VAE path (default: the catalog's anima_vae, models/vae/).",
+    )
     parser.add_argument(
         "--decoder",
         choices=("vae", "pixel_head"),
@@ -77,8 +87,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--text_encoder",
         type=str,
-        required=True,
-        help="Text Encoder 1 (Qwen2.5-VL) directory or path",
+        default=None,
+        help="Qwen3-0.6B text encoder path (default: the catalog's anima_te, "
+        "models/text_encoders/).",
     )
 
     parser.add_argument(
@@ -825,6 +836,17 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def fill_model_paths(args: argparse.Namespace) -> None:
+    """Fill an unset ``--dit`` / ``--text_encoder`` / ``--vae`` with the
+    catalog's Anima base path (``library.downloads``), the same files
+    ``configs/base.toml`` trains on."""
+    from library.downloads import default_anima_path
+
+    for attr, kind in (("dit", "dit"), ("text_encoder", "te"), ("vae", "vae")):
+        if getattr(args, attr, None) is None:
+            setattr(args, attr, str(default_anima_path(kind)))
+
+
 def build_default_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse ``argv`` (``None`` reads ``sys.argv``) into a fully-defaulted namespace.
 
@@ -833,6 +855,7 @@ def build_default_args(argv: list[str] | None = None) -> argparse.Namespace:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+    fill_model_paths(args)
 
     if args.from_file and args.interactive:
         raise ValueError(

@@ -112,7 +112,7 @@ Notes: the preview shipped as a test file on the user's word, not on a pass. In 
 pair the control did not move from its parent at LR 5e-5, so that pair reads neither term.
 The ResShift-critic branch was closed on the user's word (2026-11-20).
 
-## Arm B — the real 2× image as the ×2 target (decided 2026-11-20, not built)
+## Arm B — the real 2× image as the ×2 target (decided 2026-11-20, not built; next action: control / B / B+GAN)
 
 The user (2026-11-20): "resshift 등의 업스케일링 모델은 주로 주어진 입력을 일반적으로 '새로 확대 생성'
 하는 방향인거고, 픽셀 디코더는 주어진 feature를 픽셀로 해석하는, vae보다는 좁은 영역을 커버하는거잖아?
@@ -136,25 +136,195 @@ The user (2026-11-20): "resshift 등의 업스케일링 모델은 주로 주어�
   0.60, 1.00, 1.03, 1.19, 1.47, 1.62, 1.73, 1.83 on the text images.
 - Decided by the user: arm B is the next arm; the turbo point is left out of the ×2 work
   for now.
+- The user (2026-11-20), on the target supply: "원본이 좀 작은경우만 줄이면 어때? 상한 1024
+  하한 768에서 자유롭게. 즉 원본이 1536이면 우리식 리사이즈는 1024가 되니까 충족을 안하는데
+  768로 줄이면 2배가 되니까 성립. 2048이면 그대로 1024로, 1024면 512까지 줄여야 하는데 이건
+  하한 조건을 충족 못하니 생략"; then: this rule as the default target, and control / B /
+  B+GAN as the next action of this plan.
+- Tier-flex supply (Claude, 2026-11-20, CPU header scan over the `x2masters_1120_1035`
+  manifest, script and per-image manifest in the session scratchpad (local), not in the
+  repo): the ×1 input takes the largest tier of 1024 / 896 / 768 whose free-fit bucket
+  (`freefit_bucket` on the master after its crop margins, `band_for_tier`) the master
+  covers at 2× (scale ≤ 1). Picked: 1024 on 1,518, 896 on 395, 768 on 400, none on 929;
+  2,313 of 3,242 usable (71 %). Scale of the 2× target against the master, median (min –
+  max): 1024 0.70 (0.21 – 1.00), 896 0.91 (0.85 – 1.00), 768 0.91 (0.85 – 1.00). Formats
+  on 896 / 768: webp 374 / 392, jpeg 17 / 4, png 4 / 4. 4 of 91 artist folders have no
+  usable image; the thinnest: `kase_daiki` 2 / 54, `sumiyao_(amam)` 5 / 61,
+  `tottotonero` 11 / 80, `ru_zhai` 11 / 80.
+- The tiers' token bands (`EDGE_TOKEN_BANDS`): 768 (2160, 2160), 896 (3000, 3024), 1024
+  (4032, 4200).
+- The user (2026-11-20), on the build: "그럼 896 768은 입력이 작아지고 타겟은 원본인걸로
+  보장되는거지? 내생각에 이쪽이 업스케일링 task로썬 좋은 방향일듯".
+- Built set, `bench/pixel_readout/x2_flex.py` (`x2flex_1120_1700`, CPU; images and
+  `manifest.json` under `post_image_dataset/x2flex/` (local), 7.6 GB). In place of the tier
+  scan above, a master that does not cover 2× the 1024 bucket is cropped to a multiple of
+  32 px per side at the stem's anchor (after the free-fit aspect clamp) and kept as the 2×
+  target without resampling; its LANCZOS ×½ is the ×1 input, kept when the ×1 holds 2,160 –
+  4,200 tokens, at any size in between, not at a tier bucket. Rows: `down` (×1 = the
+  resized image and its cached latent, 2× = `target_2x`) 1,518; `exact` 820 (×1 tokens
+  2,161 – 3,024 on 421, 3,025 – 4,200 on 395, 2,160 on 4); dropped 904.
+- Split: every image of the P1 test artists out of training (182 rows); read set `test`
+  = 2 `down` rows per test artist with any (12), `text` = per text artist the `down` row
+  with the longest quoted caption (5 of 8 artists have one). Train: 1,345 `down` + 794
+  `exact`. On 200 sampled rows the 2× image is exactly twice the ×1 size, sides multiples
+  of 16.
+- Code (not yet run): `x2_head.py --x2flex <manifest>` takes train / test / text from the
+  manifest and reads every ×2 meter and sheet against the real 2× image (`*_vs_real`
+  keys; the teacher on VAE(x̂0) against the real image is logged as `<set>_teacher_*`);
+  `--x2_target real` trains on the real 2× window; `--pegan` / `--lambda_pegan` add the
+  PE-Spatial discriminator (`x2_pegan.py`: taps after PE blocks 4 / 8 / 12, a per-token
+  conv head each, paired relativistic loss on 512-px crops, R1 / R2 in the
+  noise-perturbation form, weight 0.1, σ 0.01, head LR 1e-4).
+- Smoke `x2pgsm_1120_1555` (B's recipe with `--pegan --lambda_pegan 0 --term_log`, 100
+  rollouts; `bench/pixel_readout/results/20261120-1640-x2pgsm_1120_1555/` (local)). Read
+  against the real 2× image, test 12 / text 5, one seed:
+
+  | | dB | LPIPS | dark lift |
+  |---|---|---|---|
+  | bicubic ×2 of VAE(x̂0) | 30.35 / 26.39 | – | – |
+  | teacher on VAE(x̂0) | 29.50 / 25.47 | 0.155 / 0.094 | +4.06 / +8.38 |
+  | chain (`realr_1119_2200` ×1 → teacher) | 30.06 / 25.98 | 0.171 / 0.114 | +5.83 / +12.07 |
+  | ×2 head `x2real_1119_2242`, as loaded | 29.77 / 25.71 | 0.196 / 0.176 | +7.91 / +14.03 |
+  | after 100 rollouts on the real target | 29.74 / 25.45 | 0.191 / 0.180 | +7.19 / +13.68 |
+
+  ×1 against the original image over the 100 rollouts: 32.88 → 32.39 / 27.83 → 27.24 dB.
+  Unweighted gradient norms over the head at rollouts 50 / 100: rec2 0.149 / 0.111, LPIPS
+  4.21 / 3.66, dc 0.369 / 0.257, PE-GAN 71.4 / 25.3. Discriminator (not opposed, λ 0): margin
+  5.36 / 6.46, loss 0.018 / 0.008, R1 0.050 / 0.035. 2.60 s per rollout, disc 42 ms per
+  step, peak 10.0 GB.
+
+### Interpretation (supply)
+
+- The `exact` latents live in `post_image_dataset/x2flex/cache/`, not
+  `post_image_dataset/lora/`, where an extra `{stem}_{WxH}_anima.npz` would add buckets
+  to LoRA training. TE caches are per stem and carry over.
+- On `exact` rows the 2× target is the master's own pixels, so its compression shows at
+  1:1, where the `down` set's median 0.70 averages it out.
+- The deployment case is 1024 → 2048; `exact` inputs put up to about 1.4× more content in
+  a token. Held-out reads stay on the `down` set.
 
 ### Design (Claude's draft; to be fixed in a run header before it is queued)
 
 - Parent `x2ctl2_1120_0925`'s recipe (resume `x2real_1119_2242`, LR 2e-4, window 24, margin
   3, λ_lpips 0.1, λ_dc 1.0, λ_lpips_x1 0.05, replay 64 × 16), with the points reduced to
-  the base range `0.0577-0.1364:real`, the train set reduced to the native set, and no
-  manga pages (no 2× source checked for them).
-- Control: that recipe with the ×2 target unchanged (the teacher on VAE(x̂0)).
-- Arm: the ×2 target at the same windows changed to the real 2× image, recipe loss, LPIPS
-  and the tone term against it; nothing else changed.
-- Question: does a ×2 stage trained on the real 2× image read closer to it, on lines and
-  small glyphs, than one trained on the teacher's upscale? Yes → the GAN arm on PE-Spatial
-  features with the real 2× images as real. Level → the ×2 stage's width before any
-  adversarial term (fit probe: width 256 → 512 gave +0.8 dB).
-- Read: held-out images of the native set, ×2 against the real 2× image (dB, LPIPS, dark
-  lift) and pairwise 768-px crops `control | arm`, with `original 2× | arm` beside them,
-  labelled; the user's read decides. The held-out set needs more native-set images than
-  those above. Bars: spread unknown.
-- Cost: 250 rollouts each at about 1.5 s; the target build is CPU.
+  the base range `0.0577-0.1364:real`, the train set reduced to the `x2flex` set above,
+  no manga pages (no 2× source checked for them), no turbo adapter, `--chain` on.
+- Three arms, queued as one batch after the running training job ends:
+  - control: the ×2 target unchanged (the teacher on VAE(x̂0));
+  - B: the ×2 target at the same windows changed to the real 2× image, recipe loss, LPIPS
+    and the tone term against it; nothing else changed;
+  - B+GAN: B plus the PE-Spatial discriminator (Next arms, 1), real = the real 2× images,
+    `--pegan --pegan_ratio 1.0`: the weight is set each step so the PE-GAN gradient at the
+    ×2 output equals rec2's (cap 0.1). A fixed λ was not taken from the smoke because its
+    PE-GAN gradient fell 71 → 25 in 50 rollouts. Ratio 1.0 is a choice; at the smoke's
+    norms the SR line's λ_gan 3e-3 gives 0.5 – 1.5× rec2 over the head. 250 rollouts, as
+    the others.
+  - Labels `x2bgan_1120_1650`, `x2bctl_1120_1650`, `x2b_1120_1650`, queued in that order
+    (B+GAN first, so the new weight path fails early if it does); shared flags: `--compile
+    --init realr_1119_2200 --resume_x2 x2real_1119_2242 --x2flex
+    post_image_dataset/x2flex/manifest.json --points 0.0577-0.1364:real --rollouts 250
+    --eval_every 125 --opt_steps 16 --replay 64 --window 24 --margin 3 --lr 2e-4
+    --lambda_lpips 0.1 --lambda_dc 1.0 --lambda_lpips_x1 0.05 --chain --term_log`.
+- Question: B against control — does a ×2 stage trained on the real 2× image read closer
+  to it, on lines and small glyphs, than one trained on the teacher's upscale? B+GAN
+  against B — does the adversarial term sharpen lines beyond the target change? Level on
+  both → the ×2 stage's width (fit probe: width 256 → 512 gave +0.8 dB).
+- Read: the `test` and `text` rows, ×2 against the real 2× image (dB, LPIPS, dark
+  lift) and pairwise 768-px crops `control | B | B+GAN`, with `original 2× | arm` beside
+  them, labelled; the user's read decides. Bars: spread unknown.
+- Preparation: built (Facts above), except the `exact` latents and the smoke, queued.
+- Cost: 250 rollouts each at about 2.6 s (the smoke's rate) plus a 2.5-minute held-out
+  build: about 15 minutes per arm, 45 for the batch.
+
+### Facts (the batch, 2026-11-20)
+
+- Read against the real 2× image after 250 rollouts, test 12 / text 5, one seed
+  (`bench/pixel_readout/results/20261120-{1702-x2bctl,1709-x2b,1653-x2bgan}_1120_1650/`
+  (local)); start = `x2real_1119_2242` as loaded:
+
+  | | ×2 dB | ×2 LPIPS | dark lift | ×1 vs original dB |
+  |---|---|---|---|---|
+  | start | 29.77 / 25.71 | 0.196 / 0.176 | +7.91 / +14.03 | 32.88 / 27.83 |
+  | control `x2bctl_1120_1650` | 29.77 / 25.58 | 0.196 / 0.172 | +8.00 / +14.42 | 32.80 / 27.65 |
+  | B `x2b_1120_1650` | 29.77 / 25.45 | 0.181 / 0.174 | +7.48 / +14.27 | 32.42 / 27.23 |
+  | B+GAN `x2bgan_1120_1650` | 29.77 / 25.45 | 0.181 / 0.173 | +7.51 / +14.32 | 32.42 / 27.22 |
+  | chain (reference) | 30.06 / 25.98 | 0.171 / 0.114 | +5.83 / +12.07 | – |
+
+- At rollout 125 every arm read worse on LPIPS (0.265 – 0.286 test) and came back by 250.
+- B+GAN's per-step weight ran 3.4e-4 – 5.3e-4 (`--pegan_ratio 1.0`); the discriminator
+  margin rose 5.3 → 7.6 over the run.
+- Sheets (local): `~/x2pair_1120/armB/` (`original 2x | control | B`, 768-px crops at the
+  window `x2_head.py` picked on the real image, labelled) and `~/x2pair_1120/armB_gan/`
+  (`B | B+GAN`). Claude's read, labels visible, two sheets: control and B hard to tell
+  apart; both smooth the paper grain the original carries on `test_01`.
+
+- Two more B+GAN runs, B's recipe otherwise: `x2bgan8_1120_1715` (`--pegan_ratio 8`, weight
+  2.5e-3 → 1.5e-3, weighted PE-GAN gradient over the head 1.0 – 2.0× rec2's, 0.11 – 0.50× the
+  ×2 terms' summed norms) and `x2bganx_1120_1730` (`--pegan_param_ratio 1.0`: once per
+  rollout, the PE-GAN gradient norm over the head set equal to that of rec2 + 0.1·LPIPS + dc;
+  weight 4.1e-2 → 6.4e-3; disc margin 4.5 → 6.8). At 250 rollouts, test / text: `x2bgan8`
+  29.71 / 25.41 dB, LPIPS 0.180 / 0.175, dark +7.52 / +14.30; `x2bganx` 29.63 / 25.39 dB,
+  LPIPS 0.190 / 0.182, dark +7.42 / +14.20, ×1 vs original 32.43 / 27.26. At 125 every arm
+  read worse on LPIPS, `x2bganx` most (0.295 / 0.290).
+- Safe read set (the 6 `safe`-rated rows of the held-out artist sushispin, read with
+  `--rollouts 0 --resume_x2`, `post_image_dataset/x2flex/manifest_safe_read.json`): dB /
+  LPIPS / dark — control 27.74 / 0.256 / +7.07, B 27.73 / 0.250 / +6.05, `x2bgan8` 27.69 /
+  0.247 / +6.08, `x2bganx` 27.66 / 0.256 / +6.05; teacher 27.67 / 0.205, chain 28.20 / 0.232.
+  Sheets (local): `~/x2pair_1120/{safe_ctl_b,safe_b_gan8,safe_b_ganx,b_ganx}/`.
+- Claude's read, labels visible, two sheets: B and both GAN runs near-identical; all
+  softer than the original on line art.
+- Every arm here ran 250 rollouts (4,000 updates, summed LR ≈ 0.4) from the converged
+  `x2real_1119_2242`, re-warmed to 2e-4; the ×1 release trained 48,000 updates (≈ 4.8),
+  the ×2 preview 16,000 (≈ 1.6).
+
+- The user (2026-11-20), on the ×1 drift: separate ×1 and ×2 files; the ×2 file trains on
+  the ×2 losses alone (`--x1_weight 0 --lambda_lpips_x1 0`). At 250 rollouts B with ×1 off
+  `x2bo_1120_1815` reads 29.77 / 25.43 dB, LPIPS 0.180 / 0.174 (B with ×1 on 0.181 / 0.174),
+  B+GAN ×8 with ×1 off `x2bgan8o_1120_1815` 0.182 / 0.176; safe 0.248 / 0.246.
+- 1,000 rollouts (16,000 updates, as the preview), test / text, and safe:
+
+  | | ×2 dB | ×2 LPIPS | dark lift | safe dB / LPIPS / dark |
+  |---|---|---|---|---|
+  | release `x2real_1119_2242` (`read_x2real_1120_1820`) | 29.77 / 25.71 | 0.196 / 0.176 | +7.92 / +14.03 | 27.76 / 0.258 / +6.89 |
+  | B+GAN ×8, ×1 on `x2bgan8k_1120_1744` | 29.93 / 25.55 | 0.165 / 0.163 | +7.45 / +14.77 | 27.83 / 0.228 / +5.85 |
+  | B, ×1 off `x2bok_1120_1840` | 29.98 / 25.55 | 0.163 / 0.162 | +7.42 / +14.85 | 27.85 / 0.228 / +5.85 |
+
+  LPIPS by eval, `x2bok`: 0.280 / 0.227 / 0.180 / 0.163 (test, rollouts 250 / 500 / 750 /
+  1000); `x2bgan8k`: 0.272 / 0.226 / 0.183 / 0.165. `x2bgan8k`'s ×1 vs original ended at
+  32.64 / 27.41 (release 32.88 / 27.83). Disc margin at 1,000: 8.16.
+- Sheets (local): `~/x2pair_1120/{release_b1k,b1k_gan1k,safe_release_b1k,safe_release_gan8k}/`.
+- The user (2026-11-20), on the metrics: the ResShift output looks much cleaner than the
+  heads while the numbers sit close.
+- The user's read of the 1k sheets (2026-11-20): "그래 좀 더 낫다고 해야하나"; decision: "x1
+  끄는쪽으로 가는게 적어도 같은 계산량에선 이득인듯". The ×2 file's recipe from here: `--x1_weight 0
+  --lambda_lpips_x1 0`, the ×1 output served by the ×1 release file. Time per rollout: B
+  ×1 on 1.00 s, ×1 off 0.92 s (250 rollouts), 0.82 s (1k); B+GAN ×8 1.92 s.
+- Claude's read, labels visible, one sheet (`text_02`): B 1k's glyphs a little firmer than
+  the release's; small glyphs smeared in both.
+
+### Interpretation (the batch)
+
+- B+GAN equals B on every number: at the weight the per-step rule set, the GAN term did
+  not move the head, so this batch does not read the GAN. A GAN read needs a larger weight.
+- B against control: test LPIPS 0.181 against 0.196 and dark lift 0.5 lower, text level;
+  ×1 lost 0.4 dB more on B. Spread unknown; the user's read of the sheets decides.
+- At 1,000 rollouts B alone equals B+GAN ×8: the gain over the release comes with the
+  length on the real target, not with the PE-GAN term, which the discriminator out-ran in
+  every run (margin 7 – 8). The ×1 loss in the ×2 file made no difference to ×2.
+- Against the real 2× image dB favours blur and LPIPS is diluted by flat area; the
+  teacher's crisp, re-drawn lines lose on both while reading cleaner. Sheets decide.
+
+### Interpretation (smoke)
+
+- Against the real 2× image, bicubic has the highest dB of every column; LPIPS and dark
+  lift order the columns differently (teacher best). dB alone does not rank arms here; the
+  read rests on LPIPS, dark lift and the crops.
+- The unopposed discriminator separates the head's output from the real crops within 50
+  rollouts. Some of what it can key on is the masters' own compression, which the `exact`
+  rows carry at 1:1; a B+GAN head that learns block or ringing texture would show it on
+  the crops.
+- The ×1 output lost about 0.5 dB against the original in 100 rollouts of ×2 training
+  (Next arms, 4).
 
 ### Interpretation
 
@@ -172,7 +342,8 @@ as a test file, and the deployment record.
 
 ## Next arms
 
-After arm B, Claude's drafts, none queued. Micro arms on arm B's recipe, read as arm B is.
+Claude's drafts, none queued. Micro arms on arm B's recipe, read as arm B is. Item 1 is
+arm B's third arm (decided 2026-11-20); the rest follow arm B.
 
 1. GAN on PE-Spatial features (the user, 2026-11-20: "우리 맨날 쓰는 pe spatial류를 gan에 활용해도
    될듯? fastframes류를 쓴다면"): FastFrames' form (heads on a frozen ViT at three depths,
@@ -201,7 +372,7 @@ Not taken up: the previous step's feature as a second input (+0.24 dB on a linea
 - The ×2 stage lives in `bench/pixel_readout/x2_head.py::PixelHeadX2`; `library/anima/pixel_head.py`
   is untouched until an arm passes.
 - ×4 not started.
-- Arm B: whether masters are upscales or re-encoded; a 2× source for the manga pages; a
-  held-out set inside the native set.
+- Arm B: whether masters are upscales or re-encoded (matters most on 896 / 768, near 1:1);
+  a 2× source for the manga pages; a held-out set inside the 1024 set.
 - `x2_dmd.py` and the `--critic*` flags stay in `x2_head.py`, off by default, after arm 3.
 
