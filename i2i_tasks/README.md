@@ -58,7 +58,5 @@ blueprint, the GUI `[variant]` block) is `configs/easycontrol/<task>.toml`; the 
 (`near_twins`, `subject*`, `phash_edit`) rewrite its blueprint tail on every stage, and
 `near_twins` scaffolds it on a first run. MOSS-only tasks (`swap_text`) have none.
 `make easycontrol-staging EASYADAPTER=<task>` is an alias of `i2i-stage`.
-`post_image_dataset/easycontrol` is a symlink to `post_image_dataset/i2i` so pre-rename
-paths in configs and caches still resolve.
 
 Adding a task: `ADAPTER_GUIDE.md`.

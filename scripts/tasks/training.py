@@ -319,15 +319,12 @@ def _resolve_blueprint_path(path: str, name: str) -> str:
 
     Interpolates the ``{name}`` placeholder the miner writes into the
     blueprint tail; falls back to swapping the ``<slug>`` component of an
-    older ``post_image_dataset/{i2i,easycontrol}/<slug>/...`` path. Non-matching
+    older ``post_image_dataset/i2i/<slug>/...`` path. Non-matching
     (custom) paths are left untouched.
     """
     path = path.replace("{name}", name)
     parts = Path(path).parts
-    if len(parts) >= 3 and parts[:2] in (
-        ("post_image_dataset", "i2i"),
-        ("post_image_dataset", "easycontrol"),  # pre-rename blueprints
-    ):
+    if len(parts) >= 3 and parts[:2] == ("post_image_dataset", "i2i"):
         return str(Path("post_image_dataset", "i2i", name, *parts[3:]))
     return path
 
