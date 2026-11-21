@@ -19,6 +19,12 @@ so ``ok`` writes it too; a row matches when its text equals ``orig`` blind to wh
 dot glyphs). Each manifest
 is copied to ``<name>.pre_review.parquet`` once, before its first change.
 
+mainsub_sfx_wide / mainsub_det / mainsub_speech (``--mainsub`` sources) → ``assets/m109_mainsub.tsv``
+(source, id, status, main, sub; ``\\n`` escaped), one row per crop, replaced whole on each
+export: ``ok`` / ``edit`` (or a sub typed without either) → status ``ok`` with the main box
+(``orig`` = the proposal for ``ok``) and the sub (the exported one, ``-`` = none); ``drop`` →
+status ``drop``. The manifests are not touched; training does not read the file yet.
+
 doujin_sfx → ``assets/sfx_labels_sincos_597.tsv`` (the doujin gate's labels, by ``row``):
 ``edit`` writes ``text_hand`` (a line break as a space), ``edit`` / ``ok`` set ``status`` to ``checked``, ``drop`` sets
 it to ``unchecked`` (``eval_sfx.py`` skips those rows; the row stays in the file). The file is
@@ -52,6 +58,7 @@ TARGETS = {
     "furigana": ["sfxp_speech"],
 }
 DOUJIN = Path(__file__).resolve().parents[1] / "assets" / "sfx_labels_sincos_597.tsv"
+MAINSUB = {"mainsub_sfx_wide", "mainsub_det", "mainsub_speech"}
 APPLY_OK = {"linebreak_suspicious", "dots_suspicious", "odd_dots"}
 """Sources whose page text is a proposal, not the manifest's text: ``ok`` applies it."""
 
@@ -89,6 +96,9 @@ def main():
     d = m109.derived_root()
     if (rv.source == "doujin_sfx").any():
         apply_doujin(rv[rv.source == "doujin_sfx"], a.dry_run)
+    if rv.source.isin(MAINSUB).any():
+        write_mainsub(rv[rv.source.isin(MAINSUB)], a.dry_run)
+        rv = rv[~rv.source.isin(MAINSUB)]
     for name in sorted(
         {m for s in rv.source.unique() if s != "doujin_sfx" for m in TARGETS[s]}
     ):
@@ -195,6 +205,48 @@ def write_marks(rv: pd.DataFrame, dry_run: bool) -> None:
     out = pd.concat([old[~old.source.isin(srcs)], new], ignore_index=True)
     print(
         f"[sfx_marks] {len(new)} marked in {sorted(srcs)}; file {len(old)} → {len(out)} rows"
+    )
+    if not dry_run:
+        out.to_csv(path, sep="\t", index=False, quoting=3)
+
+
+def write_mainsub(rv: pd.DataFrame, dry_run: bool) -> None:
+    """The Manga109 main / sub rows → ``assets/m109_mainsub.tsv`` (see the module
+    docstring); rows the export leaves out stay."""
+    path = Path(__file__).resolve().parents[1] / "assets" / "m109_mainsub.tsv"
+    cols = ["source", "id", "status", "main", "sub"]
+    old = (
+        pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)
+        if path.exists()
+        else pd.DataFrame(columns=cols)
+    )
+    sub_col = rv["sub"] if "sub" in rv.columns else pd.Series("", index=rv.index)
+    rv = rv.assign(sub=sub_col)[(rv.status != "") | (sub_col != "")]
+    esc = lambda t: t.replace("\n", "\\n")  # noqa: E731
+    new = pd.DataFrame(
+        dict(
+            source=rv.source,
+            id=rv.id,
+            status=["drop" if s == "drop" else "ok" for s in rv.status],
+            main=[
+                "" if s == "drop" else esc(n if s == "edit" else o)
+                for s, n, o in zip(rv.status, rv.new, rv.orig)
+            ],
+            sub=[
+                ""
+                if s == "drop" or b in ("", "-")
+                else esc(collapse_keep_lines(unescape(b)))
+                for s, b in zip(rv.status, rv["sub"])
+            ],
+        )
+    )
+    key = lambda df: df.source + ":" + df.id  # noqa: E731
+    out = pd.concat([old[~key(old).isin(set(key(new)))], new], ignore_index=True)
+    n_sub = int((new["sub"] != "").sum())
+    print(
+        f"[m109_mainsub] {len(new)} rows (drop {int((new.status == 'drop').sum())}, "
+        f"with sub {n_sub}, empty main {int(((new.main == '') & (new.status == 'ok')).sum())}); "
+        f"file {len(old)} → {len(out)} rows"
     )
     if not dry_run:
         out.to_csv(path, sep="\t", index=False, quoting=3)
