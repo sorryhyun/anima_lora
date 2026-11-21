@@ -28,6 +28,8 @@ columns; it imports the loss, window, discriminator and sheet helpers from the l
 | `e2e_speed.py` | decode cost on the `make test SPECTRUM=1` sampler, or turbo with `--adapter --no_spectrum` (head vs VAE resident / swap / disk) | `replay_recipe_2026_11_19.md`, `release_2026_11_19.md` |
 | `tone_probe.py` | tone of a head against the VAE on sheets (CPU): block mean shift in code values and in linear light, by texture | `p4_mix_2026_11_19.md` |
 | `x2_head.py` | ×2 head: a second 2× stage on a released head, trained on windows against ResShift ×2 of VAE(x̂0); `--rollouts 0 --chain` reads the teacher on the ×1 output; `--resume_x2` continues a trained ×2 head; `--x2flex … --x2_target real` is arm B, `--pegan*` its PE-GAN term (`--rollouts 0 --x2flex <manifest>` is the safe-set read) | `x2_arm_a_2026_11_19.md`, `x2_lpips_dc_2026_11_19.md`, `x2_critic_2026_11_20.md` |
+| `lpips_grad_probe.py` | ∂LPIPS/∂v through a head (row-space projection) against the VAE decode of a token window: cosines, a step check, floor and bf16-VAE references, backward cost | `lpips_grad_2026_11_21.md` |
+| `lora_ab.py` | a LoRA A/B's renders at the `make test` recipe: labelled pair sheets, blind sets in the `anima-blind-pairs` layout, median ‖dW‖ per file | `lpips_lora_2026_11_21.md` |
 | `x2_overfit.py` | can the ×2 stage fit N train windows, per arm (depth, width, frozen base) | `x2_arm_a_2026_11_19.md` |
 | `x2_pair.py` | one column of two runs' sheets as an `A \| B` sheet per image (CPU) | `x2_critic_2026_11_20.md` |
 | `x2_masters.py` | real 2× targets from the masters: supply manifest and the alignment check (`target_2x`; CPU) | `x2_plan.md`, arm B |

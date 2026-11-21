@@ -130,6 +130,8 @@ than for the DiT:
    projection, (c) the head without it. Read the cosine and norm ratio against (a), plus time
    and memory per step. Shares its measurement with cjk_rl arm D's D0 cost probe. A forward-
    and-backward probe, a few minutes on the daemon. Gate set before the run.
+   Run 2026-11-21 (`lgrad_1121_1845`, `reports/lpips_grad_2026_11_21.md`): (b) not passed; steps
+   2 and 3 as written here do not follow. The windowed VAE decode takes the head's place.
 2. If (b) passes: one LoRA arm, `λ·LPIPS` on the head path at low σ only, VAE(x0) target,
    against FM-only on the same data. A texture-heavy set (screentone, line art). DWD's
    shared-head ablation predicts no gain or a diversity loss here.

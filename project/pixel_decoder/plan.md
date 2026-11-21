@@ -99,6 +99,86 @@ The head as the differentiable decode for losses that train the DiT or a LoRA: c
 refiner term for the turbo student.
 Idea and first probe (PixelGen-style LPIPS through the head; DWD, arXiv:2611.22287, the same family as our head): `idea.md`.
 
+Step 1, the gradient-agreement probe (the user, 2026-11-21: "let's go ahead with item 1 and if
+any, proceed to 2"; item 2 = a head over a wider σ range).
+
+Facts (the design, set before the run):
+
+- `bench/pixel_readout/lpips_grad_probe.py --label lgrad_1121_1845`: forward + backward, no step.
+  16 of P1's held-out test images, base DiT on the fp32 stream, teacher-forced at σ 0.0577 / 0.1 /
+  0.1364 (the heads' range) and 0.3 (outside it), two noise draws each, one 24-token window with a
+  4-token margin per image, target VAE(x0), both decodes clamped.
+- Arms: a = ∂LPIPS/∂v through the fp32 VAE decode of the window; a16 = the same through the bf16
+  VAE; b = a head's gradient as v receives it under the row-space projection,
+  (W Wᵀ)⁻¹ W ∂L/∂f; c = the head's raw ∂L/∂f against Wᵀ g_a. Heads: `mixr_1119_1455` (target
+  VAE(x̂0)) and `realr_1119_2200` (target the original image + LPIPS at the base points).
+- Read: cos(b, a) per head and σ, beside its two in-run references: cos(a16, a) and the floor
+  cos(b on one draw, a on the other); cos(a, a) across the draws is what a perfect decoder reads on
+  that floor. Also the norm ratio, the row-space share of c, PSNR of the head against VAE(x̂0), and
+  seconds and peak GB of each backward. Added after the first smoke, before the full run: σ 0.5
+  and 0.7, and a step check (each gradient's LPIPS decrease through the fp32 VAE at three step
+  sizes, with the head's gradient from the other draw as its null).
+- Bars: spread unknown, no earlier run on this quantity.
+- Cost: minutes.
+- Result (`reports/lpips_grad_2026_11_21.md`): `mixr` cos(b, a) 0.115 / 0.154 / 0.166 at σ 0.0577 /
+  0.1 / 0.1364, floor 0.060 / 0.078 / 0.081, cos(a16, a) 0.511 / 0.495 / 0.434; `realr` level with
+  it; row-space share of the head's gradient 0.032 – 0.038. By the reading rule below: not passed.
+  The wider-σ head (item 2) was not trained.
+- One 512² window backward: fp32 VAE 0.154 s / 4.33 GB, bf16 VAE 0.087 s / 2.46 GB, head 0.019 s /
+  0.70 GB.
+
+Interpretation (the reasoning for the arm):
+
+- Question: does a head send LPIPS into v the way the VAE decode does? Yes → the head is the
+  decode of the LoRA arm and the wider-σ head is trained with target VAE(x̂0). No → the wider head is
+  not trained for this purpose; the windowed VAE decode (its cost is in this run) or a latent-only
+  decoder carries the term.
+- cos(b, a) in v space is the first-order share of the VAE path's LPIPS decrease that a step along
+  the head's gradient buys, so it reads without a bar. Claude's reading rule, fixed before the
+  result: "yes" if `mixr`'s cos(b, a) at the three in-range σ sits nearer cos(a16, a) than the
+  floor; the numbers go to the user either way.
+- After the result: the decode of an LPIPS term on a LoRA is the windowed VAE (bf16), at any σ, or
+  a decoder whose only inputs are x_t and v. Next arm, proposed and not run: FM against FM +
+  λ·LPIPS through the bf16 VAE window on one LoRA, λ from the measured gradient-norm ratio.
+
+Step 2, the LoRA arm on ama mitsuki (the user, 2026-11-21: "그래 차라리 그게 낫겠다. ama mitsuki 로
+해보자").
+
+Facts (the design, set before the runs):
+
+- Code: `library/training/pixel_lpips.py` (`--pixel_lpips_ratio` / `--pixel_lpips_weight` /
+  `--pixel_lpips_measure`, σ gate 0.7, window 24 + 2 × 4 tokens), test `tests/test_pixel_lpips.py`.
+  Per sample at σ ≤ 0.7: LPIPS-VGG of the bf16 VAE decode of x_t − σ·v on one random window against
+  the same decode of x0; the term's gradient into v is scaled per sample to `ratio` × the FM
+  gradient's norm.
+- Arms, configs in `configs/` (linked into `configs/gui-methods/custom/`), seed 42, ama mitsuki
+  (106 images, 424 updates), `configs/methods/lora.toml` as it stands plus `paired_step_rng` and
+  `gradient_checkpointing`: `lpctl_1121_1900` (the term measured, not added), `lpr03_1121_1900`
+  (ratio 0.3), `lpr10_1121_1900` (ratio 1.0).
+- Smokes: at the default preset the first VAE decode ran out of memory with 14.34 GB allocated
+  (job 20261121-185603); with gradient checkpointing 16 updates ran at ~0.86 s per micro-step, the
+  term on 26 / 32 batches, λ 0.045 at ratio 1.0 (job 20261121-185722).
+- Read: (1) the paired training logs, `pixel_lpips/lpips` at the logged steps of the last two
+  epochs; (2) `bench/pixel_readout/lora_ab.py --label lpab_1121_1900`: the lora_recipe prompts
+  p0 – p3 × render seeds 42 / 43 at the `make test` recipe, pair sheets control | arm, blind sets
+  with the sides shuffled; the user's read decides. ‖dW‖ reported, not matched.
+- Bars: spread unknown, one training seed.
+- Result (`reports/lpips_lora_2026_11_21.md`): paired training-log LPIPS against the control,
+  ratio 0.3 −0.0003 … −0.0007, ratio 1.0 −0.0026 … −0.0043 (control 0.153); ‖dW‖ within 0.7 %;
+  render seeds 42 – 45, blind sets `s45_LPIPS03_ama` / `s45_LPIPS10_ama` pushed to
+  `anima-blind-pairs` on the user's word. The user's blind read (2026-11-21), control – arm:
+  ratio 0.3 5 – 11, ratio 1.0 11 – 5 (16 pairs each, one training seed; p1 7 – 1 to the control
+  and p3 1 – 7 to the arm over both sets). Ratio 1.0 is not carried on; ratio 0.3 waits on a seed
+  twin (control + ratio 0.3 at seed 43), proposed, not queued.
+
+Interpretation (the reasoning for the arms):
+
+- The ratio has no source: PixelGen's λ 0.1 is on a pixel x-prediction and does not translate, so
+  0.3 and 1.0 bracket it. The per-sample ratio rule is Claude's choice over a fixed λ, because the
+  term's gradient scales with σ and the FM gradient's norm moves with σ too.
+- A visible gain on the user's read → a second training seed, then prompts outside the working set.
+  Level or worse at both ratios → the term is parked; the ratio and the σ gate are the knobs left.
+
 ### A head at every step
 
 Spectrum's cached steps (σ 0.90 … 0.265) read a Chebyshev-forecast feature at the tap, and

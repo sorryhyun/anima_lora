@@ -372,6 +372,46 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "λ_ema ← (1−β)·λ_ema + β·λ_batch. Default 0.01 over typically B=4.",
     )
 
+    # LPIPS on the VAE-decoded x̂0 window (library/training/pixel_lpips.py; experimental).
+    parser.add_argument(
+        "--pixel_lpips_ratio",
+        type=float,
+        default=0.0,
+        help="> 0: add LPIPS(VAE(x_t − σ·v), VAE(x0)) on one token window per sample, "
+        "weighted per sample so its gradient into v has this ratio to the FM "
+        "gradient's norm. 0 = off (default).",
+    )
+    parser.add_argument(
+        "--pixel_lpips_weight",
+        type=float,
+        default=0.0,
+        help="A fixed weight for the same term instead of the ratio rule.",
+    )
+    parser.add_argument(
+        "--pixel_lpips_measure",
+        action="store_true",
+        help="Log the term's LPIPS on its windows without adding it to the loss "
+        "(an A/B's control arm).",
+    )
+    parser.add_argument(
+        "--pixel_lpips_sigma_max",
+        type=float,
+        default=0.7,
+        help="The term runs on samples at σ ≤ this (PixelGen's gate).",
+    )
+    parser.add_argument(
+        "--pixel_lpips_window",
+        type=int,
+        default=24,
+        help="LPIPS window side in DiT tokens (16 px each).",
+    )
+    parser.add_argument(
+        "--pixel_lpips_margin",
+        type=int,
+        default=4,
+        help="Context strip around the window, tokens: decoded, left out of LPIPS.",
+    )
+
     # Memorization-aware training: per-sample low-σ Δ-gap reweight. LoRA-family
     # train.py only; requires blocks_to_swap=0 (see models.build_mem_tracker).
     parser.add_argument(
