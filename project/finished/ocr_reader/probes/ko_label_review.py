@@ -17,7 +17,7 @@ exported as the ``sub`` column (``-`` = removed). ``furigana`` (``--ruby``,
 ``furigana_find.py``): speech crops with ruby groups found, the sub box prefilled with the
 groups read as kana.
 
-``mainsub_det`` / ``mainsub_speech`` / ``mainsub_missed`` (``--mainsub``, ``m109_mainsub.py``):
+``mainsub_det`` / ``mainsub_speech`` (``--mainsub``, ``m109_mainsub.py``):
 every Manga109 training crop, the box holding the proposed ``OCR:`` main (the largest text),
 the sub box the proposed ``OCR2:`` sub (the other annotated text in the crop; on a speech
 crop with ruby groups, the furigana source's reads first, and that row's sub edits carry
@@ -167,7 +167,7 @@ const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
                       "linebreak_suspicious": "sus", "odd_dots": "sus", "furigana": "sus", "doujin_sfx": "__DOUJIN_SORT__",
-                      "mainsub_det": "sus", "mainsub_speech": "sus", "mainsub_missed": "sus"};
+                      "mainsub_det": "sus", "mainsub_speech": "sus"};
 // mainsub rows carry paths relative to the Manga109 folder
 const M109 = __M109__;
 const url = (p) => !p || p.includes(":") ? p : M109 + p;
@@ -867,7 +867,7 @@ def main():
         "--mainsub",
         type=Path,
         help="m109_mainsub.py's output/ocr/mainsub/m109_mainsub.jsonl: the Manga109 "
-        "main / sub sources (mainsub_det, mainsub_speech, mainsub_missed)",
+        "main / sub sources (mainsub_det, mainsub_speech)",
     )
     a = ap.parse_args()
     d = m109.derived_root()

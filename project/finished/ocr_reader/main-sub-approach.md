@@ -17,6 +17,9 @@ on the user's call. Labels are under review. Training does not read them yet.
   shows.
 - The label follows the 4 px training crop as shown. The 12 % crops (`manifest.parquet`,
   the page's `m109_sfx` reference rows) are not part of this plan.
+- main / sub is read on the boxes AnimeText gives. The COO polygons it misses
+  (`manifest_sfxp_missed`, the `--sfxp_missed` rows) are out: they were there for the
+  `SFX:` prompt.
 - `OCR2:` rows only where the label is complete. A crop with no kanji cannot carry ruby,
   so its main-only label is complete and it gives an `OCR2:` negative.
 
@@ -36,7 +39,11 @@ In `BakuretsuKungFuGirl_038_0000a4fc` the Manga109 `<text>` annotation already j
 
 ### Facts
 
-`probes/m109_mainsub.py` lists every Manga109 crop the v7 mix trains on (train split).
+Detector coverage of the 39,029 train COO polygons (`sfxp_types_train.parquet`, written by
+`build_sfx_prefix.py --clean`): missed 9,353, fragment 1,741, the rest in or near a box.
+
+`probes/m109_mainsub.py` lists the Manga109 crops the v7 mix trains on (train split), the
+missed polygons left out.
 Each COO polygon and `<text>` box on the page is scored by the share of its convex hull
 inside the crop:
 
@@ -52,7 +59,6 @@ the agents' fixes where they reviewed the row) heads the sub proposal.
 |---|---|---|---|---|
 | `mainsub_det` | detector boxes (`manifest_sfxp_det_clean`) | 36,363 (pos 20,978, pos_mixed 354, neg_speech 15,031) | 282 | 1,333 |
 | `mainsub_speech` | `<text>` boxes (`manifest_sfxp_speech`: sfxp_speech + m109_lines) | 41,769 | 11,424 (11,412 from ruby) | 1,109 |
-| `mainsub_missed` | missed COO polygons (`manifest_sfxp_missed`) | 4,633 | 14 | 653 |
 
 Furigana finder, as measured when it was built: 74 % of the ruby groups over kanji read as
 kana, about 80 % of those right. Agent review of the 2,000 most doubtful furigana rows:
@@ -63,7 +69,7 @@ smaller lettering inside one `<text>` box (`ふざけてんの？` above).
 
 ### Interpretation
 
-- The annotations prefill sub on few SFX crops (296 of 41k). Most subs there come from text
+- The annotations prefill sub on few detector crops (282 of 36k). Most subs there come from text
   only partly visible, which the reviewer types.
 - `neg_speech` crops were `SFX:` negatives. Under main / sub they are speech crops; the ones
   whose every speech box is cut are the "sub only" rows.
@@ -92,5 +98,7 @@ python project/finished/ocr_reader/probes/apply_ko_review.py <export.tsv>
 - A loader that builds `OCR:` / `OCR2:` rows from the manifests plus the two TSVs, in place
   of `crop_dataset.load_sfxp`'s speech / SFX split.
 - Which crops count as complete for `OCR2:` before the review covers them.
+- `mainsub_speech` crops are cut from the `<text>` annotation boxes, not from detector boxes.
+  Whether they stay beside the detector crops is not decided.
 - The gate under main / sub: the v7 gates (COO SFX / speech, doujin SFX, K3) read per kind;
   how a main / sub read is scored is not set.

@@ -2,8 +2,7 @@
 """Manga109 crops as ``OCR:`` main / ``OCR2:`` sub proposals, for the review page
 (``ko_label_review.py --mainsub``).
 
-Every crop is a quad in page coordinates (an axis-aligned box for the detector and speech
-crops, ``pilot.deskew_crop``'s rotated rect for the missed polygons). Each COO polygon and
+Every crop is an axis-aligned quad in page coordinates. Each COO polygon and
 ``<text>`` box on the page is scored by the share of its convex hull inside that quad:
 
 * ``≥ 0.8`` — in the crop (``items``): ``main`` = the item with the largest glyph
@@ -26,8 +25,10 @@ train split by default:
   (the ``SFX:`` rows) and ``neg_speech`` (the ``SFX:`` negative pool; its main is the
   speech, or empty when every speech box is cut);
 * ``mainsub_speech`` — ``manifest_sfxp_speech`` (``sfxp_speech`` and ``m109_lines``: the
-  ``OCR:`` rows);
-* ``mainsub_missed`` — ``manifest_sfxp_missed``'s cut polygons (``--sfxp_missed`` rows).
+  ``OCR:`` rows).
+
+The COO polygons AnimeText misses (``manifest_sfxp_missed``) are out: main / sub is read on
+the boxes the detector gives (the user's call, 2026-11-21).
 
     ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/probes/m109_mainsub.py \\
         --out output/ocr/mainsub/m109_mainsub.jsonl
@@ -54,25 +55,6 @@ SOFT = set("!！?？・…‥~〜ー-―.．、。")
 STRIP = "・…~ー〜！!？?"
 
 
-def rot_rect(poly, pad_frac: float) -> np.ndarray:
-    """``pilot.deskew_crop``'s crop region (its ``minAreaRect`` + margin) as a page quad."""
-    pts = np.asarray(poly, dtype=np.float32).reshape(-1, 2)
-    (cx, cy), (w, h), angle = cv2.minAreaRect(pts)
-    if angle > 45:
-        angle -= 90
-        w, h = h, w
-    w, h = max(w, 1.0), max(h, 1.0)
-    p = pad_frac * max(w, h)
-    return cv2.boxPoints(((cx, cy), (w + 2 * p, h + 2 * p), angle)).astype(np.float32)
-
-
-def cap_frac(poly) -> float:
-    pts = np.asarray(poly, dtype=np.float32).reshape(-1, 2)
-    _, (w, h), _ = cv2.minAreaRect(pts)
-    L, S = max(w, h, 1.0), max(min(w, h), 1.0)
-    return min(0.12 * L, 0.3 * S, 4) / L
-
-
 def rect_quad(x0, y0, x1, y1) -> np.ndarray:
     return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.float32)
 
@@ -82,11 +64,10 @@ def glyphs(t: str) -> float:
 
 
 class Item:
-    __slots__ = ("kind", "id", "text", "pts", "hull", "area", "cx", "cy", "g")
+    __slots__ = ("kind", "id", "text", "hull", "area", "cx", "cy", "g")
 
     def __init__(self, line, text: str):
         pts = np.asarray(line.poly, dtype=np.float32).reshape(-1, 2)
-        self.pts = pts
         self.hull = cv2.convexHull(pts).reshape(-1, 2).astype(np.float32)
         self.area = max(float(cv2.contourArea(self.hull)), 1.0)
         self.cx, self.cy = (float(v) for v in pts.mean(0))
@@ -104,7 +85,7 @@ def order(items):
 
 def propose(items: list[Item], fr: dict, own: set[str], own_text: str | None):
     """(main, sub, inc, part) for one crop; ``own`` ids count as inside whatever their
-    share (the trim and the deskew make the quad approximate)."""
+    share (the page-edge clip makes the quad approximate)."""
     inc = [it for it in items if it.id in own or fr[it.id] >= INCLUDE]
     part = [it for it in items if it not in inc and fr[it.id] >= PART and it.text]
     inc = [it for it in inc if it.text]
@@ -183,13 +164,6 @@ def book_rows(args) -> list[dict]:
         items = pages.get(int(r["page"]), [])
         label = r["sfx_text"] if isinstance(r["sfx_text"], str) else None
         emit("mainsub_det", r, quad, own_sfx(items, quad), label, r["cat"])
-    for r in tables["missed"]:
-        items = pages.get(int(r["page"]), [])
-        it = next((x for x in items if x.kind == "sfx" and x.id == str(r["id"])), None)
-        if it is None:
-            continue
-        quad = rot_rect(it.pts, cap_frac(it.pts))
-        emit("mainsub_missed", r, quad, {it.id}, r["text"], r["source"])
     for r in tables["speech"]:
         if r["split"] not in splits:
             continue
@@ -224,8 +198,6 @@ def main():
     d = m109.derived_root()
     det = pd.read_parquet(d / "manifest_sfxp_det_clean.parquet")
     det = det[det.path.notna() & det.split.isin(a.splits)]
-    missed = pd.read_parquet(d / "manifest_sfxp_missed.parquet")
-    missed = missed[missed.path.notna() & missed.split.isin(a.splits)]
     det = det.assign(box=det.box.map(lambda b: [int(v) for v in b]))
     speech = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
     sp_text = {
@@ -246,16 +218,14 @@ def main():
 
     base = ["split", "id", "page", "path", "text"]
     det_b = by_book(det, ["split", "id", "page", "path", "cat", "box", "sfx_text"])
-    mi_b = by_book(missed, base + ["source"])
     sp_b = by_book(speech, base + ["source"])
-    books = sorted(set(det_b) | set(mi_b) | set(sp_b))
+    books = sorted(set(det_b) | set(sp_b))
     jobs = [
         (
             b,
             set(a.splits),
             dict(
                 det=det_b.get(b, []),
-                missed=mi_b.get(b, []),
                 speech=sp_b.get(b, []),
                 sp_text={k: v for k, v in sp_text.items() if k[0] == b},
             ),
