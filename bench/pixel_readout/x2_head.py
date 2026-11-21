@@ -294,6 +294,36 @@ def main():
         "(with --term_log: size the weight)",
     )
     p.add_argument("--pegan_crop", type=int, default=512, help="×2 px, multiple of 16")
+    p.add_argument(
+        "--dprobe",
+        type=int,
+        default=0,
+        help="discriminator probe (x2_dprobe.py): render this many train images through "
+        "the --resume_x2 head, train one PE-Spatial discriminator per fake source "
+        "(head / chain / null / head + noise) with the generator frozen, read them on "
+        "the held-out images and exit. Needs --x2flex, --chain, --resume_x2",
+    )
+    p.add_argument("--dprobe_steps", type=int, default=1600)
+    p.add_argument(
+        "--glyph_sheets",
+        action="store_true",
+        help="×1 read of where small detail is lost, then exit: per held-out image a "
+        "sheet `original | VAE(latent) | VAE(x̂0) | ×1 head` (the --init head) at the "
+        "×2 sheets' crop window, pixels doubled, and each column's dB against the "
+        "original",
+    )
+    p.add_argument(
+        "--dprobe_arms",
+        choices=("source", "band"),
+        default="source",
+        help="source: head / chain / null / head + noise; band: the head's difference "
+        "from the real image split by frequency (x2_dprobe.py)",
+    )
+    p.add_argument(
+        "--dprobe_noise",
+        default="0.03,0.1",
+        help="σ of the noise arms, [-1, 1] units, comma-separated",
+    )
     p.add_argument("--pegan_layers", default="3,7,11", help="PE blocks tapped, 0-based")
     p.add_argument("--pegan_lr", type=float, default=1e-4)
     p.add_argument(
@@ -402,6 +432,7 @@ def main():
     # --- data: the parent recipe's split (convnext_head.py) ---
     cache_root = Path(resolve_under_home(args.cache_root))
     x2_paths: dict[str, Path] = {}  # npz path → the real 2× image (--x2flex)
+    x2_kinds: dict[str, str] = {}  # npz path → "down" | "exact"
     if args.x2flex:
         man = json.loads(Path(resolve_under_home(args.x2flex)).read_text())
         split: dict[str, list] = {"train": [], "test": [], "text": []}
@@ -416,6 +447,7 @@ def main():
             )
             assert Path(ci.npz_path).exists(), f"no latent {ci.npz_path} (encode x1/)"
             x2_paths[ci.npz_path] = Path(resolve_under_home(row["x2"]))
+            x2_kinds[ci.npz_path] = row["kind"]
             split[row["split"]].append(ci)
         train, test, text = split["train"], split["test"], split["text"]
     else:
@@ -456,6 +488,7 @@ def main():
             like.shape,
         )
         return t
+
     page_train: list[Path] = []
     page_eval: list[Path] = []
     if args.pages:
@@ -616,6 +649,7 @@ def main():
     # (item, set key, f, lat, VAE(x̂0), ×2 reference (teacher ×2, or the real 2× image
     # with --x2flex), bicubic dB, twin dB, chain | None)
     held_feats = []
+    glyph_rows = []  # --glyph_sheets: (item, set key, original, VAE(latent), VAE(x̂0), ×1)
     chain_rows = []  # (set key, dB, LPIPS, luma, dark luma) vs the ×2 reference
     teacher_rows = []  # the same, the teacher on VAE(x̂0) vs the real 2× image
     t_teacher = []
@@ -623,6 +657,24 @@ def main():
     for name, sigma, adapter_on in points:  # the same noise per item at every point
         for j, (item, key) in enumerate(held_items):
             f, lat, img = rollout(item, 10_000 + j, sigma, adapter_on)
+            if args.glyph_sheets:
+                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                    gx1, _ = head(f, lat)
+                with torch.no_grad():
+                    rt = (
+                        vae.decode_to_pixels(load_item(item)[0])[0].float().clamp(-1, 1)
+                    )
+                glyph_rows.append(
+                    (
+                        item,
+                        f"{name}.{key}",
+                        (real_pixels(item).float() / 127.5 - 1).to(device),
+                        rt,
+                        img,
+                        gx1.float().clamp(-1, 1),
+                    )
+                )
+                continue
             chain = None
             if args.chain:  # the teacher on the --init head's ×1 output, as loaded
                 with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
@@ -669,6 +721,52 @@ def main():
                     )
                 )
     head.train()
+    if args.glyph_sheets:
+        run_dir = make_run_dir("pixel_readout", label=args.label)
+        gm: dict[str, list] = {}
+        arts = []
+        for n, (item, key, o, rt, xh, g1) in enumerate(glyph_rows):
+            for tag, t in (("vae_latent", rt), ("vae_x0", xh), ("x1_head", g1)):
+                gm.setdefault(f"{key}_psnr_{tag}_vs_orig", []).append(psnr(t, o))
+            c = args.crop // 2
+            cx, cy = (
+                densest_window(real_x2(item, xh), args.crop)
+                if args.x2flex
+                else (densest_window(o, c))
+            )
+            if args.x2flex:
+                cx, cy = cx // 2, cy // 2
+            cols = [
+                (
+                    lab,
+                    F.interpolate(t[None, :, cy : cy + c, cx : cx + c], scale_factor=2)[
+                        0
+                    ],
+                )
+                for lab, t in (
+                    ("original (x1 pixels doubled)", o),
+                    ("VAE(latent)", rt),
+                    ("VAE(x0 hat)", xh),
+                    ("x1 head", g1),
+                )
+            ]
+            fn = f"glyph_{key.replace('.', '_')}_{n:02d}_{item.stem}.png"
+            pair_sheet(cols, run_dir / fn)
+            arts.append(fn)
+        gmetrics = {k: float(np.mean(v)) for k, v in gm.items()}
+        for k, v in gmetrics.items():
+            print(f"  {k} {v:.2f}", flush=True)
+        out = write_result(
+            run_dir,
+            script=__file__,
+            args=args,
+            metrics=gmetrics,
+            label=args.label,
+            artifacts=arts,
+            device=device,
+        )
+        print(f"envelope: {out}")
+        return
     sets = list(dict.fromkeys(h[1] for h in held_feats))
     refs = {}
     for st in sets:
@@ -682,6 +780,28 @@ def main():
             if cr:
                 for i, col in enumerate(("psnr", "lpips", "luma", "dark"), 1):
                     refs[f"{st}_{tag}_{col}"] = mean_or_none([c[i] for c in cr])
+    dprobe_pool = []  # (item, f, lat, chain, real 2×), the chain on the --init head's ×1
+    if args.dprobe:
+        assert args.x2flex and args.chain and args.resume_x2, "--dprobe: see its help"
+        head.eval()
+        _, d_sigma, d_adapter = points[0]
+        for j, item in enumerate(
+            random.Random(args.seed + 11).sample(train, args.dprobe)
+        ):
+            f, lat, img = rollout(item, 20_000 + j, d_sigma, d_adapter)
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                x1, _ = head(f, lat)
+            dprobe_pool.append(
+                (
+                    item,
+                    f.to("cpu", torch.bfloat16),
+                    lat.cpu(),
+                    up2(x1.float().clamp(-1, 1), 0).to("cpu", torch.float16),
+                    real_x2(item, img).to("cpu", torch.float16),
+                )
+            )
+        head.train()
+        print(f"dprobe pool {len(dprobe_pool)} train images", flush=True)
     if args.resume_x2:
         rx = resolve_run(args.resume_x2) / "head_x2.safetensors"
         head.load_state_dict(load_file(str(rx), device=str(device)))
@@ -759,6 +879,59 @@ def main():
     history = [{"rollout": 0, "step": 0, **ev0}]
     print(f"  eval @ 0 (×1 = the base head as loaded): {fmt(ev0)}", flush=True)
 
+    if args.dprobe:  # the discriminator probe: frozen head, then exit
+        from bench.pixel_readout import x2_dprobe
+
+        head.eval()
+        pool = [
+            {
+                "name": it.stem,
+                "kind": x2_kinds[it.npz_path],
+                "real": real,
+                "head": predict(f, lat)[1].to("cpu", torch.float16),
+                "chain": chain,
+            }
+            for it, f, lat, chain, real in dprobe_pool
+        ]
+        held = [
+            {
+                "name": f"{key.split('.')[-1]}_{it.stem}",
+                "kind": x2_kinds[it.npz_path],
+                "real": t2,
+                "head": predict(f, lat)[1].to("cpu", torch.float16),
+                "chain": chain,
+            }
+            for it, key, f, lat, _img, t2, _b, _t, chain in held_feats
+        ]
+        del dprobe_pool
+        run_dir = make_run_dir("pixel_readout", label=args.label)
+        dm, arts = x2_dprobe.run(
+            pool,
+            held,
+            device,
+            run_dir,
+            steps=args.dprobe_steps,
+            noise=tuple(float(v) for v in args.dprobe_noise.split(",") if v),
+            crop=args.pegan_crop,
+            layers=tuple(int(v) for v in args.pegan_layers.split(",")),
+            lr=args.pegan_lr,
+            r_weight=args.pegan_r,
+            r_sigma=args.pegan_r_sigma,
+            seed=args.seed,
+            arm_set=args.dprobe_arms,
+        )
+        out = write_result(
+            run_dir,
+            script=__file__,
+            args=args,
+            metrics={"dprobe": dm, "eval0": ev0, **refs},
+            label=args.label,
+            artifacts=arts,
+            device=device,
+        )
+        print(f"envelope: {out}")
+        return
+
     # --- critic (arm 3): RSD's DMD + GAN terms on a crop of the ×2 output ---
     critic = None
     if args.lambda_dmd > 0 or args.lambda_gan > 0 or args.critic:
@@ -779,7 +952,9 @@ def main():
         )
     pe_disc = None
     if args.lambda_pegan > 0 or args.pegan:
-        assert args.x2_target == "real", "--lambda_pegan / --pegan need --x2_target real"
+        assert args.x2_target == "real", (
+            "--lambda_pegan / --pegan need --x2_target real"
+        )
         assert args.pegan_crop % 16 == 0, "--pegan_crop: a multiple of 16"
         from bench.pixel_readout.x2_pegan import PEDisc
 
@@ -968,12 +1143,18 @@ def main():
         if pe_disc is not None and args.pegan_param_ratio > 0:
             pg_params = [q for q in head.parameters() if q.requires_grad]
             t_ = loss_terms(*replay_rng.choice(replay), model=head, lp_fn=lp)
-            l_x2 = t_["rec2"] + weights["lpips"] * t_["lpips"] + weights["dc"] * t_["dc"]
-            g_x2 = torch.autograd.grad(l_x2, pg_params, retain_graph=True, allow_unused=True)
+            l_x2 = (
+                t_["rec2"] + weights["lpips"] * t_["lpips"] + weights["dc"] * t_["dc"]
+            )
+            g_x2 = torch.autograd.grad(
+                l_x2, pg_params, retain_graph=True, allow_unused=True
+            )
             g_pg = torch.autograd.grad(t_["pegan"], pg_params, allow_unused=True)
 
             def _norm(gs):
-                return torch.sqrt(sum((g.float() ** 2).sum() for g in gs if g is not None))
+                return torch.sqrt(
+                    sum((g.float() ** 2).sum() for g in gs if g is not None)
+                )
 
             lam = args.pegan_param_ratio * _norm(g_x2) / (_norm(g_pg) + 1e-12)
             weights["pegan"] = min(lam.item(), args.pegan_lambda_max)

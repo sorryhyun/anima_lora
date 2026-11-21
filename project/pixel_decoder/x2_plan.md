@@ -314,6 +314,238 @@ The user (2026-11-20): "resshift 등의 업스케일링 모델은 주로 주어�
 - Against the real 2× image dB favours blur and LPIPS is diluted by flat area; the
   teacher's crisp, re-drawn lines lose on both while reading cleaner. Sheets decide.
 
+### Design: B at 4,000 rollouts, `x2b4k_1121_0950` (2026-11-21, queued on the user's word)
+
+#### Facts
+
+- Parent `x2bok_1120_1840` with `--rollouts` 1000 → 4000 and `--eval_every` 250 → 500,
+  nothing else changed (resume `x2real_1119_2242`, ×1 loss off, real 2× target, LR 2e-4 on
+  one cosine cycle over the run, so the schedule lengthens with it). 64,000 updates; the
+  ×1 release trained 48,000.
+- Records it rests on: `x2bok_1120_1840` test LPIPS 0.280 / 0.227 / 0.180 / 0.163 at
+  rollouts 250 / 500 / 750 / 1000, 0.82 s per rollout.
+- Read: the `test` 12 / `text` 5 rows and the safe set (`safe_x2b4k_1121_0950`), ×2 against
+  the real 2× image (dB, LPIPS, dark lift), and `original 2× | B 1k | B 4k` crops by
+  `x2_pair.py`, labelled; the user's read decides. Bars: spread unknown.
+- Cost: 4,000 rollouts at 0.82 s plus nine evals, about 60 minutes.
+- The user (2026-11-21), on Claude's proposal of this run, the discriminator probe below
+  and a GAN arm after them: "ㅇㅋ 해보자".
+
+#### Interpretation
+
+- Question: does the ×2 output keep closing on the real 2× image with length, and what do
+  its lines look like once the regression terms have converged? Still softer than the
+  original with LPIPS flat → the remaining gap is the loss's, and the GAN arm continues
+  from this head with this run as its control. Lines firm up → length first, GAN later.
+- B's LPIPS was still falling at the end of the 1,000-rollout cosine cycle, so a GAN arm
+  on the 1k head would be read against a moving control.
+
+### Outcome of `x2b4k_1121_0950`
+
+#### Facts
+
+- 4,000 rollouts, 0.84 s per rollout, 58 minutes. Results (local)
+  `bench/pixel_readout/results/20261121-1047-x2b4k_1121_0950/` and
+  `…-safe_x2b4k_1121_0950/`. Against the real 2× image, test 12 / text 5, and the safe
+  set (6), one seed:
+
+  | | ×2 dB | ×2 LPIPS | dark lift | safe dB / LPIPS / dark |
+  |---|---|---|---|---|
+  | release `x2real_1119_2242` | 29.77 / 25.71 | 0.196 / 0.176 | +7.92 / +14.03 | 27.76 / 0.258 / +6.89 |
+  | B 1k `x2bok_1120_1840` | 29.98 / 25.55 | 0.163 / 0.162 | +7.42 / +14.85 | 27.85 / 0.228 / +5.85 |
+  | B 4k `x2b4k_1121_0950` | 30.45 / 25.92 | 0.141 / 0.137 | +6.52 / +14.00 | 28.20 / 0.204 / +5.44 |
+  | chain | 30.06 / 25.98 | 0.171 / 0.114 | +5.83 / +12.07 | 28.20 / 0.232 |
+  | teacher on VAE(x̂0) | 29.50 / 25.47 | 0.155 / 0.094 | +4.07 / +8.38 | 27.67 / 0.205 |
+
+- By eval, test dB / LPIPS at rollouts 500 … 4000: 29.25 / 0.243, 29.46 / 0.272, 29.58 /
+  0.220, 29.65 / 0.195, 29.79 / 0.178, 29.99 / 0.168, 30.31 / 0.144, 30.45 / 0.141.
+- The file's ×1 output against the original image fell to 24.76 dB on test (release
+  32.88): with the ×1 loss off the ×1 output of a ×2 file is not usable.
+- Sheets (local): `~/x2pair_1121/b1k_b4k/` (`original 2× | B 1k | B 4k`, the 768-px
+  crops of the runs' own sheets, 9 images, labelled).
+- Claude's read, labels visible, two sheets (`text_02`, `test_01`): B 4k's glyphs and
+  lines a little firmer than B 1k's; small glyphs smeared in both and short of the
+  original; the original's grain on flat areas is in neither head's output.
+- The user's read (2026-11-21): "확실히 결과가 나아지기는 했는데 아직 선이 또렷하지 않아서 gan은
+  필요할걸로 생각돼".
+
+#### Interpretation
+
+- Length on the real target kept paying to 4,000 rollouts; the last two evals flatten
+  with the cosine tail, so convergence and schedule are not separated.
+- On `test` the head now reads above the chain and the teacher on dB and LPIPS; on `text`
+  LPIPS it stays under both, which is where small glyphs are.
+
+### Design: discriminator probe, `x2dprobe_1121_1015` (2026-11-21, queued behind `x2b4k_1121_0950`)
+
+#### Facts
+
+- Code: `bench/pixel_readout/x2_dprobe.py`, entered by `x2_head.py --dprobe N`. The head is
+  frozen (`--resume_x2 x2b4k_1121_0950`, `--rollouts 0`). 32 train images (seeded sample of
+  the `x2flex` train rows, `down` and `exact`) are rendered whole at the base point; one
+  fresh `x2_pegan.PEDisc` per arm (the B+GAN runs' settings: taps after blocks 4 / 8 / 12,
+  512-px paired crops, one crop per step, LR 1e-4, R1 / R2 0.1 at σ 0.01) trains 1,600
+  steps on them and is read on every non-overlapping 512-px crop of the `test` 12 /
+  `text` 5 images.
+- Arms, by what stands on the fake side against the real 2× crop: `head` (the ×2 output),
+  `chain` (ResShift ×2 of the ×1 release head's output), `null` (the real 2× image of
+  another picture), `head_n0.03` and `head_n0.1` (`head` with Gaussian noise of that σ,
+  [-1, 1] units, added to both crops in training and in the read).
+- Read: held-out margin `D(real) − D(fake)` per arm and per tap, over all PE tokens and
+  over the tokens whose 16-px cell is flat (range of the σ 2-px blurred luma under 4
+  levels) or holds an edge (at least 24) in the real image; the training margin by row
+  kind; the std of the luma's high-pass residual on flat cells for real / head / chain;
+  margin maps on four held-out crops per arm. Bars: none; `null` is the meter's floor.
+- Records it rests on: the discriminator margin 7 – 8 in every B+GAN run (above).
+  Claude's read, labels visible, one sheet (`~/x2pair_1120/release_b1k/…test_00…`
+  (local)): the original carries grain over the whole frame, both heads' outputs none.
+- CPU check of the code on synthetic images (a smooth image against itself plus σ 0.02
+  noise, 8 steps): `head` held margin 2.24, `null` −0.11, `head_n0.1` 0.02.
+- Cost: about 12 minutes.
+
+#### Interpretation
+
+- Question: what does the discriminator separate the ×2 output from the real image on?
+  If the noise arms take most of the margin away and flat cells read as high as edge
+  cells, the cue is grain the head cannot produce from its features, and the GAN arm
+  takes the discriminator with the noise level that leaves an edge margin. If the margin
+  stays on edge cells under noise, the cue is the lines and the GAN arm keeps the
+  discriminator and changes only its weight.
+- `chain` against `head`: if the chain reads as far from the real image as the head, a
+  discriminator on the real masters does not ask for what the user reads as clean in the
+  ResShift output.
+- The flat / edge split is weak on the deep taps (a PE token past block 8 sees the whole
+  crop); the noise arms carry the read.
+
+### Outcome of `x2dprobe_1121_1015`
+
+#### Facts
+
+- 10 minutes; results and margin maps (local)
+  `bench/pixel_readout/results/20261121-1053-x2dprobe_1121_1015/`. Pool 32 train images
+  (20 `down`, 12 `exact`), read on 17 held-out images (220 crops, 225,280 cells: 42.8 %
+  flat, 31.9 % edge). Head = `x2b4k_1121_0950`. One seed per arm.
+
+  | arm (fake side) | train margin, first → last 200 steps | held margin | tokens with real above | held margin flat / edge, tap 4 | train margin `down` / `exact` |
+  |---|---|---|---|---|---|
+  | `head` | 3.67 → 6.53 | 6.33 | 0.997 | 6.27 / 7.19 | 6.21 / 6.90 |
+  | `chain` | 3.52 → 6.18 | 5.17 | 0.998 | 5.60 / 6.24 | 5.50 / 7.04 |
+  | `null` | 0.01 → 0.03 | 0.05 | 0.536 | 0.03 / −0.03 | 0.01 / 0.03 |
+  | `head_n0.03` | 4.13 → 8.22 | 7.97 | 0.998 | 8.30 / 9.58 | 7.81 / 8.82 |
+  | `head_n0.1` | 3.68 → 8.38 | 8.30 | 0.988 | 8.04 / 9.87 | 7.99 / 9.18 |
+
+- Std of the luma's high-pass residual on flat cells, 8-bit levels: real 0.87, head 0.48,
+  chain 0.32.
+- Claude's read of two margin maps, labels visible (`dprobe_head_test_13340817.png`,
+  `dprobe_head_n0.1_test_10808923.png`): the margin is near-uniform over the crop at
+  every tap, blank white background included.
+
+#### Interpretation
+
+- The grain reading is rejected: noise 4 to 15 times the real images' flat-cell residual
+  on both crops leaves the discriminator separating 99 % of tokens. The cue survives
+  noise of 13 levels, so it is not a low-amplitude texture.
+- The margin's size is not comparable between the noise arms and the others: under noise
+  the R1 / R2 term (a σ 0.01 perturbation) costs the discriminator less.
+- The chain separates as the head does, so this discriminator does not place the ResShift
+  output near the real masters either.
+- The per-token logits act as one decision per crop: a PE token after block 4 already
+  mixes the whole 512-px crop, so the flat / edge split and the maps do not localise the
+  cue, and the generator's gradient from it is not local to lines.
+- What the cue is stays open between the head's tone (dark pixels lifted 6 – 14 levels,
+  shared with the chain) and its lines; the band probe below separates them.
+
+### Design: band probe, `x2dband_1121_1125` (2026-11-21)
+
+#### Facts
+
+- `x2dprobe_1121_1015`'s command with `--dprobe_arms band`, nothing else changed (same
+  pool, head, discriminator settings and seeds). The fake side is built from the real
+  image and the head's output, split by a Gaussian of σ px at the 2× scale:
+  `low<σ>real_high<σ>head` (the head's output with the real image's low band),
+  `low<σ>head_high<σ>real` (the real image with the head's low band), σ 8 and 2, and
+  `real_downup` (the real crop bicubic ×½ then ×2).
+- Read: held margin and the share of tokens with real above, against `head` 6.33 / 0.997
+  and `null` 0.05 / 0.536 of `x2dprobe_1121_1015`. Bars: none.
+- Cost: about 10 minutes.
+
+#### Interpretation
+
+- Question: is the head separated from the real image by its low band (tone, colour) or
+  its high band (lines, texture)? `low8head_high8real` near `null` and
+  `low8real_high8head` near `head` → the lines; the GAN term then asks for what the user
+  asks for, and the arm changes the weight and the discriminator's locality. The reverse
+  → tone; the discriminator then needs the low band taken out of its input before a GAN
+  arm says anything about lines.
+- `real_downup` reads how separable a 1× image's content is at all, with no model in it.
+
+### Outcome of `x2dband_1121_1125`
+
+#### Facts
+
+- 10.5 minutes; results (local) `bench/pixel_readout/results/20261121-1107-x2dband_1121_1125/`.
+  Same pool, held-out crops, head and seeds as `x2dprobe_1121_1015`.
+
+  | arm (fake side) | held margin | tokens with real above | train margin `down` / `exact` |
+  |---|---|---|---|
+  | `head` (`x2dprobe_1121_1015`) | 6.33 | 0.997 | 6.21 / 6.90 |
+  | `low8real_high8head` | 6.40 | 0.996 | 6.18 / 6.94 |
+  | `low2real_high2head` | 5.99 | 0.996 | 5.95 / 6.85 |
+  | `low2head_high2real` | 4.52 | 0.996 | 4.57 / 5.22 |
+  | `low8head_high8real` | 2.51 | 0.997 | 2.88 / 2.60 |
+  | `real_downup` | 6.64 | 0.995 | 6.60 / 7.20 |
+  | `null` (`x2dprobe_1121_1015`) | 0.05 | 0.536 | 0.01 / 0.03 |
+
+#### Interpretation
+
+- The margin follows the head's high band: with the real image's tone under it the head
+  separates as before (6.40 against 6.33), and the band finer than σ 2 px carries most of
+  it (5.99). The real image under the head's tone separates at well under half the margin
+  (2.51), though still on 99.7 % of tokens: tone is a second, weaker cue.
+- A real image taken down to 1× and back separates as the head does (6.64). What the
+  discriminator reads is what a 1× image lacks at 2×, which is the sharpness the user
+  asks for; it is the right teacher for the lines.
+- With the first probe: the earlier B+GAN runs did not fail on a wrong cue. What is left
+  is the term's weight and length (the largest, `x2bganx_1120_1730`, ran 250 rollouts on a
+  head that was still 3,750 rollouts from where B alone ends) and the crop-level decision.
+
+### Design: GAN micro arms on the B 4k head (2026-11-21, queued)
+
+#### Facts
+
+- The user (2026-11-21), on the B 4k sheets: "확실히 결과가 나아지기는 했는데 아직 선이 또렷하지
+  않아서 gan은 필요할걸로 생각돼"; on the small glyphs: "애초에 anima가 그렇게 또렷한 일본어를
+  적지를 못해서 생기는 문제같긴해".
+- Control `x2gctl_1121_1120`: `x2b4k_1121_0950`'s command with `--resume_x2`
+  `x2real_1119_2242` → `x2b4k_1121_0950`, `--rollouts` 4000 → 1000, `--eval_every` 500 →
+  250, nothing else changed (a new cosine cycle at LR 2e-4 with the 200-step warmup).
+- `x2gan1_1121_1120`: the control with `--pegan --pegan_param_ratio 1.0
+  --pegan_lambda_max 1.0`. `x2gan4_1121_1120`: the same with ratio 4.0. The ratio sets the
+  PE-GAN weight once per rollout so its gradient norm over the head is that multiple of
+  rec2 + 0.1·LPIPS + dc's; the cap is raised from 0.1 so it does not bind at ratio 4
+  (`x2bganx_1120_1730` at ratio 1: weight 4.1e-2 → 6.4e-3).
+- Records they rest on: `x2bganx_1120_1730` (ratio 1, 250 rollouts from the release
+  preview: LPIPS 0.190 / 0.182 against B's 0.181 / 0.174, sheets near-identical on
+  Claude's labelled read, disc margin 4.5 → 6.8); the two probes above.
+- Read: `test` 12 / `text` 5, ×2 against the real 2× image (dB, LPIPS, dark lift), the
+  discriminator margin over the run, and `original 2× | control | arm` 768-px crops,
+  labelled, one sheet set per arm; the user's read of lines and screentone decides. Small
+  glyphs are not part of the read (Claude's proposal after the user's remark above).
+  Bars: spread unknown.
+- Cost: control about 14 minutes (0.84 s per rollout), each GAN arm about 32 (1.92 s,
+  `x2bgan8k_1120_1744`'s rate): 78 minutes for the batch.
+
+#### Interpretation
+
+- Question: with the GAN term at a weight where it holds a full share of the update, on a
+  head whose regression terms have converged, do the lines sharpen against the control?
+  Yes at either ratio → a full-length run at that ratio. Level at both with the margin
+  still at 6 – 8 → the discriminator's locality (512-px crops read as one decision) is
+  the next variable, then the ×2 stage's width.
+- Changed together in the GAN arms and not separated: the term and the 1.1 s per rollout
+  it adds. The `exact` rows separate a little more than the `down` rows in both probes;
+  a head that learns compression texture would show it on the crops.
+
 ### Interpretation (smoke)
 
 - Against the real 2× image, bicubic has the highest dB of every column; LPIPS and dark
