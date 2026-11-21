@@ -309,7 +309,8 @@ setting gives its own scale in principle: "ㅇㅋㅇㅋ 그걸 deploy plan으로
   `deploy/README.md`. The catalog fetch writes the same sha256.
 - Node `~/ComfyUI-Anima-PixelDecoder` (plan item 3): `scale` = `auto` / `1` / `2`, `auto` by
   default (the file's scale); `_vendor/pixel_head.py` from `build_pixel_vendor`; 0.3.0; README ×2
-  section. Not run inside ComfyUI.
+  section. Pushed to GitHub and published to the registry as 0.3.0 (2026-11-21, on the user's
+  "ㅇㅇ"). Not run inside ComfyUI.
 
 ## Next arms
 
