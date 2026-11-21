@@ -144,27 +144,100 @@ Decided by the user (2026-11-21): "다음 x2 plan에는 확정된 레시피로 x
 - Not separated from the term: the discriminator's fixed rate against the head's cosine.
   In both micro arms the margin rose as the head's rate fell; here that stretch is longer.
 
+### Outcome of `x2bgan2_1121_1340`
+
+#### Facts
+
+- 4,000 rollouts, 1.17 s per rollout over the run (0.84 before rollout 1000; discriminator
+  update 27 ms per step), peak 11.4 GB, 78 minutes. Results (local)
+  `bench/pixel_readout/results/20261121-1500-x2bgan2_1121_1340/` and
+  `…-1505-safe_x2bgan2_1121_1340/`. Against the real 2× image, test 12 / text 5, one seed,
+  beside `x2b4k_1121_0950` at the same rollout:
+
+  | rollout | this run: dB | LPIPS | dark lift | B 4k: dB | LPIPS | dark lift |
+  |---|---|---|---|---|---|---|
+  | 500 | 29.21 / 25.01 | 0.249 / 0.251 | +9.16 / +16.25 | 29.25 / 24.99 | 0.243 / 0.246 | +8.66 / +16.15 |
+  | 1000 | 29.47 / 25.10 | 0.259 / 0.271 | +5.05 / +12.92 | 29.46 / 25.09 | 0.272 / 0.284 | +6.96 / +14.23 |
+  | 1500 | 29.29 / 25.05 | 0.266 / 0.273 | +6.78 / +14.11 | 29.58 / 25.15 | 0.220 / 0.227 | +6.48 / +13.62 |
+  | 2000 | 29.32 / 25.03 | 0.255 / 0.265 | +5.36 / +12.75 | 29.65 / 25.16 | 0.195 / 0.193 | +6.68 / +13.91 |
+  | 2500 | 29.45 / 25.18 | 0.211 / 0.217 | +6.46 / +14.02 | 29.79 / 25.25 | 0.177 / 0.175 | +6.11 / +13.19 |
+  | 3000 | 29.67 / 25.32 | 0.176 / 0.167 | +6.04 / +13.39 | 29.99 / 25.44 | 0.168 / 0.164 | +5.94 / +12.71 |
+  | 3500 | 29.69 / 25.37 | 0.166 / 0.153 | +5.25 / +12.54 | 30.31 / 25.77 | 0.144 / 0.139 | +6.13 / +13.25 |
+  | 4000 | 29.82 / 25.52 | 0.158 / 0.145 | +5.47 / +12.69 | 30.45 / 25.92 | 0.141 / 0.137 | +6.52 / +14.00 |
+
+- Rollouts 500 and 1000 are before the term: one command, one seed, two runs. Their gaps:
+  0.04 / 0.02 dB, LPIPS 0.006 / 0.005, dark 0.50 / 0.10 at 500; 0.01 / 0.01 dB, LPIPS
+  0.013 / 0.013, dark 1.91 / 1.31 at 1000.
+- Safe set (6), `safe_x2bgan2_1121_1340`: 27.68 dB, LPIPS 0.219, dark +5.02 (B 4k
+  `safe_x2b4k_1121_0950`: 28.20 / 0.204 / +5.44).
+- Discriminator margin: 4.2 at rollout 1050, 6.4 at 1250, then 5.9 – 7.3 to the end (7.06
+  at 4000). Weight: 0.151 at rollout 1050, 0.012 at 1250, 0.009 – 0.020 over 1250 – 3500,
+  0.006 at 4000.
+- The user (2026-11-21), at rollout 3650, on the margin: "흠 g margin이 쉽게 따라오질 못하는군
+  원래 이랬지?". The records it was answered from: margin 7 – 8 in the 2026-11-20 B+GAN runs,
+  5.5 – 7.2 in both micro arms, 6.33 for the frozen head in `x2dprobe_1121_1015`.
+- Sheets (local): `~/x2pair_1121/b4k_bgan2/`, `original 2× | B 4k | B + GAN ratio 2 from
+  1k`, the two runs' own 768-px crops, 9 images, labelled.
+- Claude's read, labels visible, one sheet (`test_01`): the GAN column carries a grain in
+  the shaded areas, as the original does and B 4k does not; its lines are thinner and
+  darker than B 4k's.
+- The user (2026-11-21), after that sheet was shown in the session: "I like this."
+
+#### Interpretation
+
+- Against B 4k at the end the run is 0.63 / 0.40 dB and 0.017 / 0.008 LPIPS behind, and
+  about 1 level lower in dark lift. The LPIPS gap at 4000 is near the two runs' own gap at
+  rollout 1000 (0.013) and the dB gap is well past it (0.01 – 0.04).
+- From rollout 1500 to 2500 the run trails B's curve by 500 – 1,000 rollouts on LPIPS, and
+  closes most of it by 3000 – 4000 as the rate decays.
+- The margin sits where the frozen-head probe put it: the head does not lower it at any
+  ratio tried (1, 2, 4), on a converged head or a moving one. The term still changes the
+  output (grain, line weight), so it acts as a texture and edge prior without the
+  discriminator being fooled.
+
+### The move into the library, and its check `x2move_1121_1350`
+
+#### Facts
+
+- `library/anima/pixel_head_train.py` (the `x2flex` rows, the DiT rollout, the loss window
+  and margins, the recipe / LPIPS / tone terms, the PE-Spatial discriminator, the trainer
+  with the GAN start rollout, the meters, the file writer) and the entry
+  `scripts/pixel_head/train_x2.py` (`X2TrainRequest`; `--config`, shipped defaults
+  `configs/pixel_head/x2.toml`); CPU tests `tests/test_pixel_head_train.py` (7).
+- Differences from the bench loop: the head runs at `scale=2` (no ×1 output, no ×1 term at
+  weight 0, so the ×1 output layer takes no weight decay), no gradient log (the bench's
+  draws from the replay stream every 50 rollouts), no teacher / chain columns, one eval set
+  of numbers (×2 against the real 2× image).
+- `x2move_1121_1350` (config `configs/x2move_1121_1350.toml`): `x2bo_1120_1815`'s recipe
+  through the new entry. At rollout 125, test 12 / text 5: 29.55 / 25.29 dB, LPIPS 0.271 /
+  0.258, dark +5.75 / +13.21; `x2bo_1120_1815` at 125: 29.54 / 25.28, 0.270 / 0.251,
+  +5.29 / +12.35. 1.02 s per rollout at rollout 150.
+- The user (2026-11-21): "250step까진 안해도 되지않아?"; the run was stopped after the
+  rollout-125 eval, at about rollout 170. No head file or sheets from it.
+- `bench/pixel_readout/`: seven finished probes moved to `_archive/bench/pixel_readout/`
+  (local) on the user's word ("x2 현재시점에서 안쓰이거나 완료된건 archive로"); list in the
+  bench `README.md`.
+
+#### Interpretation
+
+- The moved loop's gap to the bench run at 125 (0.01 dB, LPIPS 0.001 / 0.007, dark 0.46 /
+  0.86) is inside the bench loop's own two-run gap at rollouts 500 and 1000 above: level.
+  The GAN path of the new entry has run only in the unit test (a stub discriminator), not
+  on the card.
+
 ### Plan (Claude's draft)
 
-1. The recipe is fixed (Facts above). The full run's shape was set by the user: the term
-   from rollout 1000 of 4,000 (Design above).
-2. Move the training loop into the library as modules a script composes: the item source
-   (`x2flex` manifest rows), the rollout (features, x_t patches, VAE(x̂0)), the window and
-   replay buffer, the loss terms (recipe loss, LPIPS, tone, PE-GAN), the held-out meters.
-   A thin entry under `scripts/` with its flags in one place; the bench script keeps the
-   sheets and the result envelope and imports the rest. Closed branches are not carried
-   over: `x2_dmd.py` and the `--critic*`, arm A teacher-target and `--x1_weight` paths
-   stay in the bench file or go to `_archive/`. Probes (`x2_dprobe.py`, `x2_overfit.py`,
-   `feat_probe.py`) stay in `bench/` and import the library pieces.
-3. Check of the move, before the full run: the moved loop on `x2bo_1120_1815`'s command
-   (250 rollouts, same seeds) reads level with that run's 250-rollout eval (test LPIPS
-   0.180, 29.77 dB); a unit test on the loss terms and the window margin
-   (`CONTRIBUTING.md`, Tier 1.5).
-4. The full run of the settled recipe (`x2bgan2_1121_1340`, started through the bench
-   script on the user's word before the move), read against
-   `x2b4k_1121_0950` and the preview on `test` / `text` / the safe set and on renders
-   (`p3_generated.py --x2`); on the user's read it replaces
+1. Done: the recipe, the full run (`x2bgan2_1121_1340`), the library entry and its check.
+2. Left in `bench/pixel_readout/`: `x2_head.py` still holds the closed branches (teacher
+   target, the ×1 loss in a ×2 file, `--critic*` with `x2_dmd.py`, `--dprobe` with
+   `x2_dprobe.py`) and its own copies of the helpers now in the library; `x2_pegan.py` is
+   the discriminator's first copy. Next: the closed branches out, the helpers imported from
+   the library, `x2_dmd.py` / `x2_dprobe.py` / `x2_pegan.py` to `_archive/`.
+3. The read that is left for `x2bgan2_1121_1340`: renders (`p3_generated.py --x2`) beside
+   B 4k and the preview. On the user's read it replaces
    `anima_pixel_head_x2_preview.safetensors`, deployed as in "Deployment plan" below.
+4. The next ×2 run goes through `scripts/pixel_head/train_x2.py`; its first run with the
+   term on is also the GAN path's first run on the card.
 
 ## Deployment plan: the file decides the scale
 
@@ -186,7 +259,7 @@ setting gives its own scale in principle: "ㅇㅋㅇㅋ 그걸 deploy plan으로
 - The ×1-only parameters of `PixelHeadX2` are `base.norm_out` and `base.out`; with the ×1
   loss off they take no gradient and the optimizer's weight decay.
 
-### Plan (Claude's draft; runs with step 4 of "Next" above)
+### Plan (Claude's draft; runs with step 3 of "Next" above)
 
 1. The file: a ×2 file of the settled recipe is saved without `base.norm_out` / `base.out`
    and stamped with its scales (`scales = "2"`); training runs the head at `scale=2`.
@@ -233,10 +306,11 @@ Not taken up: the previous step's feature as a second input (+0.24 dB on a linea
   beside VAE → ResShift (teacher 3.16 s per image against the head's 12.9 ms).
 - The dark-pixel lift is not split into softness and tone; `tone_probe.py` does not read the
   two-column sheets.
-- `PixelHeadX2` and its loader are in `library/anima/pixel_head.py`; the ×2 training code is
-  not ("Next: the settled recipe as a full run" above).
+- The new entry's GAN path has not run on the card; the seed twin of a full ×2 run does not
+  exist (the two-run gaps in "Outcome of `x2bgan2_1121_1340`" are from rollouts 500 and 1000).
 - ×4 not started.
 - Arm B: whether masters are upscales or re-encoded (matters most on 896 / 768, near 1:1);
   a 2× source for the manga pages; a held-out set inside the 1024 set.
-- `x2_dmd.py` and the `--critic*` flags stay in `x2_head.py`, off by default, after arm 3.
+- `x2_dmd.py` and the `--critic*` flags are still in `x2_head.py`, off by default ("Next",
+  Plan 2).
 
