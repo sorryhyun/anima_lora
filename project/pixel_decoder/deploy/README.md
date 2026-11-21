@@ -31,8 +31,8 @@ writes RGB pixels directly, in place of the VAE decode. The head and its trainin
 - ComfyUI: the [ComfyUI-Anima-PixelDecoder](https://github.com/sorryhyun/ComfyUI-Anima-PixelDecoder)
   node pack (ComfyUI Manager: "Anima Pixel Decoder"). Put the file in `models/pixel_heads/`,
   add **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or Spectrum) and decode
-  the sampler's LATENT with **Anima Pixel Decode** instead of VAE Decode. Its `scale = auto`
-  decodes at the file's own scale: ×1 for `anima_pixel_head`, ×2 for `anima_pixel_head_x2`.
+  the sampler's LATENT with **Anima Pixel Decode** instead of VAE Decode. The file decides the
+  scale: ×1 for `anima_pixel_head`, ×2 for `anima_pixel_head_x2` (node 0.3.1 or later).
   Run the DiT on the fp32 stream (Anima Adapter Loader, `stream = fp32`).
 - [anima_lora](https://github.com/sorryhyun/anima_lora): `inference.py --decoder pixel_head`
   (`make test PIXEL=1`, `make test-turbo PIXEL=1`; ×2: `make test PIXEL=1 PIXEL_SCALE=2`); the

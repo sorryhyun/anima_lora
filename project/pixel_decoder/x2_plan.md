@@ -310,7 +310,8 @@ setting gives its own scale in principle: "ㅇㅋㅇㅋ 그걸 deploy plan으로
 - Node `~/ComfyUI-Anima-PixelDecoder` (plan item 3): `scale` = `auto` / `1` / `2`, `auto` by
   default (the file's scale); `_vendor/pixel_head.py` from `build_pixel_vendor`; 0.3.0; README ×2
   section. Pushed to GitHub and published to the registry as 0.3.0 (2026-11-21, on the user's
-  "ㅇㅇ"). Not run inside ComfyUI.
+  "ㅇㅇ"). Then 0.3.1 (d02f904) without the `scale` input, on the user's "스케일 항목을 그냥 없애면
+  안돼?": the file decides; a two-scale file (the old preview) decodes at ×1. Not run inside ComfyUI.
 
 ## Next arms
 

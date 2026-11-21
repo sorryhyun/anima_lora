@@ -65,7 +65,7 @@ image on held-out images: 29.82 / 25.52 dB, LPIPS 0.158 / 0.145 (test 12 / text 
 The node pack `ComfyUI-Anima-PixelDecoder` (`comfyui-anima-pixel-decoder` under
 `../comfy/custom_nodes/`): **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or
 Spectrum), **Anima Pixel Decode** (tapped MODEL, the sampler's LATENT, head file) in place of VAE
-Decode; its `scale` input defaults to `auto` (the file's own scale; `1` / `2` ask for one). The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
+Decode; it decodes at the head file's own scale (no scale input since 0.3.1). The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
 `pixel_head`. Run the DiT on the fp32 stream (Anima Adapter Loader `stream = fp32`), as the head
 was trained. Turbo in ComfyUI 0.43: 1.127 s per image with VAE Decode, 1.005 s with the head
 (`bench/pixel_readout/comfy_e2e.py`, `project/pixel_decoder/reports/comfy_node_2026_11_19.md`).

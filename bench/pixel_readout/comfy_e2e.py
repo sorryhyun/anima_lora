@@ -14,8 +14,8 @@ dropped. The Adapter Loader's fp32 stream (the head's training features); ``--st
 fp32,bf16`` adds ComfyUI's own bf16 forward. Head vs VAE PSNR on the same latent.
 
 ``--scale 2``: the chain VAE Decode → ResShift SR Upscale (the ×2 student at the node's
-defaults, ``ComfyUI-Distilled-ResShift``) against Anima Pixel Decode at ``scale`` 2, with a ×2
-head file; PSNR and VGG-LPIPS of the head against the chain. ``--lora`` / ``--pixel_head``
+defaults, ``ComfyUI-Distilled-ResShift``) against Anima Pixel Decode with a ×2 head file (the node
+decodes at the file's scale); PSNR and VGG-LPIPS of the head against the chain. ``--lora`` / ``--pixel_head``
 take a path outside ComfyUI's folders (the turbo point of the ×2 heads is v4_longer).
 
     make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/comfy_e2e.py \
@@ -163,7 +163,6 @@ def main_():
         conds[name] = c
     vae_decode = nodes.VAEDecode()
     pixel_decode = mapping["AnimaPixelDecode"]()
-    scale = str(args.scale)
     lp = rsd = up = None
     if args.scale == 2:
         import lpips
@@ -183,7 +182,7 @@ def main_():
         return img
 
     def head_path(out):
-        return pixel_decode.decode(tapped, out, args.head, scale)[0]
+        return pixel_decode.decode(tapped, out, args.head)[0]  # scale: the file's
 
     @torch.no_grad()
     def lpips_img(a, b, tile: int = 768) -> float:
