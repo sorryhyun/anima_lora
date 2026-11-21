@@ -202,8 +202,31 @@ empty main out.
 Of 10 sub misses read, 4 have a wrong label where the prediction is right (`とうきろ` for
 東京 → pred `とうきょう`, `たいと` → `たいど`): the sub labels are unreviewed ruby reads.
 
+The v7 gates, the main / sub run under `OCR:` against `sfxpc_1121_0117` (`SFX:` on SFX rows,
+`OCR:` on speech; the doujin gate re-read on the labels as of 11-21 18:25):
+
+| gate | `mainsub_1121_1806` | `sfxpc_1121_0117` |
+|---|---|---|
+| doujin SFX exact (heart-blind) / sim, 593 rows | 58 (205) / 0.686 | 306 (427) / 0.898 |
+| Manga109 test SFX exact / sim, 2,558 | 63.7 % / 0.818 | 82.7 % / 0.919 |
+| Manga109 test speech exact / sim, 2,559 | 87.3 % / 0.981 | 89.1 % / 0.984 |
+| K3 KO exact / kana leak, 48 | 22 / 6 | 24 / 0 |
+| K3 ZH exact / kana leak, 48 | 27 / 5 | 28 / 0 |
+
+The doujin misses the old reader gets right are glyph misreads of stylized SFX (`びく` →
+`ぐく`, `キュン` → `もン`, `ブルン` → `ブハン`), not empty reads (2 empty).
+
+Budget and mix differ: 1,000 steps × 16 crops from the stock base against 14,502 steps (2
+epochs); SFX lettering 22,819 of 179,541 rows (13 %, the `pos` det crops' main) against
+42,503 of 115,124 (37 %, `SFX:` rows incl. the missed polygons); KO / ZH 24,145 (13 %)
+against 27,390 (24 %).
+
 ### Interpretation
 
+- The gates cannot say whether main / sub costs SFX or KO: the run saw about 2 k SFX
+  crops and 2 k KO / ZH crops, the old one about 85 k and 55 k. A matched arm (the
+  `--sfx_prefix` recipe at 1,000 steps, or main / sub at the old budget) separates data
+  from budget.
 - The data trains: main reads the det crops at 86 % after 1,000 steps, `OCR2:` answers `""`
   where no ruby can be (98 %) and reads ruby where it is (sim 0.82).
 - Sub exact is capped by label noise, not measured against a clean set; it says little
