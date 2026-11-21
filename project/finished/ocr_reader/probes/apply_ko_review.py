@@ -2,7 +2,9 @@
 """Apply a ``ko_label_review.py`` export (TSV: source, id, status, orig, new; ``\\n`` /
 ``\\t`` / ``\\\\`` escaped) to the label manifests: ``edit`` replaces the text, ``drop``
 removes the row, ``ok`` (or an empty status: a row with only an SFX mark) changes nothing.
-The optional ``sfx`` column (the page's SFX checkbox) goes to ``assets/sfx_marks.tsv``. Edited text is stored through
+The optional ``sfx`` column (the page's SFX checkbox) goes to ``assets/sfx_marks.tsv``, the
+optional ``sub`` column (the page's ``+ sub`` box, the ``OCR2:`` text of the same crop; ``-`` =
+removed) to ``assets/sub_labels.tsv``. Edited text is stored through
 ``textnorm.collapse_keep_lines`` (no spaces at a line's edges, no blank lines). A row whose current text no longer equals ``orig``
 is skipped and reported.
 
@@ -12,7 +14,7 @@ Manifests per source: gelnote_ko / gelnote_zh → ``manifest_pseudo_gelnote_{ko,
 ``manifest_sfxp_kozh``;
 swaprelax_v5 → ``manifest_pseudo_swaprelax_v5`` + ``manifest_sfxp_kozh``;
 hito_v4_ja / hito_v4_ko → ``manifest_pseudo_hito_v4``;
-linebreak_suspicious / dots_suspicious / odd_dots → ``manifest_sfxp_speech`` (``orig`` is a proposal,
+linebreak_suspicious / dots_suspicious / odd_dots / furigana → ``manifest_sfxp_speech`` (``orig`` is a proposal,
 so ``ok`` writes it too; a row matches when its text equals ``orig`` blind to whitespace and
 dot glyphs). Each manifest
 is copied to ``<name>.pre_review.parquet`` once, before its first change.
@@ -47,6 +49,7 @@ TARGETS = {
     "linebreak_suspicious": ["sfxp_speech"],
     "dots_suspicious": ["sfxp_speech"],
     "odd_dots": ["sfxp_speech"],
+    "furigana": ["sfxp_speech"],
 }
 DOUJIN = Path(__file__).resolve().parents[1] / "assets" / "sfx_labels_sincos_597.tsv"
 APPLY_OK = {"linebreak_suspicious", "dots_suspicious", "odd_dots"}
@@ -138,6 +141,8 @@ def main():
         df.to_parquet(path, index=False)
     if "sfx" in rv.columns:
         write_marks(rv, a.dry_run)
+    if "sub" in rv.columns:
+        write_subs(rv, a.dry_run)
 
 
 def apply_doujin(rv: pd.DataFrame, dry_run: bool) -> None:
@@ -190,6 +195,33 @@ def write_marks(rv: pd.DataFrame, dry_run: bool) -> None:
     out = pd.concat([old[~old.source.isin(srcs)], new], ignore_index=True)
     print(
         f"[sfx_marks] {len(new)} marked in {sorted(srcs)}; file {len(old)} → {len(out)} rows"
+    )
+    if not dry_run:
+        out.to_csv(path, sep="\t", index=False, quoting=3)
+
+
+def write_subs(rv: pd.DataFrame, dry_run: bool) -> None:
+    """The page's sub boxes → ``assets/sub_labels.tsv`` (source, id, text, sub; ``\\n``
+    escaped): the ``OCR2:`` label of the row's crop, one item per line in reading order.
+    A row exported with ``-`` loses its sub; rows the export leaves out stay. Training
+    does not read the file yet."""
+    path = Path(__file__).resolve().parents[1] / "assets" / "sub_labels.tsv"
+    old = (
+        pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)
+        if path.exists()
+        else pd.DataFrame(columns=["source", "id", "text", "sub"])
+    )
+    touched = rv[rv["sub"] != ""].assign(sub=lambda x: x["sub"].map(unescape))
+    key = lambda df: df.source + ":" + df.id  # noqa: E731
+    keep = old[~key(old).isin(set(key(touched)))]
+    new = touched[touched["sub"] != "-"].assign(
+        text=lambda x: x.new.where(x.status == "edit", x.orig).str.replace("\n", "\\n"),
+        sub=lambda x: x["sub"].map(collapse_keep_lines).str.replace("\n", "\\n"),
+    )[["source", "id", "text", "sub"]]
+    out = pd.concat([keep, new], ignore_index=True)
+    print(
+        f"[sub_labels] {len(new)} set, {len(touched) - len(new)} removed; "
+        f"file {len(old)} → {len(out)} rows"
     )
     if not dry_run:
         out.to_csv(path, sep="\t", index=False, quoting=3)

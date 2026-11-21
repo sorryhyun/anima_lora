@@ -11,6 +11,12 @@ Every editable row has an ``SFX`` checkbox (exported as the ``sfx`` column;
 them); a row the ``--flags`` reader read under ``SFX:`` comes up checked. ``m109_sfx`` / ``m109_speech`` are read-only references: a seeded sample of the
 Manga109 COO onomatopoeia and the speech text (``manifest.parquet``), to compare against.
 
+Every editable row has a ``+ sub`` button: a second box for the ``OCR2:`` label of the same
+crop (furigana, a smaller SFX, a hand-lettered aside; one item per line, reading order),
+exported as the ``sub`` column (``-`` = removed). ``furigana`` (``--ruby``,
+``furigana_find.py``): speech crops with ruby groups found, the sub box prefilled with the
+groups read as kana.
+
 ``linebreak_suspicious`` (``linebreak_auto.py apply``): JA speech rows whose automatic line
 breaks missed the gate; the box holds the proposed breaks, the meta line the per-column
 read and its distance to the label (largest first). ``ok`` takes the proposal.
@@ -116,6 +122,8 @@ textarea { width:100%; font:inherit; font-size:17px; padding:6px 8px; border:1px
 .btns { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
 .btns label { font-size:13px; display:flex; gap:4px; align-items:center; margin-left:8px; }
 .row.sfx { box-shadow: inset 0 0 0 2px #c77d1a; }
+.row.hassub .subta { border-color:#2a7fbf; }
+.subbox { margin-top:6px; } .subta { font-size:15px; }
 .btns .on.ok { background:var(--ok); color:#fff; } .btns .on.drop { background:var(--drop); color:#fff; }
 .pager { display:flex; gap:8px; align-items:center; justify-content:center; margin:14px 0; }
 header .pager { margin:0; }
@@ -145,15 +153,20 @@ header .pager { margin:0; }
 const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
-                      "linebreak_suspicious": "sus", "odd_dots": "sus", "doujin_sfx": "__DOUJIN_SORT__"};
+                      "linebreak_suspicious": "sus", "odd_dots": "sus", "furigana": "sus", "doujin_sfx": "__DOUJIN_SORT__"};
 const PER = 50;
 const KEY = "ko_label_review_v1";
 let store = {};
 try { store = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { store = {}; }
 let marks = {};
 try { marks = JSON.parse(localStorage.getItem(KEY + ":sfx") || "{}"); } catch (e) { marks = {}; }
+// sub (OCR2:) text per row: absent = the row's proposal (x.sub) if any, "" = no sub
+let subs = {};
+try { subs = JSON.parse(localStorage.getItem(KEY + ":sub") || "{}"); } catch (e) { subs = {}; }
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store));
-  localStorage.setItem(KEY + ":sfx", JSON.stringify(marks)); } catch (e) {} };
+  localStorage.setItem(KEY + ":sfx", JSON.stringify(marks));
+  localStorage.setItem(KEY + ":sub", JSON.stringify(subs)); } catch (e) {} };
+const subOf = (key, x) => key in subs ? subs[key] : (x.sub || "");
 const $ = (id) => document.getElementById(id);
 // a read from the reader's SFX: pass checks the row's SFX box once; an uncheck is kept as 0
 (() => {
@@ -246,10 +259,23 @@ function render() {
       ${x.note ? `<div class="meta">${esc(x.note)}</div>` : ""}
       ${x.rd != null ? `<div class="meta">__READER__${x.rsfx ? " SFX:" : ""} (${x.conf.toFixed(2)})${x.rwhy ? " [" + x.rwhy + "]" : ""}: ${esc(x.rd || "—").replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
       ${x.twin_img ? `<div class="twin"><img loading="lazy" src="${x.twin_img}"><div class="meta">twin (${esc(x.twin_lang)}) v4: ${esc(x.twin || "—").replace(/\n/g, " ⏎ ")}</div></div>` : ""}
-      <textarea rows="${Math.max(2, x.text.split("\n").length + 1)}"></textarea>
+      <textarea class="mainta" rows="${Math.max(2, x.text.split("\n").length + 1)}"></textarea>
+      <div class="subbox" hidden><div class="meta">sub (OCR2:) · same crop · one item per line, reading order${x.sub ? " · proposal: " + esc(x.sub).replace(/\n/g, " ⏎ ") : ""}</div>
+        <textarea class="subta" rows="2"></textarea></div>
       <div class="btns"><button class="okb">✓ ok</button><button class="drb">✗ drop row</button>
-        <button class="rsb">reset</button><label><input type="checkbox" class="sfxb"> SFX</label></div></div>`;
-    const ta = d.querySelector("textarea");
+        <button class="rsb">reset</button><button class="subb">+ sub</button>
+        <label><input type="checkbox" class="sfxb"> SFX</label></div></div>`;
+    const ta = d.querySelector(".mainta");
+    const subbox = d.querySelector(".subbox"), subta = d.querySelector(".subta"), subb = d.querySelector(".subb");
+    const subPaint = () => { const t = subOf(key, x); subbox.hidden = !t && !(key in subs);
+      subb.textContent = subbox.hidden ? "+ sub" : "− sub"; d.classList.toggle("hassub", !!t); };
+    subta.value = subOf(key, x);
+    subb.onclick = () => {
+      if (subbox.hidden) { subs[key] = subOf(key, x); subbox.hidden = false; subb.textContent = "− sub"; subta.focus(); }
+      else { subs[key] = ""; subta.value = ""; subPaint(); }
+      save(); };
+    subta.oninput = () => { subs[key] = subta.value; save(); d.classList.toggle("hassub", !!subta.value); };
+    subPaint();
     ta.value = v && v.text != null ? v.text : x.text;
     const okb = d.querySelector(".okb"), drb = d.querySelector(".drb");
     const sfxb = d.querySelector(".sfxb");
@@ -257,7 +283,8 @@ function render() {
     sfxb.onchange = () => { if (sfxb.checked) marks[key] = 1; else if (x.rsfx) marks[key] = 0;
       else delete marks[key]; save(); paint(); };
     const paint = () => { const w = store[key];
-      d.className = "row" + (w ? " " + w.status : "") + (marks[key] ? " sfx" : "");
+      d.className = "row" + (w ? " " + w.status : "") + (marks[key] ? " sfx" : "")
+        + (subOf(key, x) ? " hassub" : "");
       okb.classList.toggle("on", !!w && w.status === "ok"); okb.classList.toggle("ok", true);
       drb.classList.toggle("on", !!w && w.status === "drop"); drb.classList.toggle("drop", true); stats(); };
     ta.oninput = () => { store[key] = ta.value === x.text ? {status: "ok", text: null}
@@ -266,7 +293,8 @@ function render() {
     okb.onclick = () => { store[key] = ta.value === x.text ? {status: "ok", text: null}
                                      : {status: "edit", text: ta.value}; save(); paint(); };
     drb.onclick = () => { store[key] = {status: "drop", text: null}; save(); paint(); };
-    d.querySelector(".rsb").onclick = () => { delete store[key]; ta.value = x.text; save(); paint(); };
+    d.querySelector(".rsb").onclick = () => { delete store[key]; delete subs[key]; ta.value = x.text;
+      subta.value = subOf(key, x); subPaint(); save(); paint(); };
     paint();
     list.appendChild(d);
   }
@@ -280,16 +308,18 @@ function render() {
   stats();
 }
 $("export").onclick = () => {
-  const lines = ["source\tid\tstatus\torig\tnew\tsfx"];
-  for (const k of new Set([...Object.keys(store), ...Object.keys(marks)])) {
-    if (!store[k] && !marks[k]) continue;  // an unchecked SFX: read, nothing else
+  const lines = ["source\tid\tstatus\torig\tnew\tsfx\tsub"];
+  for (const k of new Set([...Object.keys(store), ...Object.keys(marks), ...Object.keys(subs)])) {
+    if (!store[k] && !marks[k] && !(k in subs)) continue;  // an unchecked SFX: read, nothing else
     const v = store[k] || {status: "", text: null};
     const i = k.indexOf(":"), s = k.slice(0, i), id = k.slice(i + 1);
     const x = (DATA[s] || []).find(y => y.id === id); if (!x) continue;
+    // sub column: the row's sub when the reviewer touched it ("-" = removed), else empty
+    const sb = k in subs ? (subs[k].trim() ? subs[k].replace(/\\n/g, "\n") : "-") : "";
     const q = t => (t == null ? "" : t).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\n/g, "\\n");
     // a typed "\\n" counts as a line break, same as Enter
     const nt = v.status === "edit" ? v.text.replace(/\\n/g, "\n") : "";
-    lines.push([s, id, v.status, q(x.text), q(nt), marks[k] ? "1" : ""].join("\t"));
+    lines.push([s, id, v.status, q(x.text), q(nt), marks[k] ? "1" : "", q(sb)].join("\t"));
   }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], {type: "text/tab-separated-values"}));
@@ -432,6 +462,47 @@ def odd_dots(t: str) -> str:
     if SPLIT.search(t):
         why.append("split")
     return "/".join(why)
+
+
+def furigana_rows(d: Path, path: Path | None) -> dict[str, list[dict]]:
+    """``furigana_find.py read``'s crops with ruby groups: the label as it is, the sub box
+    prefilled with every group's non-empty read in reading order: one line per main
+    column (right to left), a column's groups top down, joined by a space. ``sus`` counts
+    the groups that read as something else or sit over no kanji (those rows first)."""
+    if path is None or not path.exists():
+        return {}
+    rows = []
+    for line in open(path, encoding="utf-8"):
+        x = json.loads(line)
+        gs = sorted(x["groups"], key=lambda g: (g["col"], g["y0"]))
+        if not gs:
+            continue
+        good = [g for g in gs if g.get("kana") and g["aligned"]]
+        bad = len(gs) - len(good)
+        page = m109.page_path(x["book"], int(x["page"]))
+        note = " · ".join(f"{g['span'] or '?'}→{g.get('read', '') or '∅'}" for g in gs)
+        rows.append(
+            dict(
+                id=f"{x['book']}_{int(x['page']):03d}_{x['id']}",
+                text=x["text"],
+                run=0,
+                sus=float(bad),
+                why=f"{len(gs)} ruby groups, {bad} doubtful",
+                lf=int("\n" in x["text"]),
+                len=len(x["text"]),
+                status="",
+                note=f"ruby: {note}",
+                sub="\n".join(
+                    " ".join(g["read"] for g in gs if g["col"] == c and g.get("read"))
+                    for c in sorted({g["col"] for g in gs if g.get("read")})
+                ),
+                img=(d / x["path"]).as_uri(),
+                page=page.as_uri() if page.exists() else "",
+                box=[],
+            )
+        )
+    print(f"[review] furigana: {len(rows)} rows", flush=True)
+    return {"furigana": rows}
 
 
 def linebreak_rows(d: Path) -> dict[str, list[dict]]:
@@ -651,6 +722,12 @@ def main():
         help="eval_sfx.py's output/ocr/eval/sfx_<name>.jsonl: a reader's read per "
         "doujin_sfx row",
     )
+    ap.add_argument(
+        "--ruby",
+        type=Path,
+        help="furigana_find.py read's output/ocr/furigana/<name>_read.jsonl: the "
+        "furigana source (sub box prefilled with the ruby reads)",
+    )
     a = ap.parse_args()
     d = m109.derived_root()
     kz = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
@@ -708,6 +785,7 @@ def main():
     data.update(hito_rows(d, flags))
     data.update(odd_dot_rows(d))
     data.update(linebreak_rows(d))
+    data.update(furigana_rows(d, a.ruby))
     data.update(doujin_rows(a.doujin_reads))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
