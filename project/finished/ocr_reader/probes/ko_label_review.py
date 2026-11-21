@@ -32,6 +32,14 @@ reader's read and confidence, and the "disagrees" sort lists the rows whose labe
 does not match (whitespace-blind), lowest confidence first. Re-read with each new run so
 that sort follows the latest reader.
 
+``doujin_sfx``: the doujin gate's SFX rows (``assets/sfx_labels_sincos_597.tsv``,
+``kind_hand == sfx``, ``unchecked`` included) on the frozen 12 % crops
+(``eval_data/sincos``); the meta line shows the row's label status, its pre-label
+(``text_rec``) and note. ``--doujin_reads`` (``eval_sfx.py``'s
+``output/ocr/eval/sfx_<name>.jsonl``) adds that reader's read; its "confidence" is
+``eval_sfx``'s sim to the label, and "disagrees" leaves out the rows ``eval_sfx`` scores
+exact (its heart / shape folds). ``apply_ko_review.py`` writes these rows back to the TSV.
+
     python project/finished/ocr_reader/probes/ko_label_review.py --out ~/ko_label_review
 """
 
@@ -54,6 +62,9 @@ REPO = Path(__file__).resolve().parents[4]
 GELNOTE = Path("/media/sorryhyun/new/dataset/gelnote_crops")
 SWAPRELAX = Path("/media/sorryhyun/new/dataset/hito_ocr/swap_relax_v5")
 HITO = Path("/media/sorryhyun/new/dataset/hito_ocr/ko")
+OCR = Path(__file__).resolve().parents[1]
+DOUJIN_LABELS = OCR / "assets/sfx_labels_sincos_597.tsv"
+DOUJIN_FROZEN = OCR / "eval_data/sincos"
 HANGUL = re.compile(r"[가-힣]")
 RUN = re.compile(r"[가-힣]+")
 KANA = re.compile(r"[\u3040-\u30ff]")
@@ -134,7 +145,7 @@ header .pager { margin:0; }
 const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
-                      "linebreak_suspicious": "sus", "odd_dots": "sus"};
+                      "linebreak_suspicious": "sus", "odd_dots": "sus", "doujin_sfx": "__DOUJIN_SORT__"};
 const PER = 50;
 const KEY = "ko_label_review_v1";
 let store = {};
@@ -197,7 +208,7 @@ function rows() {
   else if (k === "lp") r = r.slice().sort((a, b) => (a.lp ?? 0) - (b.lp ?? 0) || a.id.localeCompare(b.id));
   else if (k === "sus") r = r.slice().sort((a, b) => b.sus - a.sus || a.id.localeCompare(b.id));
   else if (k === "edge") r = r.filter(x => x.edge).sort((a, b) => b.edge.length - a.edge.length);
-  else if (k === "dis") r = r.filter(x => x.rd != null && x.rd.replace(/\s/g, "") !== x.text.replace(/\s/g, ""))
+  else if (k === "dis") r = r.filter(x => x.rd != null && !x.agree && x.rd.replace(/\s/g, "") !== x.text.replace(/\s/g, ""))
                              .sort((a, b) => a.conf - b.conf);
   else if (k === "nolf") r = r.slice().sort((a, b) => (a.lf - b.lf) || (b.len - a.len));
   else if (k === "run") r = r.slice().sort((a, b) => b.run - a.run || a.id.localeCompare(b.id));
@@ -534,6 +545,51 @@ def odd_dot_rows(d: Path) -> dict[str, list[dict]]:
     return {"odd_dots": rows}
 
 
+def doujin_rows(reads_path: Path | None) -> dict[str, list[dict]]:
+    """The doujin gate's SFX rows (id = the TSV's ``row``, zero-padded so the id sort is
+    the file order), with ``eval_sfx.py``'s per-row read when ``reads_path`` is given."""
+    df = pd.read_csv(DOUJIN_LABELS, sep="\t", dtype=str, keep_default_na=False)
+    df = df[df.kind_hand == "sfx"]
+    reads = {}
+    if reads_path:
+        for line in open(reads_path, encoding="utf-8"):
+            x = json.loads(line)
+            reads[x["row"]] = x
+    rows = []
+    for r in df.itertuples():
+        box = json.loads(r.box)
+        sus, why = suspicion(r.text_hand, box[2] - box[0], box[3] - box[1], "ja")
+        x = reads.get(r.row)
+        page = DOUJIN_FROZEN / "pages" / f"{r.stem}.png"
+        note = " · ".join(
+            t for t in (f"pre-label: {r.text_rec}" if r.text_rec else "", r.note) if t
+        )
+        rows.append(
+            dict(
+                id=f"{int(r.row):04d}",
+                text=r.text_hand,
+                run=0,
+                sus=sus,
+                why=why,
+                lf=int("\n" in r.text_hand),
+                len=len(r.text_hand),
+                status=r.status,
+                note=note,
+                rd=x["pred"] if x else None,
+                conf=round(float(x["sim"]), 3) if x else 0.0,
+                edge="",
+                rsfx=False,
+                rwhy="runaway" if x and x.get("runaway") else "",
+                agree=bool(x and x["exact"]),  # eval_sfx's exact (its folds): off "dis"
+                img=(DOUJIN_FROZEN / "crops" / f"{r.row}.png").as_uri(),
+                page=page.as_uri() if page.exists() else "",
+                box=[int(v) for v in box],
+            )
+        )
+    print(f"[review] doujin_sfx: {len(rows)} rows ({len(reads)} reads)", flush=True)
+    return {"doujin_sfx": rows}
+
+
 def ref_rows(d: Path, n: int, seed: int = 0) -> dict[str, list[dict]]:
     """Read-only Manga109 references: ``n`` seeded rows each of COO onomatopoeia
     (``kind = sfx``) and speech text from ``manifest.parquet``."""
@@ -588,6 +644,12 @@ def main():
         type=int,
         default=3000,
         help="Manga109 reference rows per kind (m109_sfx / m109_speech); 0 = none",
+    )
+    ap.add_argument(
+        "--doujin_reads",
+        type=Path,
+        help="eval_sfx.py's output/ocr/eval/sfx_<name>.jsonl: a reader's read per "
+        "doujin_sfx row",
     )
     a = ap.parse_args()
     d = m109.derived_root()
@@ -646,11 +708,13 @@ def main():
     data.update(hito_rows(d, flags))
     data.update(odd_dot_rows(d))
     data.update(linebreak_rows(d))
+    data.update(doujin_rows(a.doujin_reads))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     a.out.mkdir(parents=True, exist_ok=True)
     html = (
         PAGE.replace("__READER__", reader)
+        .replace("__DOUJIN_SORT__", "dis" if a.doujin_reads else "sus")
         .replace("__DATA__", json.dumps(data, ensure_ascii=False))
         .replace("__MINRUN__", json.dumps({s: a.min_run for s in data}))
     )

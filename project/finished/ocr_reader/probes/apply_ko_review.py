@@ -16,6 +16,11 @@ linebreak_suspicious / dots_suspicious / odd_dots → ``manifest_sfxp_speech`` (
 so ``ok`` writes it too; a row matches when its text equals ``orig`` blind to whitespace and
 dot glyphs). Each manifest
 is copied to ``<name>.pre_review.parquet`` once, before its first change.
+
+doujin_sfx → ``assets/sfx_labels_sincos_597.tsv`` (the doujin gate's labels, by ``row``):
+``edit`` writes ``text_hand`` (a line break as a space), ``edit`` / ``ok`` set ``status`` to ``checked``, ``drop`` sets
+it to ``unchecked`` (``eval_sfx.py`` skips those rows; the row stays in the file). The file is
+copied to ``sfx_labels_sincos_597.pre_review.tsv`` once, before its first change.
 """
 
 from __future__ import annotations
@@ -43,6 +48,7 @@ TARGETS = {
     "dots_suspicious": ["sfxp_speech"],
     "odd_dots": ["sfxp_speech"],
 }
+DOUJIN = Path(__file__).resolve().parents[1] / "assets" / "sfx_labels_sincos_597.tsv"
 APPLY_OK = {"linebreak_suspicious", "dots_suspicious", "odd_dots"}
 """Sources whose page text is a proposal, not the manifest's text: ``ok`` applies it."""
 
@@ -78,10 +84,14 @@ def main():
     # lines go (``textnorm.collapse_keep_lines``)
     rv["new"] = rv.new.map(unescape).map(collapse_keep_lines)
     d = m109.derived_root()
-    for name in sorted({m for s in rv.source.unique() for m in TARGETS[s]}):
+    if (rv.source == "doujin_sfx").any():
+        apply_doujin(rv[rv.source == "doujin_sfx"], a.dry_run)
+    for name in sorted(
+        {m for s in rv.source.unique() if s != "doujin_sfx" for m in TARGETS[s]}
+    ):
         path = d / f"manifest_{name}.parquet"
         df = pd.read_parquet(path)
-        srcs = [s for s in rv.source.unique() if name in TARGETS[s]]
+        srcs = [s for s in rv.source.unique() if name in TARGETS.get(s, ())]
         act = rv.status.isin(["edit", "drop"]) | (
             rv.source.isin(APPLY_OK) & (rv.status == "ok")
         )
@@ -128,6 +138,39 @@ def main():
         df.to_parquet(path, index=False)
     if "sfx" in rv.columns:
         write_marks(rv, a.dry_run)
+
+
+def apply_doujin(rv: pd.DataFrame, dry_run: bool) -> None:
+    """``doujin_sfx`` rows → the doujin gate's label TSV (see the module docstring)."""
+    df = pd.read_csv(DOUJIN, sep="\t", dtype=str, keep_default_na=False)
+    pos = {int(r): i for i, r in enumerate(df.row)}
+    edited, checked, dropped, stale = 0, 0, 0, []
+    for r in rv[rv.status.isin(["ok", "edit", "drop"])].itertuples():
+        i = pos.get(int(r.id))
+        if i is None or df.text_hand.iat[i] != r.orig:
+            stale.append(r.id)
+            continue
+        st = "unchecked" if r.status == "drop" else "checked"
+        # the gate file keeps one row per line: a break is stored as a space (the
+        # file's block separator; eval_sfx's exact is whitespace-blind)
+        new = r.new.replace("\n", " ")
+        if r.status == "edit" and new != r.orig:
+            df.iat[i, df.columns.get_loc("text_hand")] = new
+            edited += 1
+        if df.status.iat[i] != st:
+            df.iat[i, df.columns.get_loc("status")] = st
+            dropped += st == "unchecked"
+            checked += st == "checked"
+    print(
+        f"[doujin_sfx] edit {edited}, → checked {checked}, → unchecked {dropped}, "
+        f"stale {len(stale)} {stale[:5]}"
+    )
+    if dry_run or not (edited or checked or dropped):
+        return
+    bak = DOUJIN.with_name(DOUJIN.stem + ".pre_review.tsv")
+    if not bak.exists():
+        shutil.copy2(DOUJIN, bak)
+    df.to_csv(DOUJIN, sep="\t", index=False, lineterminator="\r\n")  # the file is CRLF
 
 
 def write_marks(rv: pd.DataFrame, dry_run: bool) -> None:
