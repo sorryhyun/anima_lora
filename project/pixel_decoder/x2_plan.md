@@ -572,6 +572,50 @@ Moved to `reports/x2_preview_release_2026_11_19.md`: run 1 (`realr_1119_2200`) a
 (`x2real_1119_2242`), the render read (`x2bic_1119_2335`), the user's decision to ship the ×2 file
 as a test file, and the deployment record.
 
+## Next: the settled recipe as a full run, and the training code into the library
+
+Decided by the user (2026-11-21): "다음 x2 plan에는 확정된 레시피로 x2 학습 돌리면서 x2 bench
+코드가 상당히 복잡한데 라이브러리 승격 (이미 돼있으면 말고) 리팩터하는걸로 하자".
+
+### Facts
+
+- Already in the library (`library/anima/pixel_head.py`, 387 lines): `PixelHead`,
+  `PixelHeadX2`, `load_pixel_head` (reads `x2_depth` files), `PixelTap`, the path and σ-range
+  helpers; inference reaches them through `--decoder pixel_head` / `--pixel_scale`.
+- Not in the library: training. `bench/pixel_readout/x2_head.py` is 1,412 lines with one
+  `main()` that holds the data split, the teacher-forced rollout, the window and replay
+  buffer, the loss terms, the held-out eval and the sheets as closures, beside the code of
+  closed branches (arm A's teacher target, arm 3's critic `x2_dmd.py`, the ×1 loss inside a
+  ×2 file) and of the probes (`--dprobe`, `--glyph_sheets`). The ×1 training and the shared
+  helpers are `convnext_head.py` (965 lines). No `scripts/` entry or make target trains a
+  head.
+- The recipe so far: resume from the release ×1 head, the `x2flex` set, the real 2× image
+  as the target, base points `0.0577-0.1364:real`, ×1 loss off, window 24 + margin 3,
+  replay 64 × 16, LR 2e-4 on one cosine cycle, λ_lpips 0.1, λ_dc 1.0, 4,000 rollouts
+  (`x2b4k_1121_0950`). Open in it: the GAN term and its weight (the micro arms above).
+
+### Plan (Claude's draft)
+
+1. Fix the recipe on the read of `x2gctl` / `x2gan1` / `x2gan4_1121_1120`.
+2. Move the training loop into the library as modules a script composes: the item source
+   (`x2flex` manifest rows), the rollout (features, x_t patches, VAE(x̂0)), the window and
+   replay buffer, the loss terms (recipe loss, LPIPS, tone, PE-GAN), the held-out meters.
+   A thin entry under `scripts/` with its flags in one place; the bench script keeps the
+   sheets and the result envelope and imports the rest. Closed branches are not carried
+   over: `x2_dmd.py` and the `--critic*`, arm A teacher-target and `--x1_weight` paths
+   stay in the bench file or go to `_archive/`. Probes (`x2_dprobe.py`, `x2_overfit.py`,
+   `feat_probe.py`) stay in `bench/` and import the library pieces.
+3. Check of the move, before the full run: the moved loop on `x2bo_1120_1815`'s command
+   (250 rollouts, same seeds) reads level with that run's 250-rollout eval (test LPIPS
+   0.180, 29.77 dB); a unit test on the loss terms and the window margin
+   (`CONTRIBUTING.md`, Tier 1.5).
+4. The full run of the settled recipe through the new entry, read against
+   `x2b4k_1121_0950` and the preview on `test` / `text` / the safe set and on renders
+   (`p3_generated.py --x2`); on the user's read it replaces
+   `anima_pixel_head_x2_preview.safetensors`. The ×2 file then refuses scale 1 at load or
+   ships without the ×1 output layer (its ×1 output reads 24.76 dB after 4,000 rollouts
+   with the ×1 loss off).
+
 ## Next arms
 
 Claude's drafts, none queued. Micro arms on arm B's recipe, read as arm B is. Item 1 is
@@ -601,8 +645,8 @@ Not taken up: the previous step's feature as a second input (+0.24 dB on a linea
   beside VAE → ResShift (teacher 3.16 s per image against the head's 12.9 ms).
 - The dark-pixel lift is not split into softness and tone; `tone_probe.py` does not read the
   two-column sheets.
-- The ×2 stage lives in `bench/pixel_readout/x2_head.py::PixelHeadX2`; `library/anima/pixel_head.py`
-  is untouched until an arm passes.
+- `PixelHeadX2` and its loader are in `library/anima/pixel_head.py`; the ×2 training code is
+  not ("Next: the settled recipe as a full run" above).
 - ×4 not started.
 - Arm B: whether masters are upscales or re-encoded (matters most on 896 / 768, near 1:1);
   a 2× source for the manga pages; a held-out set inside the 1024 set.
