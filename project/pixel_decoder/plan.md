@@ -61,7 +61,8 @@ line of work with its own proposal; order not set. The first steps are Claude's 
 
 ### ×2 / ×4 output
 
-Its own plan: `x2_plan.md` (state, finished arms, arm B, next arms). In short: the head
+Its own plan: `x2_plan.md` (finished arms as pointers into `reports/`, the settled recipe and its
+full run, the deployment plan, next arms). In short: the head
 writes 32×32 px per token through a second 2× stage; arm A (`x2a_1119_1802`, regression onto the
 released ResShift ×2 student's output) came out soft, 1.7 – 3.0 dB under the teacher run on the
 release head's ×1 output; LPIPS and a tone term (`x2lt_1119_2013`) and the SR line's DMD / GAN

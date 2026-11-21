@@ -10,12 +10,15 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
 - [proposal.md](proposal.md) — the idea, what a head buys and costs, phases P1–P5.
 - [plan.md](plan.md) — the P4 wrap-up (release, promotion into `library/`, ComfyUI node), the
   P5 topics and the open items. P1 – P4 and the settled recipe: `reports/phases_p1_p4_2026_11_19.md`.
-- [x2_plan.md](x2_plan.md) — the ×2 output topic of P5: state, the finished arms (A, 1 + 2, preview, 3) as a table, arm B (the real 2× image as the target, decided 2026-11-20), next arms.
+- [x2_plan.md](x2_plan.md) — the ×2 output topic of P5: the finished arms (A, 1 + 2, preview, 3) as a table, pointers to the reports of arm B and the runs after it, the settled recipe's full run and the training code into the library, the deployment plan, next arms.
 - [reports/](reports/) — one report per run or probe, indexed in its `README.md`.
 - [deploy/](deploy/) — the Hub card and NOTICE of `sorryhyun/anima-pixel-decoder` (private);
   the card's sample images are local (`bench/pixel_readout/results/card_samples_1119/`) and on the Hub.
 - Code and per-run records: `bench/pixel_readout/` (`linear_probe.py` P1, `convnext_head.py`
-  head training, `e2e_speed.py`, `rollout_profile.py`, `render_sheets.py`, `ceiling_probe.py`, `overfit_probe.py`, `grad_probe.py`;
+  head training, `e2e_speed.py`, `render_sheets.py`, `tone_probe.py`; ×2 training is
+  `scripts/pixel_head/train_x2.py` on `library/anima/pixel_head_train.py`; the finished probes
+  (`rollout_profile.py`, `ceiling_probe.py`, `overfit_probe.py`, `grad_probe.py`, `feat_probe.py`) are in
+  `_archive/bench/pixel_readout/` (local);
   its `README.md` maps the scripts; run records are in `reports/`). Results:
   `bench/pixel_readout/results/` (local); on 2026-11-19 the concluded runs' dirs were deleted, their numbers stay in
   `reports/`; the heads code or docs name (readout_1118_2219, convnext_1119_0835 / 0938, pagemix, mixr) kept
@@ -26,7 +29,7 @@ ComfyUI node (the user: "p4는 완료된걸로 갱신하고 커밋하자"). Next
 
 P5, ×2 output (2026-11-20): a ×2 file shipped as a test file; LPIPS, a tone term and the SR
 line's DMD / GAN critic did not bring the ×2 stage up to the chain; the user chose arm B (the
-real 2× image as the target, base points only) as the next arm (`x2_plan.md`).
+real 2× image as the target, base points only) as the next arm (`x2_plan.md`; its runs: `reports/x2_arm_b_2026_11_20.md`).
 
 P1 and P2 on anima-base, teacher-forced at σ 0.0577. Test PSNR against
 the VAE decode, 30 held-out images / 8 text images, one seed, spread unknown:
