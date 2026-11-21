@@ -685,12 +685,52 @@ Decided by the user (2026-11-21): "다음 x2 plan에는 확정된 레시피로 x
   --pegan_lambda_max 1.0` (`--pegan_compile` for speed). Ratio 2 itself has not been run;
   ratios 1 and 4 have. The run is not queued: the user starts it later.
 
+### Design: the full run, `x2bgan2_1121_1340` (2026-11-21, queued on the user's word)
+
+#### Facts
+
+- The user (2026-11-21): "let's start training b + gan for anima 2x pixel decoder but, how
+  about turning gan on from 1k step among 4k?"; then, on the eval of the loaded head: "처음에
+  eval하는건 빼도 될듯".
+- Command: `x2b4k_1121_0950`'s (4,000 rollouts from `x2real_1119_2242`, `--eval_every 500`)
+  with `--pegan --pegan_param_ratio 2.0 --pegan_lambda_max 1.0 --pegan_compile
+  --pegan_start 1000 --skip_eval0`. Through `bench/pixel_readout/x2_head.py`, before the
+  move into the library.
+- `--pegan_start N` (new): before rollout N the term is out of the loss and the
+  discriminator takes no update; both start at rollout N, the discriminator fresh, as in
+  the micro arms at rollout 0. `--skip_eval0` (new) drops the held-out eval of the loaded
+  head.
+- Smoke `smoke_pegan_start` (100 rollouts, start 50, results (local)
+  `bench/pixel_readout/results/20261121-1339-smoke_pegan_start/`): no PE-GAN keys in the
+  log at rollout 50; at rollout 100 weight 0.158, margin 4.14, discriminator update 29 ms,
+  peak 10.0 GB.
+- The head the term starts on: `x2b4k_1121_0950`'s eval at rollout 1000 is 29.46 / 25.09
+  dB, LPIPS 0.272 / 0.284 (test 12 / text 5), the highest LPIPS of that run's nine evals
+  (0.196 / 0.176 at rollout 0, 0.141 / 0.137 at 4000). The head's rate at rollout 1000 is
+  0.85 of its peak.
+- Read: the evals at 500 and 1000 against `x2b4k_1121_0950`'s (same command and seed up to
+  there), 1500 – 4000 against the same rows as the term's effect over length; the end as
+  the micro arms were read (dB, LPIPS, dark lift, margin, `original 2× | B 4k | this run`
+  768-px crops, labelled; the user's read of lines and screentone decides). Bars: spread
+  unknown.
+- Cost: 1,000 rollouts at 0.84 s and 3,000 at about 1.34 s, about 85 minutes with the evals.
+
+#### Interpretation
+
+- Question: does the term, added to B's own schedule from rollout 1000, end with sharper
+  lines than B alone at the same length, and at what cost on LPIPS against the 0.141 /
+  0.137 B reaches?
+- At rollout 1000 the head is not converged, so this run reads the term on a moving head;
+  the micro arms read it on a converged one. A start past rollout 2500 (B's LPIPS below
+  0.18) would be the converged-head form at full length, if this run's lines read no
+  sharper than the micro arms'.
+- Not separated from the term: the discriminator's fixed rate against the head's cosine.
+  In both micro arms the margin rose as the head's rate fell; here that stretch is longer.
+
 ### Plan (Claude's draft)
 
-1. The recipe is fixed (Facts above). Open in the full run's shape: the GAN term from the
-   first rollout of a 4,000-rollout run, or over the last stretch of it; the micro arms
-   only read the term on a converged head (1,000 rollouts from `x2b4k_1121_0950`). At
-   1.34 s per rollout 4,000 rollouts with the term are about 90 minutes.
+1. The recipe is fixed (Facts above). The full run's shape was set by the user: the term
+   from rollout 1000 of 4,000 (Design above).
 2. Move the training loop into the library as modules a script composes: the item source
    (`x2flex` manifest rows), the rollout (features, x_t patches, VAE(x̂0)), the window and
    replay buffer, the loss terms (recipe loss, LPIPS, tone, PE-GAN), the held-out meters.
@@ -703,7 +743,8 @@ Decided by the user (2026-11-21): "다음 x2 plan에는 확정된 레시피로 x
    (250 rollouts, same seeds) reads level with that run's 250-rollout eval (test LPIPS
    0.180, 29.77 dB); a unit test on the loss terms and the window margin
    (`CONTRIBUTING.md`, Tier 1.5).
-4. The full run of the settled recipe through the new entry, read against
+4. The full run of the settled recipe (`x2bgan2_1121_1340`, started through the bench
+   script on the user's word before the move), read against
    `x2b4k_1121_0950` and the preview on `test` / `text` / the safe set and on renders
    (`p3_generated.py --x2`); on the user's read it replaces
    `anima_pixel_head_x2_preview.safetensors`, deployed as in "Deployment plan" below.

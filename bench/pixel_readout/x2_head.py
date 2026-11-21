@@ -344,6 +344,13 @@ def main():
     )
     p.add_argument("--pegan_lambda_max", type=float, default=0.1)
     p.add_argument(
+        "--pegan_start",
+        type=int,
+        default=0,
+        help="first rollout (0-based) with the PE-GAN term; before it the term is out "
+        "of the loss and the discriminator takes no update",
+    )
+    p.add_argument(
         "--pegan_param_ratio",
         type=float,
         default=0.0,
@@ -378,6 +385,11 @@ def main():
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--warmup", type=int, default=200, help="opt steps")
     p.add_argument("--eval_every", type=int, default=250, help="rollouts")
+    p.add_argument(
+        "--skip_eval0",
+        action="store_true",
+        help="no held-out eval of the loaded head before training",
+    )
     p.add_argument("--n_test", type=int, default=12, help="test images read (of 30)")
     p.add_argument("--n_manga", type=int, default=4)
     p.add_argument("--n_sheets", type=int, default=4, help="per point and set")
@@ -880,9 +892,12 @@ def main():
             for k in sets
         )
 
-    ev0 = evaluate()
-    history = [{"rollout": 0, "step": 0, **ev0}]
-    print(f"  eval @ 0 (×1 = the base head as loaded): {fmt(ev0)}", flush=True)
+    history: list[dict] = []
+    ev0: dict = {}
+    if not args.skip_eval0:
+        ev0 = evaluate()
+        history.append({"rollout": 0, "step": 0, **ev0})
+        print(f"  eval @ 0 (×1 = the base head as loaded): {fmt(ev0)}", flush=True)
 
     if args.dprobe:  # the discriminator probe: frozen head, then exit
         from bench.pixel_readout import x2_dprobe
@@ -994,6 +1009,7 @@ def main():
         weights["pegan"] = args.lambda_pegan
     crit_rng = random.Random(args.seed + 8)
     pegan_rng = random.Random(args.seed + 9)
+    pegan_live = False  # set per rollout: pe_disc built and r >= --pegan_start
 
     def critic_crops(p2, blq, t2_):
         """One random --critic_crop crop of the loss region → (×2 output, bicubic ×2
@@ -1039,7 +1055,7 @@ def main():
         if critic is not None:
             dmd, gan = critic.gen_terms(*critic_crops(p2, blq, t2_))
             out.update({k: v for k, v in (("dmd", dmd), ("gan", gan)) if v is not None})
-        if pe_disc is not None:  # paired crops: ×2 output and the real 2× image
+        if pegan_live:  # paired crops: ×2 output and the real 2× image
             c = args.pegan_crop
             h, w = p2.shape[-2:]
             assert min(h, w) >= c, (h, w, c)
@@ -1093,8 +1109,12 @@ def main():
     peak_steps, evaluated = None, False
     crit_keys = ("dmd", "gan", "c_fake", "c_gan_d", "d_real", "d_fake")
     crit_keys += ("pegan", "lam_pegan", "d_loss", "d_margin", "d_r1", "d_r2")
+    clog: dict[str, float] = {}
     t0 = time.perf_counter()
     for r in range(args.rollouts):
+        if pe_disc is not None and r == args.pegan_start:
+            pegan_live = True
+            print(f"  PE-GAN term on from rollout {r}", flush=True)
         if page_train and page_rng.random() < args.page_share:
             if not page_order:
                 page_order = page_train[:]
@@ -1146,7 +1166,7 @@ def main():
                 crop_margin(win, mar, PATCH).half().clone(),  # VAE(x̂0): the critic's LQ
             )
         )
-        if pe_disc is not None and args.pegan_param_ratio > 0:
+        if pegan_live and args.pegan_param_ratio > 0:
             pg_params = [q for q in head.parameters() if q.requires_grad]
             t_ = loss_terms(*replay_rng.choice(replay), model=head, lp_fn=lp)
             l_x2 = (
@@ -1170,9 +1190,9 @@ def main():
             opt.zero_grad(set_to_none=True)
             terms = loss_terms(*replay_rng.choice(replay))
             wts = weights
-            if pe_disc is not None and args.pegan_param_ratio > 0:
+            if pegan_live and args.pegan_param_ratio > 0:
                 terms["lam_pegan"] = torch.tensor(weights["pegan"])
-            if pe_disc is not None and args.pegan_ratio > 0:
+            if pegan_live and args.pegan_ratio > 0:
                 p2_ = terms.pop("_p2")
                 g_r = torch.autograd.grad(terms["rec2"], p2_, retain_graph=True)[0]
                 g_g = torch.autograd.grad(terms["pegan"], p2_, retain_graph=True)[0]
@@ -1202,7 +1222,7 @@ def main():
                 if args.term_log:
                     torch.cuda.synchronize()
                 t_critic += time.perf_counter() - tc
-            if pe_disc is not None:
+            if pegan_live:
                 tc = time.perf_counter()
                 clog = pe_disc.step()  # on this step's paired crops, detached
                 t_critic += time.perf_counter() - tc
