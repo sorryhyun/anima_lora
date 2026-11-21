@@ -274,9 +274,119 @@ def sheet(a):
     print(p)
 
 
+def doubt(r: dict) -> int:
+    """Groups that read as something other than kana or sit over no kanji — the review
+    page's ``sus`` for the furigana source."""
+    return sum(not (g.get("kana") and g["aligned"]) for g in r["groups"])
+
+
+def batches(a):
+    """The ``--n`` most doubtful crops (the review page's order: doubt, then id) cut into
+    batches of ``--per`` for agent review: ``agent/<tag>/batch_<k>/rows.tsv`` (n, id,
+    label, proposal, groups; ``\\n`` escaped) and ``sheet_<s>.png``, ``--rows`` crops a
+    sheet. A tile is the crop with each group boxed and numbered, then each group
+    enlarged beside the column it annotates."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    d = m109.derived_root()
+    recs = [
+        json.loads(x)
+        for x in open(OUT / f"{a.name}_read{a.tag}.jsonl", encoding="utf-8")
+    ]
+    recs = [r for r in recs if r["groups"]]
+    for r in recs:
+        r["rid"] = f"{r['book']}_{int(r['page']):03d}_{r['id']}"
+        r["groups"].sort(key=lambda g: (g["col"], g["y0"]))
+    recs.sort(key=lambda r: (-doubt(r), r["rid"]))
+    recs = recs[: a.n]
+    font = ImageFont.truetype(
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 18
+    )
+    q = lambda t: t.replace("\\", "\\\\").replace("\t", " ").replace("\n", "\\n")  # noqa: E731
+    root = OUT / "agent" / a.batch_tag
+    RH, CW, GW, PERLINE = 320, 300, 150, 10
+    for b0 in range(0, len(recs), a.per):
+        bdir = root / f"batch_{b0 // a.per}"
+        bdir.mkdir(parents=True, exist_ok=True)
+        part = recs[b0 : b0 + a.per]
+        with open(bdir / "rows.tsv", "w", encoding="utf-8") as f:
+            f.write("n\tid\tlabel\tproposal\tgroups\n")
+            for n, r in enumerate(part):
+                cols = sorted({g["col"] for g in r["groups"] if g.get("read")})
+                prop = "\n".join(
+                    " ".join(
+                        g["read"]
+                        for g in r["groups"]
+                        if g["col"] == c and g.get("read")
+                    )
+                    for c in cols
+                )
+                gs = " | ".join(
+                    f"g{k + 1} col{g['col'] + 1} {g['span'] or '?'}→{g.get('read') or '∅'}"
+                    for k, g in enumerate(r["groups"])
+                )
+                f.write(f"{n}\t{r['rid']}\t{q(r['text'])}\t{q(prop)}\t{q(gs)}\n")
+        for s0 in range(0, len(part), a.rows):
+            chunk = part[s0 : s0 + a.rows]
+            # zoom cells wrap after PERLINE groups; a crop's block is as tall as it needs
+            hts = [RH * max(1, -(-len(r["groups"]) // PERLINE)) for r in chunk]
+            ng = min(PERLINE, max(len(r["groups"]) for r in chunk))
+            sheet = Image.new("RGB", (CW + ng * GW, sum(hts)), "white")
+            dr = ImageDraw.Draw(sheet)
+            Y = 0
+            for i, r in enumerate(chunk):
+                clean = Image.open(d / r["path"]).convert("RGB")
+                img = clean.copy()
+                o = ImageDraw.Draw(img)
+                for g in r["groups"]:
+                    o.rectangle(
+                        (g["x0"] - 1, g["y0"] - 1, g["x1"], g["y1"]),
+                        outline=(230, 0, 0),
+                    )
+                s = min((CW - 40) / img.width, (RH - 30) / img.height, 4.0)
+                im = img.resize(
+                    (max(1, int(img.width * s)), max(1, int(img.height * s)))
+                )
+                sheet.paste(im, (36, Y + 26))
+                for k, g in enumerate(r["groups"]):
+                    dr.text(
+                        (36 + g["x1"] * s + 1, Y + 26 + g["y0"] * s - 4),
+                        str(k + 1),
+                        font=font,
+                        fill=(230, 0, 0),
+                    )
+                dr.text((4, Y + 2), f"#{s0 + i}", font=font, fill=(0, 0, 200))
+                for k, g in enumerate(r["groups"]):
+                    x0 = max(0, int(g["x0"] - r["wm"] - 3))
+                    zc = clean.crop(
+                        (
+                            x0,
+                            max(0, g["y0"] - 3),
+                            min(clean.width, g["x1"] + 3),
+                            min(clean.height, g["y1"] + 3),
+                        )
+                    )
+                    z = min((GW - 8) / zc.width, (RH - 40) / zc.height, 10.0)
+                    zc = zc.resize(
+                        (max(1, int(zc.width * z)), max(1, int(zc.height * z))),
+                        Image.LANCZOS,
+                    )
+                    X = CW + (k % PERLINE) * GW
+                    ZY = Y + (k // PERLINE) * RH
+                    sheet.paste(zc, (X + 4, ZY + 30))
+                    dr.text((X + 4, ZY + 4), f"g{k + 1}", font=font, fill=(230, 0, 0))
+                Y += hts[i]
+                dr.line((0, Y - 1, sheet.width, Y - 1), fill=(150, 150, 150))
+            sheet.save(bdir / f"sheet_{s0 // a.rows:02d}.png")
+        print(f"{bdir}: {len(part)} rows")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["find", "read", "sheet"])
+    ap.add_argument("cmd", choices=["find", "read", "sheet", "batches"])
+    ap.add_argument("--per", type=int, default=400, help="batches: rows per batch")
+    ap.add_argument("--rows", type=int, default=6, help="batches: crops per sheet")
+    ap.add_argument("--batch_tag", default="top2000", help="batches: output folder")
     ap.add_argument("--name", default="ruby_v1")
     ap.add_argument(
         "--n", type=int, default=0, help="find: sample size (0 = all); sheet: tiles"
@@ -295,7 +405,7 @@ def main():
     )
     ap.add_argument("--tag", default="", help="read: output suffix")
     a = ap.parse_args()
-    {"find": find, "read": read, "sheet": sheet}[a.cmd](a)
+    {"find": find, "read": read, "sheet": sheet, "batches": batches}[a.cmd](a)
 
 
 if __name__ == "__main__":

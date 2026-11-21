@@ -464,13 +464,31 @@ def odd_dots(t: str) -> str:
     return "/".join(why)
 
 
-def furigana_rows(d: Path, path: Path | None) -> dict[str, list[dict]]:
+def agent_subs(root: Path | None) -> dict[str, tuple[str, str, str]]:
+    """``furigana_find.py batches``' agent outputs under ``root`` (``**/out*.tsv``: n, id,
+    sub with ``\\n`` breaks, verdict, note) → id → (sub, verdict, note)."""
+    out: dict[str, tuple[str, str, str]] = {}
+    if root is None:
+        return out
+    for f in sorted(root.glob("**/out*.tsv")):
+        df = pd.read_csv(f, sep="\t", dtype=str, keep_default_na=False, quoting=3)
+        df = df.reindex(columns=["n", "id", "sub", "verdict", "note"]).fillna("")
+        for r in df.itertuples():
+            sub = r.sub.replace("\\n", "\n").strip()
+            out[r.id] = (sub, r.verdict.strip(), r.note.strip())
+    return out
+
+
+def furigana_rows(
+    d: Path, path: Path | None, fix: Path | None = None
+) -> dict[str, list[dict]]:
     """``furigana_find.py read``'s crops with ruby groups: the label as it is, the sub box
     prefilled with every group's non-empty read in reading order: one line per main
     column (right to left), a column's groups top down, joined by a space. ``sus`` counts
     the groups that read as something else or sit over no kanji (those rows first)."""
     if path is None or not path.exists():
         return {}
+    fixed = agent_subs(fix)
     rows = []
     for line in open(path, encoding="utf-8"):
         x = json.loads(line)
@@ -492,6 +510,7 @@ def furigana_rows(d: Path, path: Path | None) -> dict[str, list[dict]]:
                 len=len(x["text"]),
                 status="",
                 note=f"ruby: {note}",
+                agent=f"{x['book']}_{int(x['page']):03d}_{x['id']}" in fixed,
                 sub="\n".join(
                     " ".join(g["read"] for g in gs if g["col"] == c and g.get("read"))
                     for c in sorted({g["col"] for g in gs if g.get("read")})
@@ -501,7 +520,16 @@ def furigana_rows(d: Path, path: Path | None) -> dict[str, list[dict]]:
                 box=[],
             )
         )
-    print(f"[review] furigana: {len(rows)} rows", flush=True)
+    for r in rows:
+        if r.pop("agent"):
+            sub, verdict, anote = fixed[r["id"]]
+            r["sub"] = sub
+            r["note"] = (
+                f"agent {verdict}" + (f": {anote}" if anote else "") + " · " + r["note"]
+            )
+    print(
+        f"[review] furigana: {len(rows)} rows ({len(fixed)} agent-reviewed)", flush=True
+    )
     return {"furigana": rows}
 
 
@@ -728,6 +756,12 @@ def main():
         help="furigana_find.py read's output/ocr/furigana/<name>_read.jsonl: the "
         "furigana source (sub box prefilled with the ruby reads)",
     )
+    ap.add_argument(
+        "--ruby_fix",
+        type=Path,
+        help="folder of agent outputs (**/out.tsv from furigana_find.py batches): "
+        "their sub replaces the furigana prefill, the verdict leads the meta line",
+    )
     a = ap.parse_args()
     d = m109.derived_root()
     kz = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
@@ -785,7 +819,7 @@ def main():
     data.update(hito_rows(d, flags))
     data.update(odd_dot_rows(d))
     data.update(linebreak_rows(d))
-    data.update(furigana_rows(d, a.ruby))
+    data.update(furigana_rows(d, a.ruby, a.ruby_fix))
     data.update(doujin_rows(a.doujin_reads))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
