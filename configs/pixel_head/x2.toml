@@ -1,0 +1,42 @@
+# ×2 pixel head — field defaults for scripts/pixel_head/train_x2.py.
+#
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_x2.py --config configs/pixel_head/x2.toml"
+#
+# Keys are X2TrainRequest field names (`--help` lists them); CLI flags win over this
+# file, and a key left out keeps the field default. Values below are the settled recipe
+# (project/pixel_decoder/x2_plan.md): arm B (the real 2× image as the target, base decode
+# points only) with the PE-Spatial GAN term at gradient ratio 2 from rollout 1000.
+# For a run, copy this file to <handle>_mmdd_hhmm.toml and set output_name to that name.
+
+output_name = "x2"
+output_dir = "output/pixel_head"       # → <output_dir>/<output_name>/head_x2.safetensors
+x2flex = "post_image_dataset/x2flex/manifest.json"   # bench/pixel_readout/x2_flex.py builds it
+# init = ""                            # a ×1 head file for a new second stage; unset: the catalog's released head
+# resume = ""                          # a ×2 head file to continue from (replaces init / depth2)
+depth2 = 2
+sigma = "0.0577-0.1364"                # shift-3 Euler's last step at 50 … 20 steps
+
+rollouts = 4000                        # one DiT forward each
+opt_steps = 16                         # head updates per rollout
+replay = 64
+window = 24                            # tokens; + 2 × margin of context
+margin = 3
+lr = 2e-4                              # one cosine cycle
+warmup = 200                           # opt steps
+lambda_lpips = 0.1
+lambda_dc = 1.0
+dc_block = 32
+
+pegan_ratio = 2.0                      # GAN gradient norm over the head / the regression terms'; 0 = off
+pegan_start = 1000                     # first rollout with the term and the discriminator
+pegan_lambda_max = 1.0
+pegan_crop = 512
+
+eval_every = 500
+n_test = 12
+n_sheets = 4
+crop = 768
+
+stream = "fp32"
+compile = true
+seed = 0

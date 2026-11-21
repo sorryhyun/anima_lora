@@ -87,5 +87,6 @@ submodule).
   a merged style LoRA at the base level.
 
 Structure, training and the ×2 work: [../experimental/pixel_decoder.md](../experimental/pixel_decoder.md).
-Training, evals and probes: `bench/pixel_readout/`; the project record:
+Training, evals and probes: `bench/pixel_readout/` (×2 training:
+`scripts/pixel_head/train_x2.py`); the project record:
 `project/pixel_decoder/`.

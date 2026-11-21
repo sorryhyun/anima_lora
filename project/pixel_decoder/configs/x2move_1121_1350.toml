@@ -1,0 +1,25 @@
+# Check of the library move: x2bo_1120_1815's recipe (arm B, no GAN term, 250 rollouts from
+# the preview x2real_1119_2242) through scripts/pixel_head/train_x2.py instead of
+# bench/pixel_readout/x2_head.py, nothing else changed.
+# Differs by construction: the head runs at scale=2 (no ×1 output, no ×1 term at weight 0),
+#   no --term_log (the bench's gradient log draws from the replay stream every 50 rollouts,
+#   so the two runs sample different replay windows after rollout 50), no teacher / chain.
+# Question: does the moved loop train as the bench loop does? Level with x2bo at 125 and
+#   250 -> the entry is the one the next ×2 run uses. Not level -> the difference is found
+#   before anything else runs through it.
+# Records it rests on:
+#   - x2bo_1120_1815 (bench, one seed), test 12 / text 5 against the real 2× image:
+#     rollout 125: 29.54 / 25.28 dB, LPIPS 0.270 / 0.251, dark +5.29 / +12.35
+#     rollout 250: 29.77 / 25.43 dB, LPIPS 0.180 / 0.174, dark +7.36 / +14.34
+#     0.92 s per rollout, peak 9.6 GB.
+# Read: this run's evals at 125 and 250 against those rows; numbers only, no sheets read.
+# Bars: spread unknown (no twin of a 250-rollout run). The gap between x2bgan2_1121_1340 and
+#   x2b4k_1121_0950 at rollouts 500 and 1000 (one command, one seed, two runs) is reported
+#   beside it as the bench loop's own rerun gap.
+# Cost: 250 rollouts, about 6 minutes with setup.
+
+output_name = "x2move_1121_1350"
+resume = "bench/pixel_readout/results/20261119-2322-x2real_1119_2242/head_x2.safetensors"
+rollouts = 250
+eval_every = 125
+pegan_ratio = 0.0
