@@ -17,8 +17,8 @@ Pieces, in the order a rollout uses them:
 - :func:`psnr`, :func:`tone_stats`, :func:`densest_window`, :func:`pair_sheet` — the read.
 - :func:`save_x2_head` — the file :func:`library.anima.pixel_head.load_pixel_head` reads.
 
-Probes and the closed branches (teacher target, ×1 loss in a ×2 file, the ResShift
-critic) are in ``bench/pixel_readout/``.
+The earlier arms (teacher target, ×1 loss in a ×2 file) and the whole-image reads with the
+teacher columns are in ``bench/pixel_readout/x2_head.py``.
 """
 
 from __future__ import annotations

@@ -44,7 +44,6 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from PIL import Image, ImageDraw
 from safetensors import safe_open
 from safetensors.torch import load_file, save_file
@@ -69,6 +68,10 @@ from library.anima.pixel_head import (  # noqa: F401  (re-exported for the bench
     PixelHead,
     lat_patches,
     load_pixel_head,
+)
+from library.anima.pixel_head_train import (  # noqa: F401  (re-exported for the scripts here)
+    densest_window,
+    rec_loss,
 )
 from library.datasets.buckets import cluster_token_bands
 from library.env import resolve_under_home
@@ -135,14 +138,6 @@ def attach_adapter(anima, path: str, device):
     print(f"adapter {path}: {network.load_weights(path)}", flush=True)
     network.to(device=device, dtype=torch.bfloat16).requires_grad_(False)
     return network
-
-
-def rec_loss(pred, tgt):
-    l1 = (pred - tgt).abs().mean()
-    mse = ((pred - tgt) ** 2).mean()
-    gh = (pred.diff(dim=-2) - tgt.diff(dim=-2)).abs().mean()
-    gw = (pred.diff(dim=-1) - tgt.diff(dim=-1)).abs().mean()
-    return 0.5 * l1 + 5.0 * mse + 0.05 * (gh + gw), mse
 
 
 # --------------------------------------------------------------------------- data
@@ -219,14 +214,6 @@ def token_count(ci) -> int:
 
 
 # --------------------------------------------------------------------------- sheets
-
-
-def densest_window(img: torch.Tensor, crop: int) -> tuple[int, int]:
-    g = img.float().mean(0)
-    e = (g.diff(dim=0).abs()[:, :-1] + g.diff(dim=1).abs()[:-1, :])[None, None]
-    s = F.avg_pool2d(e, crop, stride=crop // 4)[0, 0]
-    iy, ix = divmod(int(s.argmax()), s.shape[1])
-    return ix * (crop // 4), iy * (crop // 4)
 
 
 def sheet(cols, path: Path, crop: int = 384, at: tuple[int, int] | None = None):
@@ -356,7 +343,7 @@ def main():
         "--lpips_crop",
         type=int,
         default=512,
-        help="LPIPS on one random crop of this side per update (lpips_speed.py: 512² "
+        help="LPIPS on one random crop of this side per update (lpips_speed.py, archived: 512² "
         "9.0 ms, 768² 19.6 ms compiled)",
     )
     p.add_argument(
@@ -558,7 +545,9 @@ def main():
 
     lp = lpips.LPIPS(net="vgg", verbose=False).to(device).eval()
     lp.requires_grad_(False)
-    lp.to(memory_format=torch.channels_last)  # + compile: lpips_speed.py, x2_head.py
+    lp.to(
+        memory_format=torch.channels_last
+    )  # + compile: lpips_speed.py (archived), x2_head.py
     lp_train = torch.compile(lp) if compile_blocks else lp
     lp_rng = random.Random(args.seed + 5)
 

@@ -43,7 +43,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import numpy as np
 import torch
 import torch.nn.functional as F
-from PIL import Image, ImageDraw
+from PIL import Image
 from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
@@ -66,12 +66,19 @@ from bench.pixel_readout.convnext_head import (
     resolve_run,
     token_count,
 )
-from bench.pixel_readout.linear_probe import PATCH, pick_samples, psnr, to_pil
-from bench.pixel_readout.x2_dmd import X2_TEACHER, X2Critic
+from bench.pixel_readout.linear_probe import PATCH, pick_samples, psnr
 from library.anima.pixel_head import (
     PixelHeadX2,
     lat_patches,
     load_pixel_head,
+)
+from library.anima.pixel_head_train import (  # noqa: F401  (re-exported for the scripts here)
+    PEDisc,
+    crop_margin,
+    dc_loss,
+    luma8,
+    pair_sheet,
+    tone_stats,
 )
 from library.datasets.buckets import cluster_token_bands
 from library.env import resolve_under_home
@@ -145,19 +152,10 @@ def load_teacher(repo: Path, weights: Path, device):
             cond_mode=cond,
         )[0].float()
 
-    # the pieces a critic on the same VQ-f4 latent builds on (x2_dmd.X2Critic)
-    up2.resshift = (R, cfg, diff, cond)
     return up2
 
 
 # --------------------------------------------------------------------------- helpers
-
-
-def crop_margin(img: torch.Tensor, mar: tuple[int, int, int, int], px: int):
-    """Drop ``mar`` = (top, bottom, left, right) tokens, ``px`` pixels per token."""
-    t, b, lf, r = (k * px for k in mar)
-    h, w = img.shape[-2:]
-    return img[..., t : h - b, lf : w - r]
 
 
 def bicubic2(img: torch.Tensor) -> torch.Tensor:
@@ -170,45 +168,9 @@ def down2(img: torch.Tensor) -> torch.Tensor:
     return F.avg_pool2d(img[None].float(), 2)[0]
 
 
-def dc_loss(a: torch.Tensor, b: torch.Tensor, k: int) -> torch.Tensor:
-    """L1 on ``k``-px block means (the SR line's tone term,
-    ``project/finished/sr/distill_rsd/train.py``); both in [-1, 1]."""
-    return F.l1_loss(F.avg_pool2d(a[None], k), F.avg_pool2d(b[None], k))
-
-
-def luma8(img: torch.Tensor) -> torch.Tensor:
-    """(3, H, W) in [-1, 1] → Rec.601 luma in 8-bit levels."""
-    w = img.new_tensor([0.299, 0.587, 0.114]).view(3, 1, 1)
-    return ((img.float() + 1) * 127.5 * w).sum(0)
-
-
-def tone_stats(pred: torch.Tensor, tgt: torch.Tensor) -> tuple[float, float | None]:
-    """(whole-image luma, luma over the pixels ``tgt`` has under 64), ``pred`` −
-    ``tgt`` in 8-bit levels: the dark-pixel lift read in ``x2_plan.md``."""
-    lp, lt = luma8(pred), luma8(tgt)
-    d = lp - lt
-    dark = lt < 64
-    return d.mean().item(), (d[dark].mean().item() if dark.any() else None)
-
-
 def mean_or_none(v: list) -> float | None:
     v = [x for x in v if x is not None]
     return float(np.mean(v)) if v else None
-
-
-def pair_sheet(cols, path: Path, at: tuple[int, int, int] | None = None):
-    """Two labelled columns at native pixels; ``at`` = (x, y, size) crops both."""
-    pils = [to_pil(t) for _, t in cols]
-    if at is not None:
-        x, y, s = at
-        pils = [p.crop((x, y, x + s, y + s)) for p in pils]
-    w, h = pils[0].size
-    canvas = Image.new("RGB", (w * len(cols), 24 + h), "white")
-    d = ImageDraw.Draw(canvas)
-    for i, ((name, _), p) in enumerate(zip(cols, pils)):
-        d.text((i * w + 6, 4), name, fill="black")
-        canvas.paste(p, (i * w, 24))
-    canvas.save(path)
 
 
 # --------------------------------------------------------------------------- main
@@ -255,36 +217,13 @@ def main():
         type=int,
         default=0,
         help="LPIPS on one random CxC crop of the loss window per step (0 = the whole "
-        "window; lpips_speed.py: 768² 19.6 ms, 512² 9.0 ms compiled)",
-    )
-    p.add_argument(
-        "--lambda_dmd",
-        type=float,
-        default=0.0,
-        help="RSD's distribution-matching term on a --critic_crop crop of the ×2 "
-        "output, in the teacher's VQ-f4 latent (x2_dmd.X2Critic)",
-    )
-    p.add_argument(
-        "--lambda_gan",
-        type=float,
-        default=0.0,
-        help="GAN term on the fake critic's bottleneck (the SR line's 3e-3 sat beside "
-        "its own DMD and LPIPS weights)",
-    )
-    p.add_argument(
-        "--critic",
-        action="store_true",
-        help="build and train the critic even at --lambda_dmd 0 --lambda_gan 0 (with "
-        "--term_log: size the two weights)",
-    )
-    p.add_argument(
-        "--critic_crop", type=int, default=256, help="×2 px, multiple of 256"
+        "window; lpips_speed.py (archived): 768² 19.6 ms, 512² 9.0 ms compiled)",
     )
     p.add_argument(
         "--lambda_pegan",
         type=float,
         default=0.0,
-        help="the PE-Spatial discriminator's generator term (x2_pegan.py; needs "
+        help="the PE-Spatial discriminator's generator term (library PEDisc; needs "
         "--x2_target real: the real 2× image is its real)",
     )
     p.add_argument(
@@ -295,16 +234,6 @@ def main():
     )
     p.add_argument("--pegan_crop", type=int, default=512, help="×2 px, multiple of 16")
     p.add_argument(
-        "--dprobe",
-        type=int,
-        default=0,
-        help="discriminator probe (x2_dprobe.py): render this many train images through "
-        "the --resume_x2 head, train one PE-Spatial discriminator per fake source "
-        "(head / chain / null / head + noise) with the generator frozen, read them on "
-        "the held-out images and exit. Needs --x2flex, --chain, --resume_x2",
-    )
-    p.add_argument("--dprobe_steps", type=int, default=1600)
-    p.add_argument(
         "--glyph_sheets",
         action="store_true",
         help="×1 read of where small detail is lost, then exit: per held-out image a "
@@ -312,24 +241,12 @@ def main():
         "×2 sheets' crop window, pixels doubled, and each column's dB against the "
         "original",
     )
-    p.add_argument(
-        "--dprobe_arms",
-        choices=("source", "band"),
-        default="source",
-        help="source: head / chain / null / head + noise; band: the head's difference "
-        "from the real image split by frequency (x2_dprobe.py)",
-    )
-    p.add_argument(
-        "--dprobe_noise",
-        default="0.03,0.1",
-        help="σ of the noise arms, [-1, 1] units, comma-separated",
-    )
     p.add_argument("--pegan_layers", default="3,7,11", help="PE blocks tapped, 0-based")
     p.add_argument("--pegan_lr", type=float, default=1e-4)
     p.add_argument(
         "--pegan_compile",
         action="store_true",
-        help="torch.compile the discriminator's PE tower (pegan_speed.py)",
+        help="torch.compile the discriminator's PE tower (pegan_speed.py, archived)",
     )
     p.add_argument(
         "--pegan_r", type=float, default=0.1, help="R1 / R2 (noise form) weight"
@@ -359,17 +276,6 @@ def main():
         "λ_dc·dc, one summed loss), measured eagerly on a replay sample (in place of "
         "--lambda_pegan / --pegan_ratio; capped at --pegan_lambda_max)",
     )
-    p.add_argument(
-        "--critic_k", type=int, default=1, help="critic updates per head update"
-    )
-    p.add_argument("--critic_lr", type=float, default=5e-5)
-    p.add_argument(
-        "--critic_gan_d",
-        type=float,
-        default=3e-3,
-        help="weight of the discriminator loss inside the critic's update",
-    )
-    p.add_argument("--critic_teacher", default=X2_TEACHER)
     p.add_argument(
         "--term_log",
         action="store_true",
@@ -645,7 +551,7 @@ def main():
     for q in lp.parameters():
         q.requires_grad_(False)
     # channels_last + compile, pred and target as two inputs: 40.3 → 19.6 ms per
-    # 768² step (bench/pixel_readout/lpips_speed.py)
+    # 768² step (lpips_speed.py, archived)
     lp.to(memory_format=torch.channels_last)
     lp_train = torch.compile(lp) if compile_blocks else lp
 
@@ -797,28 +703,6 @@ def main():
             if cr:
                 for i, col in enumerate(("psnr", "lpips", "luma", "dark"), 1):
                     refs[f"{st}_{tag}_{col}"] = mean_or_none([c[i] for c in cr])
-    dprobe_pool = []  # (item, f, lat, chain, real 2×), the chain on the --init head's ×1
-    if args.dprobe:
-        assert args.x2flex and args.chain and args.resume_x2, "--dprobe: see its help"
-        head.eval()
-        _, d_sigma, d_adapter = points[0]
-        for j, item in enumerate(
-            random.Random(args.seed + 11).sample(train, args.dprobe)
-        ):
-            f, lat, img = rollout(item, 20_000 + j, d_sigma, d_adapter)
-            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                x1, _ = head(f, lat)
-            dprobe_pool.append(
-                (
-                    item,
-                    f.to("cpu", torch.bfloat16),
-                    lat.cpu(),
-                    up2(x1.float().clamp(-1, 1), 0).to("cpu", torch.float16),
-                    real_x2(item, img).to("cpu", torch.float16),
-                )
-            )
-        head.train()
-        print(f"dprobe pool {len(dprobe_pool)} train images", flush=True)
     if args.resume_x2:
         rx = resolve_run(args.resume_x2) / "head_x2.safetensors"
         head.load_state_dict(load_file(str(rx), device=str(device)))
@@ -899,85 +783,12 @@ def main():
         history.append({"rollout": 0, "step": 0, **ev0})
         print(f"  eval @ 0 (×1 = the base head as loaded): {fmt(ev0)}", flush=True)
 
-    if args.dprobe:  # the discriminator probe: frozen head, then exit
-        from bench.pixel_readout import x2_dprobe
-
-        head.eval()
-        pool = [
-            {
-                "name": it.stem,
-                "kind": x2_kinds[it.npz_path],
-                "real": real,
-                "head": predict(f, lat)[1].to("cpu", torch.float16),
-                "chain": chain,
-            }
-            for it, f, lat, chain, real in dprobe_pool
-        ]
-        held = [
-            {
-                "name": f"{key.split('.')[-1]}_{it.stem}",
-                "kind": x2_kinds[it.npz_path],
-                "real": t2,
-                "head": predict(f, lat)[1].to("cpu", torch.float16),
-                "chain": chain,
-            }
-            for it, key, f, lat, _img, t2, _b, _t, chain in held_feats
-        ]
-        del dprobe_pool
-        run_dir = make_run_dir("pixel_readout", label=args.label)
-        dm, arts = x2_dprobe.run(
-            pool,
-            held,
-            device,
-            run_dir,
-            steps=args.dprobe_steps,
-            noise=tuple(float(v) for v in args.dprobe_noise.split(",") if v),
-            crop=args.pegan_crop,
-            layers=tuple(int(v) for v in args.pegan_layers.split(",")),
-            lr=args.pegan_lr,
-            r_weight=args.pegan_r,
-            r_sigma=args.pegan_r_sigma,
-            seed=args.seed,
-            arm_set=args.dprobe_arms,
-        )
-        out = write_result(
-            run_dir,
-            script=__file__,
-            args=args,
-            metrics={"dprobe": dm, "eval0": ev0, **refs},
-            label=args.label,
-            artifacts=arts,
-            device=device,
-        )
-        print(f"envelope: {out}")
-        return
-
-    # --- critic (arm 3): RSD's DMD + GAN terms on a crop of the ×2 output ---
-    critic = None
-    if args.lambda_dmd > 0 or args.lambda_gan > 0 or args.critic:
-        assert args.critic_crop % 256 == 0, "--critic_crop: a multiple of 256"
-        R, rcfg, rdiff, rcond = up2.resshift
-        assert rcond == "latent", f"critic conditioning {rcond}"
-        critic = X2Critic(
-            R,
-            rcfg,
-            rdiff,
-            Path(resolve_under_home(args.critic_teacher)),
-            device,
-            lr=args.critic_lr,
-            lambda_gan_d=args.critic_gan_d,
-            seed=args.seed + 7,
-            use_dmd=args.lambda_dmd > 0 or args.critic,
-            use_gan=args.lambda_gan > 0 or args.critic,
-        )
     pe_disc = None
     if args.lambda_pegan > 0 or args.pegan:
         assert args.x2_target == "real", (
             "--lambda_pegan / --pegan need --x2_target real"
         )
         assert args.pegan_crop % 16 == 0, "--pegan_crop: a multiple of 16"
-        from bench.pixel_readout.x2_pegan import PEDisc
-
         pe_disc = PEDisc(
             device,
             layers=tuple(int(v) for v in args.pegan_layers.split(",")),
@@ -1000,34 +811,12 @@ def main():
         weights["dc"] = args.lambda_dc
     if args.lambda_lpips_x1 > 0:
         weights["lpips1"] = args.lambda_lpips_x1
-    if critic is not None:  # a term at weight 0 is in the graph only under --critic
-        if critic.use_dmd:
-            weights["dmd"] = args.lambda_dmd
-        if critic.use_gan:
-            weights["gan"] = args.lambda_gan
     if pe_disc is not None:
         weights["pegan"] = args.lambda_pegan
-    crit_rng = random.Random(args.seed + 8)
     pegan_rng = random.Random(args.seed + 9)
     pegan_live = False  # set per rollout: pe_disc built and r >= --pegan_start
 
-    def critic_crops(p2, blq, t2_):
-        """One random --critic_crop crop of the loss region → (×2 output, bicubic ×2
-        of VAE(x̂0), teacher ×2), each (1, 3, c, c). The bicubic is the teacher's own
-        upsample (``resshift_infer.upscale``), taken on the region before the crop."""
-        c = args.critic_crop
-        h, w = p2.shape[-2:]
-        assert min(h, w) >= c, (h, w, c)
-        y, x = crit_rng.randint(0, h - c), crit_rng.randint(0, w - c)
-        up = F.interpolate(
-            blq[None].float(), scale_factor=2, mode="bicubic", align_corners=False
-        )
-        sl = (..., slice(y, y + c), slice(x, x + c))
-        return p2[None].float()[sl], up[sl], t2_[None][sl]
-
-    def loss_terms(
-        bf, blat, b1, b2, bmar, breal=False, blq=None, model=None, lp_fn=None
-    ):
+    def loss_terms(bf, blat, b1, b2, bmar, breal=False, model=None, lp_fn=None):
         with torch.autocast("cuda", dtype=torch.bfloat16):
             x1, x2 = (model or head_train)(bf, blat)
         p2, t2_ = crop_margin(x2, bmar, 2 * PATCH), b2.float()
@@ -1052,9 +841,6 @@ def main():
                 )
         if use_dc:
             out["dc"] = dc_loss(p2, t2_, args.dc_block)
-        if critic is not None:
-            dmd, gan = critic.gen_terms(*critic_crops(p2, blq, t2_))
-            out.update({k: v for k, v in (("dmd", dmd), ("gan", gan)) if v is not None})
         if pegan_live:  # paired crops: ×2 output and the real 2× image
             c = args.pegan_crop
             h, w = p2.shape[-2:]
@@ -1107,8 +893,7 @@ def main():
     ema: dict[str, float] = {}
     t_critic = 0.0
     peak_steps, evaluated = None, False
-    crit_keys = ("dmd", "gan", "c_fake", "c_gan_d", "d_real", "d_fake")
-    crit_keys += ("pegan", "lam_pegan", "d_loss", "d_margin", "d_r1", "d_r2")
+    crit_keys = ("pegan", "lam_pegan", "d_loss", "d_margin", "d_r1", "d_r2")
     clog: dict[str, float] = {}
     t0 = time.perf_counter()
     for r in range(args.rollouts):
@@ -1163,7 +948,6 @@ def main():
                 crop_margin(t2, mar, 2 * PATCH).half(),
                 mar,
                 real,
-                crop_margin(win, mar, PATCH).half().clone(),  # VAE(x̂0): the critic's LQ
             )
         )
         if pegan_live and args.pegan_param_ratio > 0:
@@ -1205,23 +989,6 @@ def main():
             torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
             opt.step()
             step += 1
-            if critic is not None:
-                if args.term_log:
-                    torch.cuda.synchronize()
-                tc = time.perf_counter()
-                clog = critic.step()  # on this step's ×2 crop, detached
-                for _ in range(args.critic_k - 1):
-                    cf, clat, _, cb2, cmar, _, clq = crit_rng.choice(replay)
-                    with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                        _, cx2 = head(cf.float(), clat)
-                    clog = critic.update(
-                        *critic_crops(
-                            crop_margin(cx2, cmar, 2 * PATCH), clq, cb2.float()
-                        )
-                    )
-                if args.term_log:
-                    torch.cuda.synchronize()
-                t_critic += time.perf_counter() - tc
             if pegan_live:
                 tc = time.perf_counter()
                 clog = pe_disc.step()  # on this step's paired crops, detached
@@ -1229,7 +996,7 @@ def main():
         for k, v in terms.items():
             v = v.item()
             ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
-        if critic is not None or pe_disc is not None:
+        if pe_disc is not None:
             for k, v in clog.items():
                 ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
         if (r + 1) % 50 == 0:
@@ -1239,7 +1006,7 @@ def main():
                 extra = "  " + " ".join(
                     f"{k} {ema[k]:.4f}" for k in ("lpips", "dc", "lpips1") if k in ema
                 )
-            if critic is not None or pe_disc is not None:
+            if pe_disc is not None:
                 extra += "  " + " ".join(
                     f"{k} {ema[k]:.4g}" for k in crit_keys if k in ema
                 )

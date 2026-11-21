@@ -8,8 +8,10 @@ arms are in `reports/`: arm A and its design `x2_arm_a_2026_11_19.md`, arms 1 + 
 `x2_state_2026_11_20.md`, arm B `x2_arm_b_2026_11_20.md`, B at 4,000 rollouts
 `x2_b4k_2026_11_21.md`, the discriminator probes `x2_disc_probes_2026_11_21.md`, the GAN micro
 arms and the glyph read `x2_gan_micro_2026_11_21.md`. Code:
-`bench/pixel_readout/x2_head.py` (head and training), `x2_overfit.py` (fit probe), `x2_dmd.py`
-(arm 3's critic), `x2_masters.py` (real 2× targets), `x2_pair.py` (pair sheets); results under
+`scripts/pixel_head/train_x2.py` on `library/anima/pixel_head_train.py` (training of the settled
+recipe), `bench/pixel_readout/x2_head.py` (the earlier arms and the whole-image reads),
+`x2_overfit.py` (fit probe), `x2_masters.py` / `x2_flex.py` (real 2× targets and the set),
+`x2_pair.py` (pair sheets); results under
 `bench/pixel_readout/results/` (local).
 
 ## State
@@ -85,7 +87,7 @@ Decided by the user (2026-11-21): "다음 x2 plan에는 확정된 레시피로 x
 - Already in the library (`library/anima/pixel_head.py`, 387 lines): `PixelHead`,
   `PixelHeadX2`, `load_pixel_head` (reads `x2_depth` files), `PixelTap`, the path and σ-range
   helpers; inference reaches them through `--decoder pixel_head` / `--pixel_scale`.
-- Not in the library: training. `bench/pixel_readout/x2_head.py` is 1,412 lines with one
+- Not in the library when this was decided: training. `bench/pixel_readout/x2_head.py` is 1,412 lines with one
   `main()` that holds the data split, the teacher-forced rollout, the window and replay
   buffer, the loss terms, the held-out eval and the sheets as closures, beside the code of
   closed branches (arm A's teacher target, arm 3's critic `x2_dmd.py`, the ×1 loss inside a
@@ -228,11 +230,10 @@ Decided by the user (2026-11-21): "다음 x2 plan에는 확정된 레시피로 x
 ### Plan (Claude's draft)
 
 1. Done: the recipe, the full run (`x2bgan2_1121_1340`), the library entry and its check.
-2. Left in `bench/pixel_readout/`: `x2_head.py` still holds the closed branches (teacher
-   target, the ×1 loss in a ×2 file, `--critic*` with `x2_dmd.py`, `--dprobe` with
-   `x2_dprobe.py`) and its own copies of the helpers now in the library; `x2_pegan.py` is
-   the discriminator's first copy. Next: the closed branches out, the helpers imported from
-   the library, `x2_dmd.py` / `x2_dprobe.py` / `x2_pegan.py` to `_archive/`.
+2. Done (2026-11-21): `x2_head.py` lost the closed branches (`--critic*`, `--dprobe`) and takes
+   its loss, window, discriminator and sheet helpers from the library; `x2_dmd.py`,
+   `x2_dprobe.py`, `x2_pegan.py` went to `_archive/bench/pixel_readout/` (local). It keeps
+   the teacher-target and ×1-loss paths and the reads with the teacher / chain columns.
 3. The read that is left for `x2bgan2_1121_1340`: renders (`p3_generated.py --x2`) beside
    B 4k and the preview. On the user's read it replaces
    `anima_pixel_head_x2_preview.safetensors`, deployed as in "Deployment plan" below.
@@ -311,6 +312,4 @@ Not taken up: the previous step's feature as a second input (+0.24 dB on a linea
 - ×4 not started.
 - Arm B: whether masters are upscales or re-encoded (matters most on 896 / 768, near 1:1);
   a 2× source for the manga pages; a held-out set inside the 1024 set.
-- `x2_dmd.py` and the `--critic*` flags are still in `x2_head.py`, off by default ("Next",
-  Plan 2).
 
