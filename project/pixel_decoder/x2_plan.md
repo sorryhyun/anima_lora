@@ -546,6 +546,92 @@ The user (2026-11-20): "resshift 등의 업스케일링 모델은 주로 주어�
   it adds. The `exact` rows separate a little more than the `down` rows in both probes;
   a head that learns compression texture would show it on the crops.
 
+### Outcome of `x2gctl_1121_1120` and `x2gan1_1121_1120`
+
+#### Facts
+
+- 1,000 rollouts each from `x2b4k_1121_0950`; control 0.83 s per rollout, `x2gan1` 1.71 s
+  (discriminator update 42 ms). Against the real 2× image, test 12 / text 5, one seed:
+
+  | | rollout | ×2 dB | ×2 LPIPS | dark lift |
+  |---|---|---|---|---|
+  | start (`x2b4k_1121_0950`) | 0 | 30.45 / 25.92 | 0.141 / 0.137 | +6.52 / +14.00 |
+  | control | 500 | 29.75 / 25.17 | 0.181 / 0.168 | +5.57 / +12.42 |
+  | `x2gan1` | 500 | 29.30 / 24.94 | 0.242 / 0.247 | +5.20 / +12.11 |
+  | control | 1000 | 30.18 / 25.57 | 0.145 / 0.142 | +6.45 / +13.73 |
+  | `x2gan1` | 1000 | 29.93 / 25.49 | 0.153 / 0.144 | +6.02 / +13.15 |
+
+- `x2gan1`: discriminator margin 3.4 at rollout 50, 5.8 – 6.1 over rollouts 300 – 800,
+  7.0 – 7.2 at 900 – 1000; weight 2.4e-2 → 4.4e-3 … 6.3e-3.
+- Sheets (local): `~/x2pair_1121/gctl_gan1/` (`original 2× | control | GAN ratio 1`, the
+  runs' own 768-px crops, 9 images, labelled).
+- Claude's read, labels visible, one sheet (`test_01`): the GAN arm carries a grain-like
+  texture in the shaded areas where the control is smooth and the original is grained;
+  its lines a little darker than the control's, short of the original. The user has not
+  read these sheets yet.
+- Speed of the PE-GAN update (`pegan_speed.py`, `peganspeed_1121_1200` and
+  `pegancheck_1121_1205`, 512-px crops, generator term with its backward plus one
+  discriminator update): 70.1 ms as `x2gan1` ran it (four tower forwards in the update),
+  44.6 ms with `gen_term`'s tokens reused and the two noised crops as one batch, 25.0 ms
+  with the tower compiled (`--pegan_compile`; first update 18 – 48 s). On CPU the reuse
+  matches the old path to six digits over three updates. Compiled against eager on one
+  crop, bf16: tower tokens 1.1 – 1.5 % apart, the gradient at the fake crop at cosine
+  0.996. `x2gan4_1121_1120` was requeued on the new path with `--pegan_compile`.
+
+#### Interpretation
+
+- The control did not return to its start in 1,000 rollouts of a re-warmed cycle, so arms
+  are read against the control's end, not the B 4k head's.
+- At ratio 1 the term moved the output this time: a texture on Claude's read, a lower dark
+  lift, 0.25 dB and 0.008 LPIPS behind the control on test. Whether it reads as sharper
+  lines is the user's read.
+- The margin rose once the generator's rate decayed: the discriminator keeps training at
+  a fixed rate while the head's follows the cosine.
+
+### Outcome of `x2gan4_1121_1120` and the glyph read `glyph_1121_1125`
+
+#### Facts
+
+- `x2gan4_1121_1120` (ratio 4, the reused-token path with `--pegan_compile`): 1.34 s per
+  rollout against `x2gan1`'s 1.71 and the control's 0.83, peak 10.8 GB, 25 minutes.
+  Against the real 2× image, test 12 / text 5, one seed:
+
+  | | rollout | ×2 dB | ×2 LPIPS | dark lift |
+  |---|---|---|---|---|
+  | control `x2gctl_1121_1120` | 1000 | 30.18 / 25.57 | 0.145 / 0.142 | +6.45 / +13.73 |
+  | `x2gan1_1121_1120` | 1000 | 29.93 / 25.49 | 0.153 / 0.144 | +6.02 / +13.15 |
+  | `x2gan4_1121_1120` | 750 | 29.32 / 25.05 | 0.226 / 0.227 | +5.36 / +12.63 |
+  | `x2gan4_1121_1120` | 1000 | 29.50 / 25.23 | 0.186 / 0.180 | +5.50 / +12.28 |
+
+- `x2gan4`: discriminator margin 3.6 at rollout 50, 5.5 – 5.8 over rollouts 150 – 800, 6.9 –
+  7.1 at 900 – 1000; weight 9.8e-2 → 1.5e-2 … 1.8e-2.
+- Sheets (local): `~/x2pair_1121/gctl_gan4/` (`original 2× | control | GAN ratio 4`) and
+  `~/x2pair_1121/gan1_gan4/` (`original 2× | GAN ratio 1 | GAN ratio 4`), 9 images each,
+  labelled.
+- Claude's read, labels visible, one sheet (`gctl_gan4`, `test_01`): ratio 4 carries the
+  same grain-like texture in the shaded areas as ratio 1; lines darker than the control's.
+  The user has not read these sheets yet.
+- `glyph_1121_1125` (`x2_head.py --glyph_sheets`, the ×1 release head `realr_1119_2200`,
+  base point σ 0.097; results (local)
+  `bench/pixel_readout/results/20261121-1230-glyph_1121_1125/`, one sheet per held-out
+  image `original | VAE(latent) | VAE(x̂0) | ×1 head` at the ×2 sheets' window). dB
+  against the original image, test 12 / text 5: VAE(latent) 40.42 / 35.46, VAE(x̂0)
+  33.87 / 28.67, ×1 head 33.23 / 28.15.
+- Claude's read, labels visible, one sheet (`…text_14_dan_5341366.png`): the body text is
+  legible in VAE(latent) as in the original; in VAE(x̂0) the same glyphs have wrong
+  strokes, and the ×1 head's follow VAE(x̂0)'s, a little softer.
+
+#### Interpretation
+
+- Ratio 4 pays more of the same price for the same change: 0.7 dB and 0.04 LPIPS behind
+  the control at the end, still recovering when the cycle closed, dark lift about 1 level
+  lower. Whether its lines read sharper than ratio 1's is the user's read.
+- In both GAN runs the margin holds near 5.7 while the head's rate is high and climbs as
+  the cosine decays; neither ratio closes it.
+- Small glyphs: the VAE keeps them (35.5 dB on text), the DiT's one-step x̂0 at σ 0.097
+  does not (28.7), and the head sits 0.5 dB under x̂0. The loss is in what Anima predicts,
+  as the user said; a decoder reading its features cannot restore it.
+
 ### Interpretation (smoke)
 
 - Against the real 2× image, bicubic has the highest dB of every column; LPIPS and dark

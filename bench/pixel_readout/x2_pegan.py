@@ -13,6 +13,11 @@ The smoothness penalty is the noise-perturbation form of R1 / R2 (no double back
 
 The generator's gradient reaches the head through the frozen PE tower (input grad only).
 Images enter in [-1, 1], which is PE's own normalisation of [0, 1].
+
+Cost per update: the PE tower runs on the fake crop (with grad) and the real crop in
+``gen_term``; ``step`` reuses those tokens for the discriminator's loss and runs the tower
+once more, on the two noised crops as one batch (``pegan_speed.py`` times it against the
+four separate forwards it replaced). ``compile=True`` compiles the tower's forward.
 """
 
 from __future__ import annotations
@@ -61,6 +66,7 @@ class PEDisc:
         lr: float = 1e-4,
         r_weight: float = 0.1,
         r_sigma: float = 0.01,
+        compile: bool = False,
     ):
         from library.models.pe import load_pe_spatial
 
@@ -81,41 +87,96 @@ class PEDisc:
                 lambda _m, _inp, out, i=i: self._taps.__setitem__(i, out)
             )
         self._last = max(self.layers)
-        self._stash: tuple[torch.Tensor, torch.Tensor] | None = None
+        # (fake, real[, fake taps, real taps]): the crops of the last gen_term
+        self._stash: tuple | None = None
+        self._taps_c = torch.compile(self._taps_raw) if compile else None
+
+    def _taps_raw(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """``forward_features`` up to the last tap, written out so it compiles as one
+        graph; the grid's RoPE table is set by the caller (``taps``)."""
+        pe = self.pe
+        b = x.shape[0]
+        gh, gw = x.shape[-2] // pe.patch_size, x.shape[-1] // pe.patch_size
+        x = pe.conv1(x).permute(0, 2, 3, 1).reshape(b, -1, pe.width)
+        if pe.use_cls_token:
+            x = torch.cat([pe.class_embedding.view(1, 1, -1).expand(b, -1, -1), x], 1)
+        if pe.use_abs_posemb:
+            x = x + pe._sample_abs_posemb(gh, gw)
+        x = pe.ln_pre(x)
+        outs = []
+        for i, blk in enumerate(pe.transformer.resblocks):
+            x = blk(x)
+            if i in self.layers:
+                outs.append(x)
+            if i == self._last:
+                break
+        return outs
+
+    def taps(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """(B, 3, c, c) in [-1, 1] → the PE tokens after each tapped block."""
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            if self._taps_c is not None:
+                p = self.pe.patch_size
+                if self.pe.use_rope2d:
+                    self.pe.rope.update_grid(
+                        x.device, x.shape[-2] // p, x.shape[-1] // p
+                    )
+                return self._taps_c(x)
+            self._taps.clear()
+            self.pe.forward_features(
+                x, layer_idx=self._last - self.pe.transformer.layers
+            )
+            return [self._taps[i] for i in self.layers]
+
+    def heads_on(self, taps: list[torch.Tensor], gh: int, gw: int) -> torch.Tensor:
+        outs = []
+        for tok, head in zip(taps, self.heads):
+            outs.append(head(tok[:, 1:] if self.pe.use_cls_token else tok, gh, gw))
+        return torch.cat(outs, 1)
 
     def logits(self, x: torch.Tensor) -> torch.Tensor:
         """(B, 3, c, c) in [-1, 1] → (B, n_heads · tokens) logits."""
         p = self.pe.patch_size
-        gh, gw = x.shape[-2] // p, x.shape[-1] // p
-        self._taps.clear()
-        with torch.autocast("cuda", dtype=torch.bfloat16):
-            self.pe.forward_features(x, layer_idx=self._last - self.pe.transformer.layers)
-        outs = []
-        for i, head in zip(self.layers, self.heads):
-            tok = self._taps[i][:, 1:] if self.pe.use_cls_token else self._taps[i]
-            outs.append(head(tok, gh, gw))
-        return torch.cat(outs, 1)
+        return self.heads_on(self.taps(x), x.shape[-2] // p, x.shape[-1] // p)
 
     def gen_term(self, fake: torch.Tensor, real: torch.Tensor) -> torch.Tensor:
+        p = self.pe.patch_size
+        gh, gw = fake.shape[-2] // p, fake.shape[-1] // p
         self.heads.requires_grad_(False)
-        lf = self.logits(fake)
+        tf = self.taps(fake)
+        lf = self.heads_on(tf, gh, gw)
         with torch.no_grad():
-            lr_ = self.logits(real)
+            tr = self.taps(real)
+            lr_ = self.heads_on(tr, gh, gw)
         self.heads.requires_grad_(True)
-        self._stash = (fake.detach(), real.detach())
+        self._stash = (fake.detach(), real.detach(), [t.detach() for t in tf], tr)
         return F.softplus(-(lf - lr_)).mean()
 
     def step(self) -> dict[str, float]:
         assert self._stash is not None, "gen_term before step"
-        fake, real = self._stash
+        fake, real, *cached = self._stash
+        p = self.pe.patch_size
+        gh, gw = fake.shape[-2] // p, fake.shape[-1] // p
         self.opt.zero_grad(set_to_none=True)
-        lr_, lf = self.logits(real), self.logits(fake)
+        if cached:  # the tower is frozen: gen_term's tokens are this step's
+            tf, tr = cached
+            lr_, lf = self.heads_on(tr, gh, gw), self.heads_on(tf, gh, gw)
+        else:
+            lr_, lf = self.logits(real), self.logits(fake)
         d = F.softplus(-(lr_ - lf)).mean()
         loss = d
         r1 = r2 = torch.zeros((), device=fake.device)
         if self.r_weight > 0:
-            r1 = (self.logits(real + self.r_sigma * torch.randn_like(real)) - lr_).pow(2).mean()
-            r2 = (self.logits(fake + self.r_sigma * torch.randn_like(fake)) - lf).pow(2).mean()
+            xn = torch.cat(
+                [
+                    real + self.r_sigma * torch.randn_like(real),
+                    fake + self.r_sigma * torch.randn_like(fake),
+                ]
+            )
+            ln = self.logits(xn)
+            nb = real.shape[0]
+            r1 = (ln[:nb] - lr_).pow(2).mean()
+            r2 = (ln[nb:] - lf).pow(2).mean()
             loss = d + self.r_weight * (r1 + r2)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.heads.parameters(), 1.0)

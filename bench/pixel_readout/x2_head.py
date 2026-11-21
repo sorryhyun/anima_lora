@@ -327,6 +327,11 @@ def main():
     p.add_argument("--pegan_layers", default="3,7,11", help="PE blocks tapped, 0-based")
     p.add_argument("--pegan_lr", type=float, default=1e-4)
     p.add_argument(
+        "--pegan_compile",
+        action="store_true",
+        help="torch.compile the discriminator's PE tower (pegan_speed.py)",
+    )
+    p.add_argument(
         "--pegan_r", type=float, default=0.1, help="R1 / R2 (noise form) weight"
     )
     p.add_argument("--pegan_r_sigma", type=float, default=0.01)
@@ -964,6 +969,7 @@ def main():
             lr=args.pegan_lr,
             r_weight=args.pegan_r,
             r_sigma=args.pegan_r_sigma,
+            compile=args.pegan_compile,
         )
     peak_setup = torch.cuda.max_memory_allocated() / 1e9
     torch.cuda.reset_peak_memory_stats()
