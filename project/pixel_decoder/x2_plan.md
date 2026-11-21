@@ -678,11 +678,19 @@ Decided by the user (2026-11-21): "다음 x2 plan에는 확정된 레시피로 x
 - The recipe so far: resume from the release ×1 head, the `x2flex` set, the real 2× image
   as the target, base points `0.0577-0.1364:real`, ×1 loss off, window 24 + margin 3,
   replay 64 × 16, LR 2e-4 on one cosine cycle, λ_lpips 0.1, λ_dc 1.0, 4,000 rollouts
-  (`x2b4k_1121_0950`). Open in it: the GAN term and its weight (the micro arms above).
+  (`x2b4k_1121_0950`).
+- The user (2026-11-21), after the `x2gctl` / `x2gan1` / `x2gan4_1121_1120` sheets: "gan으로
+  레시피 확정이야 이거 이따가 돌릴게 2배정도가 제일 나은듯? gan2 이걸로 확정하자". The settled
+  recipe: the lines above plus the PE-Spatial GAN term at `--pegan --pegan_param_ratio 2.0
+  --pegan_lambda_max 1.0` (`--pegan_compile` for speed). Ratio 2 itself has not been run;
+  ratios 1 and 4 have. The run is not queued: the user starts it later.
 
 ### Plan (Claude's draft)
 
-1. Fix the recipe on the read of `x2gctl` / `x2gan1` / `x2gan4_1121_1120`.
+1. The recipe is fixed (Facts above). Open in the full run's shape: the GAN term from the
+   first rollout of a 4,000-rollout run, or over the last stretch of it; the micro arms
+   only read the term on a converged head (1,000 rollouts from `x2b4k_1121_0950`). At
+   1.34 s per rollout 4,000 rollouts with the term are about 90 minutes.
 2. Move the training loop into the library as modules a script composes: the item source
    (`x2flex` manifest rows), the rollout (features, x_t patches, VAE(x̂0)), the window and
    replay buffer, the loss terms (recipe loss, LPIPS, tone, PE-GAN), the held-out meters.
