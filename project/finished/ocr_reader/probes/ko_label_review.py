@@ -4,7 +4,10 @@
 (``manifest_pseudo_hito_v4.parquet``, one source per side: ``hito_v4_ja`` / ``hito_v4_ko``):
 the crop as trained, the label in an editable box, a status per row. Edits stay in the
 browser (localStorage) and leave as a TSV through the page's Export button
-(``apply_ko_review.py`` takes it).
+(``apply_ko_review.py`` takes it). The export carries only the rows whose state differs
+from what apply has written: the manifests' text (as the page was built), the gate
+TSV's status, and ``assets/{sfx_marks,sub_labels,m109_mainsub}.tsv`` (``applied_state``);
+rebuild the page after each apply.
 
 Every editable row has an ``SFX`` checkbox (exported as the ``sfx`` column;
 ``apply_ko_review.py`` keeps the marks in ``assets/sfx_marks.tsv``, training does not read
@@ -195,10 +198,37 @@ const $ = (id) => document.getElementById(id);
   }
   if (n) save();
 })();
+// a box's text as apply stores it (textnorm.collapse_keep_lines; a typed "\n" is a break)
+const norm = t => (t || "").replace(/\\n/g, "\n").split("\n").map(l => l.trim().replace(/\s+/g, " "))
+                   .filter(l => l).join("\n");
+// what apply_ko_review.py has written (assets/): export carries only the rows that differ
+const APPLIED = __APPLIED__;
+const AMARK = new Set(APPLIED.marks);
+function changed(k, x) {
+  const v = store[k], st = v ? v.status : "", s = k.slice(0, k.indexOf(":"));
+  if (!!marks[k] !== AMARK.has(k)) return true;
+  if (x.ms) {  // m109_mainsub.tsv holds [status, main, sub] per reviewed crop
+    if (!st && !(k in subs)) return false;
+    const want = st === "drop" ? ["drop", "", ""]
+      : ["ok", st === "edit" ? norm(v.text) : x.text, norm(subOf(k, x))];
+    const have = APPLIED.ms[k];
+    return !have || want.some((w, i) => w !== have[i]);
+  }
+  let main;
+  if (s === "doujin_sfx")
+    main = (st === "edit" && norm(v.text).replace(/\n/g, " ") !== x.text)
+      || ((st === "ok" || st === "edit") && x.status !== "checked")
+      || (st === "drop" && x.status !== "unchecked");
+  else if (x.cur != null)  // proposal sources: ok writes the proposal
+    main = (st === "ok" && !x.done) || (st === "edit" && norm(v.text) !== x.cur) || st === "drop";
+  else main = (st === "edit" && norm(v.text) !== norm(x.text)) || st === "drop";
+  if (main) return true;
+  // sub: touched, or the proposal on a reviewed row, against sub_labels.tsv
+  const op = k in subs ? subs[k] : (st && st !== "drop" ? subOf(k, x) : null);
+  return op != null && norm(op) !== norm(APPLIED.subs[k] || "");
+}
 // edits already applied to the manifests come back as the label itself: keep them as reviewed
 (() => {
-  const norm = t => t.replace(/\\n/g, "\n").split("\n").map(l => l.trim().replace(/\s+/g, " "))
-                     .filter(l => l).join("\n");
   let n = 0;
   for (const [s, rows] of Object.entries(DATA)) for (const x of rows) {
     const v = store[s + ":" + x.id];
@@ -335,11 +365,14 @@ function render() {
 }
 $("export").onclick = () => {
   const lines = ["source\tid\tstatus\torig\tnew\tsfx\tsub"];
-  for (const k of new Set([...Object.keys(store), ...Object.keys(marks), ...Object.keys(subs)])) {
-    if (!store[k] && !marks[k] && !(k in subs)) continue;  // an unchecked SFX: read, nothing else
+  const byId = {};
+  for (const [s, rows] of Object.entries(DATA)) { const m = byId[s] = new Map(); for (const y of rows) m.set(y.id, y); }
+  let skipped = 0;
+  for (const k of new Set([...Object.keys(store), ...Object.keys(marks), ...Object.keys(subs), ...AMARK])) {
     const v = store[k] || {status: "", text: null};
     const i = k.indexOf(":"), s = k.slice(0, i), id = k.slice(i + 1);
-    const x = (DATA[s] || []).find(y => y.id === id); if (!x) continue;
+    const x = byId[s] && byId[s].get(id); if (!x || x.ro) continue;
+    if (!changed(k, x)) { skipped += (!!store[k] || !!marks[k] || k in subs); continue; }
     // sub column: the row's sub when the reviewer touched it ("-" = removed); a reviewed
     // row whose sub box shows the proposal untouched exports the proposal; else empty
     const sb = k in subs ? (subs[k].trim() ? subs[k].replace(/\\n/g, "\n") : "-")
@@ -347,8 +380,11 @@ $("export").onclick = () => {
     const q = t => (t == null ? "" : t).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\n/g, "\\n");
     // a typed "\\n" counts as a line break, same as Enter
     const nt = v.status === "edit" ? v.text.replace(/\\n/g, "\n") : "";
-    lines.push([s, id, v.status, q(x.text), q(nt), marks[k] ? "1" : "", q(sb)].join("\t"));
+    // sfx: 1 = marked, 0 = an applied mark taken off, empty = no mark either side
+    const sf = marks[k] ? "1" : AMARK.has(k) ? "0" : "";
+    lines.push([s, id, v.status, q(x.text), q(nt), sf, q(sb)].join("\t"));
   }
+  $("export").textContent = `Export TSV (last: ${lines.length - 1} changed, ${skipped} already applied)`;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], {type: "text/tab-separated-values"}));
   a.download = "ko_label_review.tsv"; a.click();
@@ -510,19 +546,28 @@ def agent_subs(root: Path | None) -> dict[str, tuple[str, str, str]]:
 def furigana_rows(
     d: Path, path: Path | None, fix: Path | None = None
 ) -> dict[str, list[dict]]:
-    """``furigana_find.py read``'s crops with ruby groups: the label as it is, the sub box
+    """``furigana_find.py read``'s crops with ruby groups: the label as the manifest holds
+    it now, the sub box
     prefilled with every group's non-empty read in reading order: one line per main
     column (right to left), a column's groups top down, joined by a space. ``sus`` counts
     the groups that read as something else or sit over no kanji (those rows first)."""
     if path is None or not path.exists():
         return {}
     fixed = agent_subs(fix)
+    # the label as the manifest holds it now (the read file keeps the text at find time)
+    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
+    now = {
+        f"{b}_{int(p):03d}_{i}": t
+        for b, p, i, t, s in zip(df.book, df.page, df.id, df.text, df.source)
+        if s in ("sfxp_speech", "m109_lines")
+    }
     rows = []
     for line in open(path, encoding="utf-8"):
         x = json.loads(line)
         gs = sorted(x["groups"], key=lambda g: (g["col"], g["y0"]))
         if not gs:
             continue
+        x["text"] = now.get(f"{x['book']}_{int(x['page']):03d}_{x['id']}", x["text"])
         good = [g for g in gs if g.get("kana") and g["aligned"]]
         bad = len(gs) - len(good)
         page = m109.page_path(x["book"], int(x["page"]))
@@ -571,6 +616,7 @@ def linebreak_rows(d: Path) -> dict[str, list[dict]]:
     df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
     df = df[df.source == "sfxp_speech"]
     crop = {(r.book, int(r.page), str(r.id)): r.path for r in df.itertuples()}
+    cur = {(r.book, int(r.page), str(r.id)): r.text for r in df.itertuples()}
     rows = []
     for line in open(path, encoding="utf-8"):
         x = json.loads(line)
@@ -593,6 +639,9 @@ def linebreak_rows(d: Path) -> dict[str, list[dict]]:
                 len=len(x["raw"]),
                 status="",
                 note=f"distance {x['dist']:.2f} · label: {x['raw']} · column reads: {reads}",
+                # the manifest's text now; ``done`` = ``ok`` already applied
+                cur=cur[k],
+                done=cur[k] == ellipsis_fold(text),
                 img=(d / crop[k]).as_uri(),
                 page=page.as_uri() if page.exists() else "",
                 box=[],
@@ -663,6 +712,8 @@ def odd_dot_rows(d: Path) -> dict[str, list[dict]]:
                 len=len(r.text),
                 status="",
                 note=f"label: {r.text}",
+                cur=r.text,
+                done=False,
                 img=(d / r.path).as_uri(),
                 page=page.as_uri() if page.exists() else "",
                 box=[],
@@ -836,6 +887,37 @@ def ref_rows(d: Path, n: int, seed: int = 0) -> dict[str, list[dict]]:
     return out
 
 
+def applied_state() -> dict:
+    """What ``apply_ko_review.py`` has written to the assets: SFX marks (``source:id``
+    keys), subs (``sub_labels.tsv``) and Manga109 main / sub rows (``m109_mainsub.tsv``:
+    [status, main, sub]). The page exports only the rows whose state differs from it."""
+    A = OCR / "assets"
+
+    def rd(name: str) -> pd.DataFrame | None:
+        p = A / name
+        if not p.exists():
+            return None
+        return pd.read_csv(p, sep="\t", dtype=str, keep_default_na=False, quoting=3)
+
+    un = lambda t: t.replace("\\n", "\n")  # noqa: E731
+    out: dict = {"marks": [], "subs": {}, "ms": {}}
+    if (m := rd("sfx_marks.tsv")) is not None:
+        out["marks"] = sorted(set(m.source + ":" + m.id))
+    if (s := rd("sub_labels.tsv")) is not None:
+        out["subs"] = {f"{r.source}:{r.id}": un(r.sub) for r in s.itertuples()}
+    if (ms := rd("m109_mainsub.tsv")) is not None:
+        out["ms"] = {
+            f"{r.source}:{r.id}": [r.status, un(r.main), un(r.sub)]
+            for r in ms.itertuples()
+        }
+    print(
+        f"[review] applied: {len(out['marks'])} marks, {len(out['subs'])} subs, "
+        f"{len(out['ms'])} main / sub rows",
+        flush=True,
+    )
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -945,6 +1027,7 @@ def main():
     a.out.mkdir(parents=True, exist_ok=True)
     html = (
         PAGE.replace("__READER__", reader)
+        .replace("__APPLIED__", json.dumps(applied_state(), ensure_ascii=False))
         .replace("__M109__", json.dumps(d.parent.as_uri() + "/"))
         .replace("__DOUJIN_SORT__", "dis" if a.doujin_reads else "sus")
         .replace("__DATA__", json.dumps(data, ensure_ascii=False))

@@ -49,7 +49,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import manga109 as m109  # noqa: E402
-from build_sfx_prefix import margin_box  # noqa: E402
+from build_sfx_prefix import ellipsis_fold, margin_box  # noqa: E402
 from linebreak_auto import (  # noqa: E402
     glyph_weight,
     guess_vertical,
@@ -191,7 +191,9 @@ def book_rows(args) -> list[dict]:
     for ln in m109.iter_coo(book):
         pages.setdefault(ln.page, []).append(Item(ln, ln.text))
     for ln in m109.iter_text(book):
-        t = sp_text.get((book, ln.page, str(ln.id)), ln.text)
+        # dots as the speech labels spell them (``ellipsis_fold``, idempotent): the
+        # <text> boxes outside manifest_sfxp_speech carry the raw annotation
+        t = ellipsis_fold(sp_text.get((book, ln.page, str(ln.id)), ln.text))
         pages.setdefault(ln.page, []).append(Item(ln, t))
     out = []
     imgs: dict[int, np.ndarray] = {}

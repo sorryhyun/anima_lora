@@ -190,21 +190,26 @@ def apply_doujin(rv: pd.DataFrame, dry_run: bool) -> None:
 
 def write_marks(rv: pd.DataFrame, dry_run: bool) -> None:
     """The page's SFX checkboxes → ``assets/sfx_marks.tsv`` (source, id, text). The
-    export carries every mark in the browser, so each exported source's marks are
-    replaced whole; other sources' marks stay. Training does not read the file."""
+    export carries the changed rows only: ``sfx`` 1 sets the row's mark (its text as
+    exported), 0 removes it, empty leaves the file alone. Training does not read the
+    file."""
     path = Path(__file__).resolve().parents[1] / "assets" / "sfx_marks.tsv"
     old = (
         pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)
         if path.exists()
         else pd.DataFrame(columns=["source", "id", "text"])
     )
-    srcs = set(rv.source)
-    new = rv[rv.sfx == "1"].assign(
+    key = lambda df: df.source + ":" + df.id  # noqa: E731
+    touched = rv[rv.sfx.isin(["0", "1"])]
+    new = touched[touched.sfx == "1"].assign(
         text=lambda x: x.new.where(x.status == "edit", x.orig).str.replace("\n", "\\n")
     )[["source", "id", "text"]]
-    out = pd.concat([old[~old.source.isin(srcs)], new], ignore_index=True)
+    out = pd.concat(
+        [old[~key(old).isin(set(key(touched)))], new], ignore_index=True
+    )
     print(
-        f"[sfx_marks] {len(new)} marked in {sorted(srcs)}; file {len(old)} → {len(out)} rows"
+        f"[sfx_marks] set {len(new)}, removed {int((touched.sfx == '0').sum())}; "
+        f"file {len(old)} → {len(out)} rows"
     )
     if not dry_run:
         out.to_csv(path, sep="\t", index=False, quoting=3)

@@ -65,6 +65,8 @@ its convex hull inside the crop:
   180 of the 576 `trim` rows are cut. In a 16-row sample, 12 read as the crop shows, 3
   drop one glyph too many, 1 is wrong (MisutenaideDaisy_053_21).
   DollGun_015_14 (one column, the detector cut below `だ`): `な…なんだ　今…` → `な…なんだ`.
+- Speech texts take `ellipsis_fold` (the speech labels' dot spelling) on every `<text>`
+  box, including the 60,810 outside `manifest_sfxp_speech` that carry the raw annotation.
 - The furigana source (`probes/furigana_find.py`, ruby read ×3 at 12 px pad, the agents'
   fixes where they reviewed the row) heads the sub proposal, through the `<text>` ids in
   the crop.
@@ -117,6 +119,8 @@ python project/finished/ocr_reader/probes/apply_ko_review.py <export.tsv>
   `suspicion` sort puts `trim` rows, then partly visible text, first.
 - A row holding one `<text>` box with ruby takes its furigana row's sub edits as its
   starting sub.
+- The export holds only what differs from the applied state (the page reads the assets at
+  build time), so rebuild the page after each apply.
 - Apply writes the `mainsub_*` rows to `assets/m109_mainsub.tsv` (source, id, status, main,
   sub) and the other sources' subs to `assets/sub_labels.tsv` (KO / ZH, furigana). The
   manifests are not touched by `mainsub_*` rows.
