@@ -29,54 +29,74 @@ Examples:
 |---|---|---|
 | `Nekodama_13_013_25` | the large `!` | the small speech |
 | `PLANET7_3_003_15` | `0!!` | `ゼロ ズバン! !!` |
-| `BakuretsuKungFuGirl_038_0000a4fc` (speech) | the speech | the ruby over 冷凍 and the smaller hand-lettered `ふざけてんの？` |
-| `GakuenNoise_048_0001a044` (speech) | `死にさらせっっ!!` (the label) | `ス` (an SFX cut by the edge, as it shows) |
+| `BakuretsuKungFuGirl_038_0000a4fc` (`<text>` crop) | the speech | the ruby over 冷凍 and the smaller hand-lettered `ふざけてんの？` |
+| `GakuenNoise_048_0001a044` (`<text>` crop) | `死にさらせっっ!!` (the label) | `ス` (an SFX cut by the edge, as it shows) |
 
-In `BakuretsuKungFuGirl_038_0000a4fc` the Manga109 `<text>` annotation already joins
-`ふざけてんの？` into the speech label, so that crop's main loses it.
+The Manga109 `<text>` annotation of `BakuretsuKungFuGirl_038_0000a4fc` joins `ふざけてんの？`
+into the speech label. AnimeText gives the two as separate boxes: `BakuretsuKungFuGirl_038_07`
+holds the main block (the annotation box 73 % inside), `ふざけてんの？` has a box of its own.
 
 ## Training crops and the proposals
 
 ### Facts
 
-Detector coverage of the 39,029 train COO polygons (`sfxp_types_train.parquet`, written by
-`build_sfx_prefix.py --clean`): missed 9,353, fragment 1,741, the rest in or near a box.
+- main / sub is read on the boxes AnimeText gives (the user's call, 2026-11-21, after the
+  missed polygons went: "let's try it"). The `<text>`-box crops (`manifest_sfxp_speech`)
+  are out of the review; their texts (line breaks, review edits) still label the speech
+  inside the detector crops.
+- Detector coverage of the 39,029 train COO polygons (`sfxp_types_train.parquet`, written by
+  `build_sfx_prefix.py --clean`): missed 9,353, fragment 1,741, the rest in or near a box.
+- `build_sfx_prefix.py --det_all` → `manifest_sfxp_det_all.parquet`: every `--clean` box
+  holding text, each with a crop. The 95,193 `neg_speech` boxes `--neg_keep 0.15` had left
+  unwritten were cut (train + val, 16 s). `load_sfxp` does not read this manifest.
 
-`probes/m109_mainsub.py` lists the Manga109 crops the v7 mix trains on (train split), the
-missed polygons left out.
-Each COO polygon and `<text>` box on the page is scored by the share of its convex hull
-inside the crop:
+`probes/m109_mainsub.py` scores each COO polygon and `<text>` box on the page by the share of
+its convex hull inside the crop:
 
 - 0.8 or more: in the crop. main = the item with the largest glyph (`sqrt(hull area /
   glyphs)`), joined with same-kind items of at least 0.7× that glyph and with repeats of
   the same text. sub = the other items.
-- 0.05 to 0.8: partly visible. Shown on the review page, never prefilled.
+- 0.05 to 0.8: partly visible, shown on the review page. A crop with nothing whole inside
+  takes a speech box that is at least half inside as its main (`trim`), to be cut down to
+  what shows.
+- The furigana source (`probes/furigana_find.py`, ruby read ×3 at 12 px pad, the agents'
+  fixes where they reviewed the row) heads the sub proposal, through the `<text>` ids in
+  the crop.
 
-On speech crops the furigana source (`probes/furigana_find.py`, ruby read ×3 at 12 px pad,
-the agents' fixes where they reviewed the row) heads the sub proposal.
+Train split, `mainsub_det` (`output/ocr/mainsub/m109_mainsub.jsonl`, local):
 
-| source | crops | rows | sub proposed | partly visible text |
-|---|---|---|---|---|
-| `mainsub_det` | detector boxes (`manifest_sfxp_det_clean`) | 36,363 (pos 20,978, pos_mixed 354, neg_speech 15,031) | 282 | 1,333 |
-| `mainsub_speech` | `<text>` boxes (`manifest_sfxp_speech`: sfxp_speech + m109_lines) | 41,769 | 11,424 (11,412 from ruby) | 1,109 |
+| crops | 122,853: pos 20,978, pos_mixed 354, neg_speech 101,521 |
+|---|---|
+| sub proposed | 11,744 (11,376 from ruby) |
+| partly visible text | 3,469 |
+| main to trim | 576 |
+| main and sub both empty | neg_speech 982 before `trim` |
+
+One `<text>` box and no SFX in the crop: 98,854 crops. IoU of the detector box with that
+box's 4 px cut: median 0.845; 5 / 25 / 75 / 90th percentile 0.683 / 0.786 / 0.884 / 0.911;
+≥ 0.9 15.6 %, < 0.5 1.6 %.
 
 Furigana finder, as measured when it was built: 74 % of the ruby groups over kanji read as
 kana, about 80 % of those right. Agent review of the 2,000 most doubtful furigana rows:
 edit 1,773, ok 82, none 74, unsure 71.
 
 Not covered by the annotations: unannotated text (signs, titles, asides outside a box) and
-smaller lettering inside one `<text>` box (`ふざけてんの？` above).
+smaller lettering inside one `<text>` box.
 
 ### Interpretation
 
-- The annotations prefill sub on few detector crops (282 of 36k). Most subs there come from text
+- The detector boxes sit close to the `<text>` boxes but are not copies of them (median IoU
+  0.845 at the same margin), so the earlier "AnimeText learned Manga109" read is not settled
+  by box geometry alone.
+- Where the two disagree on what is one block (`BakuretsuKungFuGirl_038_07`), the detector
+  box follows the lettering and the annotation does not; those crops are the `trim` rows.
+- The annotations prefill a sub on few crops apart from ruby. Most other subs come from text
   only partly visible, which the reviewer types.
-- `neg_speech` crops were `SFX:` negatives. Under main / sub they are speech crops; the ones
-  whose every speech box is cut are the "sub only" rows.
 
 ## Review loop
 
 ```
+ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/ocr/build_sfx_prefix.py --det_all
 ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/probes/m109_mainsub.py \
     --out output/ocr/mainsub/m109_mainsub.jsonl
 python project/finished/ocr_reader/probes/ko_label_review.py --out ~/ko_label_review \
@@ -87,18 +107,20 @@ python project/finished/ocr_reader/probes/apply_ko_review.py <export.tsv>
 ```
 
 - The page's `has` filter lists rows by what their boxes hold: main only, sub only, main +
-  sub, partly visible text. Emptying the main box makes a sub-only row.
-- A `mainsub_speech` row with ruby takes its furigana row's sub edits as its starting sub.
+  sub, partly visible text. Emptying the main box makes a sub-only row. The default
+  `suspicion` sort puts `trim` rows, then partly visible text, first.
+- A row holding one `<text>` box with ruby takes its furigana row's sub edits as its
+  starting sub.
 - Apply writes the `mainsub_*` rows to `assets/m109_mainsub.tsv` (source, id, status, main,
   sub) and the other sources' subs to `assets/sub_labels.tsv` (KO / ZH, furigana). The
   manifests are not touched by `mainsub_*` rows.
 
 ## Open
 
-- A loader that builds `OCR:` / `OCR2:` rows from the manifests plus the two TSVs, in place
-  of `crop_dataset.load_sfxp`'s speech / SFX split.
+- A loader that builds `OCR:` / `OCR2:` rows from `manifest_sfxp_det_all`, the KO / ZH
+  manifests and the two TSVs, in place of `crop_dataset.load_sfxp`'s speech / SFX split.
 - Which crops count as complete for `OCR2:` before the review covers them.
-- `mainsub_speech` crops are cut from the `<text>` annotation boxes, not from detector boxes.
-  Whether they stay beside the detector crops is not decided.
+- `drop` boxes (an SFX cut partway, 2,678 train) and `neg_other` boxes (no annotation inside,
+  22,718 train) stay out; under main / sub a cut SFX could be sub.
 - The gate under main / sub: the v7 gates (COO SFX / speech, doujin SFX, K3) read per kind;
   how a main / sub read is scored is not set.

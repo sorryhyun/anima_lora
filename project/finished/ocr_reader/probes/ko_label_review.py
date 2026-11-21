@@ -720,9 +720,10 @@ def doujin_rows(reads_path: Path | None) -> dict[str, list[dict]]:
 def mainsub_rows(
     d: Path, path: Path | None, ruby: list[dict] | None = None
 ) -> dict[str, list[dict]]:
-    """``m109_mainsub.py``'s crops, one source each, every row. A speech crop the
-    furigana source holds takes its ruby reads (the agent's where it reviewed the row) as
-    the head of its sub proposal, and ``fk`` points the page at that row's sub box state.
+    """``m109_mainsub.py``'s crops, one source each, every row. A crop holding
+    ``<text>`` boxes the furigana source holds (``sp``) takes their ruby reads (the
+    agent's where it reviewed the row) as the head of its sub proposal; with one such box,
+    ``fk`` points the page at that furigana row's sub box state.
     Image and page paths are relative to the Manga109 folder (``__M109__`` on the page).
     ``sus`` puts partly visible text, then a main that moved off the crop's label, first."""
     if path is None or not path.exists():
@@ -738,7 +739,8 @@ def mainsub_rows(
     for src, xs in by.items():
         rows, n_rb = [], 0
         for x in xs:
-            moved = x["main"] != x["label"]
+            # a neg_speech box had no label to move off (it was an SFX: negative)
+            moved = x["cat"] != "neg_speech" and x["main"] != x["label"]
             items = " | ".join(
                 f"{i['k']} {i['t']} (g {i['g']:.0f})".replace("\n", " ⏎ ")
                 for i in x["items"]
@@ -748,28 +750,37 @@ def mainsub_rows(
                 for p in x["part"]
             )
             note = f"in crop: {items or '—'}"
+            if x.get("trim"):
+                note = "main = a box only partly inside, cut it to what shows · " + note
             if part:
                 note += f" · partly visible: {part}"
             if moved:
                 lab = x["label"] or "(SFX: negative)"
                 note += f" · label now: {lab}".replace("\n", " ⏎ ")
             sub, extra = x["sub"], {}
-            r = rb.get(x["id"]) if src == "mainsub_speech" else None
-            if r is not None and r["sub"]:
-                sub = "\n".join(t for t in (r["sub"], sub) if t)
-                note = f"ruby {r['note']} · {note}"
-                extra["fk"] = "furigana:" + x["id"]
+            keys = [f"{x['book']}_{int(x['page']):03d}_{t}" for t in x.get("sp", [])]
+            hits = [rb[k] for k in keys if k in rb and rb[k]["sub"]]
+            if hits:
+                sub = "\n".join([r["sub"] for r in hits] + ([sub] if sub else []))
+                note = " · ".join(r["note"] for r in hits) + " · " + note
+                if len(hits) == 1:
+                    extra["fk"] = "furigana:" + hits[0]["id"]
                 n_rb += 1
             rows.append(
                 dict(
                     id=x["id"],
                     text=x["main"],
                     run=0,
-                    sus=2.0 * len(x["part"]) + 1.0 * moved + 0.5 * bool(sub),
-                    why=f"{len(x['items'])} in crop, {len(x['part'])} partly",
+                    sus=2.0 * len(x["part"])
+                    + 1.0 * moved
+                    + 0.5 * bool(sub)
+                    + 3.0 * x.get("trim", 0),
+                    why="",
                     lf=int("\n" in x["main"]),
                     len=len(x["main"]),
-                    status=f"{x['split']} · {x['cat']}",
+                    status=x["cat"]
+                    if x["split"] == "train"
+                    else f"{x['split']} · {x['cat']}",
                     note=note,
                     sub=sub,
                     part=len(x["part"]),

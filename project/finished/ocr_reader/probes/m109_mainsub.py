@@ -9,26 +9,25 @@ Every crop is an axis-aligned quad in page coordinates. Each COO polygon and
   (``sqrt(hull area / glyphs)``), with the same-kind items of ≥ 0.7 × that glyph or the
   same text (a repeat) joined in reading order; ``sub`` = the other items, one per line,
   reading order;
-* ``0.05 … 0.8`` — partly visible (``part``): never written into a label, shown as a
-  hint (cut text the reviewer types as far as it is visible, e.g. a speech edge in an SFX
-  crop).
+* ``0.05 … 0.8`` — partly visible (``part``): shown as a hint (cut text the reviewer
+  types as far as it is visible, e.g. a speech edge in an SFX crop). One exception: a
+  crop with nothing whole inside takes the speech box ≥ 0.5 in as its main (``trim``: the
+  detector split lettering the annotation joins; the reviewer cuts it down).
 
 The crop's own label stays as the manifests hold it (line breaks, review edits): a
 speech item's text comes from ``manifest_sfxp_speech`` when that row exists, a det crop
 whose main is all its SFX keeps ``sfx_text``. Unannotated text (signs, titles, ruby
 outside a ``<text>`` box) is invisible here; the page's eye catches it.
 
-Sources: every Manga109 crop the two-prompt mix trains on (``crop_dataset.load_sfxp``),
-train split by default:
-
-* ``mainsub_det`` — ``manifest_sfxp_det_clean``'s written crops: ``pos`` / ``pos_mixed``
-  (the ``SFX:`` rows) and ``neg_speech`` (the ``SFX:`` negative pool; its main is the
-  speech, or empty when every speech box is cut);
-* ``mainsub_speech`` — ``manifest_sfxp_speech`` (``sfxp_speech`` and ``m109_lines``: the
-  ``OCR:`` rows).
-
-The COO polygons AnimeText misses (``manifest_sfxp_missed``) are out: main / sub is read on
-the boxes the detector gives (the user's call, 2026-11-21).
+One source, ``mainsub_det``: every AnimeText box holding text
+(``manifest_sfxp_det_all``, ``build_sfx_prefix.py --det_all``: ``pos`` / ``pos_mixed`` /
+``neg_speech``; a ``neg_speech`` main is the speech, or empty when every speech box is
+cut), train split by default. main / sub is read on the boxes the detector gives (the
+user's call, 2026-11-21): the COO polygons it misses (``manifest_sfxp_missed``) and the
+crops cut from the ``<text>`` boxes (``manifest_sfxp_speech``) are out; the speech texts
+still come from the latter. Each row keeps the ``<text>`` ids in it (``sp``: the
+furigana reads follow them) and, when it holds one ``<text>`` box and no SFX, ``gt_iou``:
+the IoU of the detector box with that box at the 4 px margin.
 
     ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/probes/m109_mainsub.py \\
         --out output/ocr/mainsub/m109_mainsub.jsonl
@@ -49,7 +48,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
 import manga109 as m109  # noqa: E402
 
-INCLUDE, PART = 0.8, 0.05
+INCLUDE, PART, TRIM = 0.8, 0.05, 0.5
 SAME = 0.7
 SOFT = set("!！?？・…‥~〜ー-―.．、。")
 STRIP = "・…~ー〜！!？?"
@@ -109,6 +108,23 @@ def propose(items: list[Item], fr: dict, own: set[str], own_text: str | None):
     return main_text, sub, inc, part
 
 
+def gt_iou(quad: np.ndarray, inc: list[Item]) -> float | None:
+    """IoU of the crop's box with its one ``<text>`` box at the 4 px margin (the
+    ``manifest_sfxp_speech`` cut), ``None`` unless the crop holds exactly that."""
+    if len(inc) != 1 or inc[0].kind != "speech":
+        return None
+    x0, y0 = inc[0].hull.min(0)
+    x1, y1 = inc[0].hull.max(0)
+    p = min(0.12 * max(x1 - x0, y1 - y0), 0.3 * min(x1 - x0, y1 - y0), 4)
+    g = (x0 - p, y0 - p, x1 + p, y1 + p)
+    c = (*quad.min(0), *quad.max(0))
+    iw = max(0.0, min(g[2], c[2]) - max(g[0], c[0]))
+    ih = max(0.0, min(g[3], c[3]) - max(g[1], c[1]))
+    i = iw * ih
+    u = (g[2] - g[0]) * (g[3] - g[1]) + (c[2] - c[0]) * (c[3] - c[1]) - i
+    return round(float(i / max(u, 1e-6)), 3)
+
+
 def book_rows(args) -> list[dict]:
     book, splits, tables = args
     sp_text = tables["sp_text"]
@@ -124,6 +140,14 @@ def book_rows(args) -> list[dict]:
         items = pages.get(int(r["page"]), [])
         fr = {it.id: it.frac(quad) for it in items}
         main, sub, inc, part = propose(items, fr, own, own_text)
+        # nothing whole inside but a speech box half in (the detector split what the
+        # annotation joined): its text as main, for the reviewer to cut down
+        trim = None
+        if not inc:
+            half = [it for it in part if it.kind == "speech" and fr[it.id] >= TRIM]
+            if half:
+                trim = max(half, key=lambda it: fr[it.id])
+                main = trim.text
         stem = Path(r["path"]).stem
         out.append(
             dict(
@@ -146,6 +170,10 @@ def book_rows(args) -> list[dict]:
                     for it in order(part)
                 ],
                 box=[int(v) for v in quad.min(0)] + [int(v) for v in quad.max(0)],
+                sp=[it.id for it in order(inc) if it.kind == "speech"]
+                + ([trim.id] if trim else []),
+                trim=int(trim is not None),
+                gt_iou=gt_iou(quad, inc),
                 **(extra or {}),
             )
         )
@@ -164,26 +192,6 @@ def book_rows(args) -> list[dict]:
         items = pages.get(int(r["page"]), [])
         label = r["sfx_text"] if isinstance(r["sfx_text"], str) else None
         emit("mainsub_det", r, quad, own_sfx(items, quad), label, r["cat"])
-    for r in tables["speech"]:
-        if r["split"] not in splits:
-            continue
-        items = pages.get(int(r["page"]), [])
-        own_it = next(
-            (it for it in items if it.kind == "speech" and it.id == str(r["id"])), None
-        )
-        if own_it is None:
-            continue
-        x0, y0 = own_it.hull.min(0)
-        x1, y1 = own_it.hull.max(0)
-        p = min(0.12 * max(x1 - x0, y1 - y0), 0.3 * min(x1 - x0, y1 - y0), 4)
-        emit(
-            "mainsub_speech",
-            r,
-            rect_quad(x0 - p, y0 - p, x1 + p, y1 + p),
-            {own_it.id},
-            r["text"],
-            r["source"],
-        )
     return out
 
 
@@ -196,8 +204,8 @@ def main():
     ap.add_argument("--workers", type=int, default=12)
     a = ap.parse_args()
     d = m109.derived_root()
-    det = pd.read_parquet(d / "manifest_sfxp_det_clean.parquet")
-    det = det[det.path.notna() & det.split.isin(a.splits)]
+    det = pd.read_parquet(d / "manifest_sfxp_det_all.parquet")
+    det = det[det.split.isin(a.splits)]
     det = det.assign(box=det.box.map(lambda b: [int(v) for v in b]))
     speech = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
     sp_text = {
@@ -207,26 +215,20 @@ def main():
         )
         if s in ("sfxp_speech", "m109_lines")
     }
-    speech = speech[
-        speech.source.isin(["sfxp_speech", "m109_lines"]) & speech.split.isin(a.splits)
-    ]
 
     def by_book(df, cols):
         return {
             b: g[cols].to_dict("records") for b, g in df.groupby("book", sort=False)
         }
 
-    base = ["split", "id", "page", "path", "text"]
     det_b = by_book(det, ["split", "id", "page", "path", "cat", "box", "sfx_text"])
-    sp_b = by_book(speech, base + ["source"])
-    books = sorted(set(det_b) | set(sp_b))
+    books = sorted(det_b)
     jobs = [
         (
             b,
             set(a.splits),
             dict(
-                det=det_b.get(b, []),
-                speech=sp_b.get(b, []),
+                det=det_b[b],
                 sp_text={k: v for k, v in sp_text.items() if k[0] == b},
             ),
         )
@@ -234,22 +236,34 @@ def main():
     ]
     a.out.parent.mkdir(parents=True, exist_ok=True)
     n: dict[str, list[int]] = {}
+    ious = []
     with (
         ProcessPoolExecutor(a.workers) as ex,
         open(a.out, "w", encoding="utf-8") as f,
     ):
         for rows in ex.map(book_rows, jobs):
             for r in rows:
-                c = n.setdefault(r["source"], [0, 0, 0, 0])
+                c = n.setdefault(r["source"], [0, 0, 0, 0, 0])
                 c[0] += 1
                 c[1] += bool(r["sub"])
                 c[2] += bool(r["part"])
                 c[3] += r["main"] != r["label"]
+                c[4] += r["trim"]
+                if r["gt_iou"] is not None:
+                    ious.append(r["gt_iou"])
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    for s, (tot, sub, part, moved) in n.items():
+    for s, (tot, sub, part, moved, trim) in n.items():
         print(
             f"[mainsub] {s}: {tot} crops, sub {sub}, partly visible {part}, "
-            f"main ≠ label {moved}",
+            f"main ≠ label {moved}, main to trim {trim}",
+            flush=True,
+        )
+    q = np.asarray(ious)
+    if len(q):
+        print(
+            f"[mainsub] one <text> box, no SFX: {len(q)} crops; IoU with the 4 px "
+            f"<text> cut: median {np.median(q):.3f}, ≥ 0.9 {np.mean(q >= 0.9):.1%}, "
+            f"≥ 0.8 {np.mean(q >= 0.8):.1%}, < 0.5 {np.mean(q < 0.5):.1%}",
             flush=True,
         )
     print(f"[mainsub] → {a.out}", flush=True)

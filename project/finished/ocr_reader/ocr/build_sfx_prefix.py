@@ -37,6 +37,10 @@ to the page. Three parts, each its own manifest under ``derived/``:
   (``eval_manga109.py --manifest sfxp_gt``).
 * ``--clean`` → ``manifest_sfxp_det_clean.parquet``: ``--det``'s boxes with the doubtful
   labels unwritten (``build_clean``).
+* ``--det_all`` → ``manifest_sfxp_det_all.parquet``: ``--clean``'s kept boxes holding text
+  (``pos`` / ``pos_mixed`` / ``neg_speech``), every one with a crop: the ``neg_speech``
+  boxes ``--neg_keep`` left unwritten are cut now, same box and name (``build_det_all``;
+  the main / sub review, ``probes/m109_mainsub.py``). ``load_sfxp`` does not read it.
 * ``--missed`` → ``manifest_sfxp_missed.parquet``: train COO polygons no detector box
   covers, typed (``missed_sub``); the ``--missed_keep`` types (``i_plain``, ``a_punct``,
   and ``g_tiny`` / ``e_dark_bg`` with no other SFX in the crop) cut from the polygon as
@@ -323,6 +327,45 @@ def build_clean(a, derived: Path):
     full.to_parquet(derived / "manifest_sfxp_det_clean.parquet", index=False)
     print(
         full[full.path.notna()].groupby(["split", "cat"]).size().to_string(), flush=True
+    )
+
+
+def build_det_all(a, derived: Path):
+    """``--det_all``: see the module docstring. Reads each page once, eight threads."""
+    df = pd.read_parquet(derived / "manifest_sfxp_det_clean.parquet")
+    df = df[
+        df.split.isin(a.splits)
+        & df.cat.isin(["pos", "pos_mixed", "neg_speech"])
+        & df.clean.isna()
+    ].copy()
+    rel = "crops_sfxp/det/" + df.split + "/" + df.book + "_" + df.id + ".png"
+    todo = df.path.isna()
+    df["path"] = rel
+    cut = df[todo & ~df.path.map(lambda p: (derived / p).exists())]
+    t0 = time.time()
+
+    def one(g):
+        (book, pg), rows = g
+        im = cv2.imread(str(m109.page_path(book, int(pg))))
+        for b, p in zip(rows.box, rows.path):
+            (derived / p).parent.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(derived / p), im[b[1] : b[3], b[0] : b[2]])
+        return len(rows)
+
+    n = 0
+    with ThreadPoolExecutor(8) as pool:
+        for k in pool.map(one, cut.groupby(["book", "page"])):
+            n += k
+            if n % 10000 < k:
+                print(
+                    f"[det_all] {n} / {len(cut)} cut, {time.time() - t0:.0f} s",
+                    flush=True,
+                )
+    df.to_parquet(derived / "manifest_sfxp_det_all.parquet", index=False)
+    print(
+        f"[det_all] {n} crops cut in {time.time() - t0:.0f} s; "
+        f"{df.groupby(['split', 'cat']).size().to_dict()}",
+        flush=True,
     )
 
 
@@ -747,6 +790,11 @@ def main():
     ap.add_argument(
         "--clean", action="store_true", help="det manifest → manifest_sfxp_det_clean"
     )
+    ap.add_argument(
+        "--det_all",
+        action="store_true",
+        help="--clean's text boxes, every one cut → manifest_sfxp_det_all (main / sub review)",
+    )
     ap.add_argument("--gt", nargs="+", help="splits to re-cut for the gate evals")
     ap.add_argument(
         "--missed",
@@ -789,6 +837,8 @@ def main():
         build_det(a, derived)
     if a.clean:
         build_clean(a, derived)
+    if a.det_all:
+        build_det_all(a, derived)
     if a.missed:
         build_missed(a, derived)
 
