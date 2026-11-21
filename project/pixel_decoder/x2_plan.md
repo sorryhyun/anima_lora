@@ -612,9 +612,45 @@ Decided by the user (2026-11-21): "다음 x2 plan에는 확정된 레시피로 x
 4. The full run of the settled recipe through the new entry, read against
    `x2b4k_1121_0950` and the preview on `test` / `text` / the safe set and on renders
    (`p3_generated.py --x2`); on the user's read it replaces
-   `anima_pixel_head_x2_preview.safetensors`. The ×2 file then refuses scale 1 at load or
-   ships without the ×1 output layer (its ×1 output reads 24.76 dB after 4,000 rollouts
-   with the ×1 loss off).
+   `anima_pixel_head_x2_preview.safetensors`, deployed as in "Deployment plan" below.
+
+## Deployment plan: the file decides the scale
+
+Decided by the user (2026-11-21), after asking whether a head file loaded with no ×1 / ×2
+setting gives its own scale in principle: "ㅇㅋㅇㅋ 그걸 deploy plan으로 넣자".
+
+### Facts
+
+- The output scale is a property of the head's output layers, not of sampling: the DiT
+  runs the same latent either way, the ×1 output layer writes 16×16 pixels per token and
+  the ×2 stage 32×32.
+- Now: a file stamped `x2_depth` loads as `PixelHeadX2` and `head_scales` gives it (1, 2);
+  a ×1 file refuses scale 2 at load; a ×2 file at scale 1 passes. The scale is asked for
+  everywhere, with 1 as the default: `inference.py --pixel_scale` (`PIXEL_SCALE=`),
+  `GenerationRequest.pixel_scale`, the node's `scale` input (`"1"` / `"2"`).
+- The preview file (`x2real_1119_2242`) trained both outputs. A file of the current recipe
+  does not: `x2b4k_1121_0950`'s ×1 output reads 24.76 dB against the original (release
+  32.88), and at scale 1 it would decode without a warning.
+- The ×1-only parameters of `PixelHeadX2` are `base.norm_out` and `base.out`; with the ×1
+  loss off they take no gradient and the optimizer's weight decay.
+
+### Plan (Claude's draft; runs with step 4 of "Next" above)
+
+1. The file: a ×2 file of the settled recipe is saved without `base.norm_out` / `base.out`
+   and stamped with its scales (`scales = "2"`); training runs the head at `scale=2`.
+   Files without the stamp keep today's reading (a ×1 file (1,), the preview (1, 2)).
+2. Library: `load_pixel_head` builds the head the stamp describes and `head_scales` reads
+   it; the default scale becomes the file's (its only scale; 1 for a two-scale file, as
+   now) in `PixelTap.decode`, `--pixel_scale`, `PIXEL_SCALE=` and
+   `GenerationRequest.pixel_scale`; an explicit scale the file does not hold refuses at
+   load, in both directions. `tests/test_pixel_head.py` covers the stamp, the default and
+   both refusals.
+3. Node `ComfyUI-Anima-PixelDecoder`: `scale` gains `auto` as its default (saved
+   workflows with `"1"` / `"2"` still load); `_vendor/` through `make vendor-sync`;
+   version bump and README.
+4. Catalog, Hub and docs: a catalog row for the ×2 file (none today), the Hub file in
+   place of the preview on the user's read, the card's Use section,
+   `docs/anima/inference/pixel_head.md`.
 
 ## Next arms
 
