@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -59,6 +60,7 @@ from linebreak_auto import (  # noqa: E402
 
 INCLUDE, PART, TRIM = 0.8, 0.05, 0.5
 SAME = 0.7
+HANGUL = re.compile(r"[가-힣ㄱ-ㅎㅏ-ㅣ]")
 SOFT = set("!！?？・…‥~〜ー-―.．、。")
 STRIP = "・…~ー〜！!？?"
 
@@ -191,9 +193,12 @@ def book_rows(args) -> list[dict]:
     for ln in m109.iter_coo(book):
         pages.setdefault(ln.page, []).append(Item(ln, ln.text))
     for ln in m109.iter_text(book):
-        # dots as the speech labels spell them (``ellipsis_fold``, idempotent): the
-        # <text> boxes outside manifest_sfxp_speech carry the raw annotation
-        t = ellipsis_fold(sp_text.get((book, ln.page, str(ln.id)), ln.text))
+        # dots as the JA speech labels spell them (``ellipsis_fold``, idempotent): the
+        # <text> boxes outside manifest_sfxp_speech carry the raw annotation. Korean
+        # keeps ``...`` and ``…`` apart (the user, 11-21): a text with Hangul is left as is
+        t = sp_text.get((book, ln.page, str(ln.id)), ln.text)
+        if not HANGUL.search(t):
+            t = ellipsis_fold(t)
         pages.setdefault(ln.page, []).append(Item(ln, t))
     out = []
     imgs: dict[int, np.ndarray] = {}

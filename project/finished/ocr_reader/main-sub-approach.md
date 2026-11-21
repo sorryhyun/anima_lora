@@ -66,7 +66,8 @@ its convex hull inside the crop:
   drop one glyph too many, 1 is wrong (MisutenaideDaisy_053_21).
   DollGun_015_14 (one column, the detector cut below `だ`): `な…なんだ　今…` → `な…なんだ`.
 - Speech texts take `ellipsis_fold` (the speech labels' dot spelling) on every `<text>`
-  box, including the 60,810 outside `manifest_sfxp_speech` that carry the raw annotation.
+  box, including the 60,810 outside `manifest_sfxp_speech` that carry the raw annotation. A text
+  with Hangul is left as is: Korean keeps `...` and `…` apart.
 - The furigana source (`probes/furigana_find.py`, ruby read ×3 at 12 px pad, the agents'
   fixes where they reviewed the row) heads the sub proposal, through the `<text>` ids in
   the crop.
