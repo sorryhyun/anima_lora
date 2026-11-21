@@ -581,19 +581,20 @@ def column_crops(crop, raw: str, a) -> list:
     return out
 
 
-def manifest_rows():
-    """One-line ``sfxp_speech`` rows of ``manifest_sfxp_speech`` the line annotation
-    does not cover: (key, label, None, crop)."""
+def manifest_rows(name: str = "sfxp_speech"):
+    """One-line ``name`` rows of ``manifest_<name>`` the line annotation does not cover:
+    (key, label, None, crop). ``sfxp_speech``: the speech manifest; ``mainsub_text``:
+    the ``<text>`` boxes outside it (``mainsub_text.py``)."""
     import pandas as pd
 
     d = m109.derived_root()
-    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
+    df = pd.read_parquet(d / f"manifest_{name}.parquet")
     ann = {
         (pg["book"], int(pg["page_index"]), t["id"])
         for pg in json.loads(LINES.read_text(encoding="utf-8")).values()
         for t in pg["texts"]
     }
-    df = df[(df.source == "sfxp_speech") & ~df.text.str.contains("\n")]
+    df = df[(df.source == name) & ~df.text.str.contains("\n")]
     for r in df.itertuples():
         k = (r.book, int(r.page), str(r.id))
         if k in ann:
@@ -613,7 +614,11 @@ def inkread(a):
 
     t0 = time.time()
     rows, crops, caps = [], [], []
-    src = gt_crops() if a.set == "eval" else manifest_rows()
+    src = (
+        gt_crops()
+        if a.set == "eval"
+        else manifest_rows("sfxp_speech" if a.set == "manifest" else a.set)
+    )
     for k, raw, gt, crop in src:
         cols = column_crops(crop, raw, a)
         rows.append(
@@ -806,19 +811,22 @@ def apply(a):
     """``inkread --set manifest``'s rows into ``manifest_sfxp_speech``: a segmented row
     passing the gate (:func:`read_distance` < ``GATE``, lines == segments) takes the
     broken label; the other segmented rows go to ``linebreak_suspicious.jsonl`` for
-    ``ko_label_review.py``. ``.pre_linebreak.parquet`` backup, once."""
+    ``ko_label_review.py``. ``.pre_linebreak.parquet`` backup, once. ``--set
+    mainsub_text``: into ``manifest_mainsub_text``, the others to
+    ``linebreak_suspicious_mainsub_text.jsonl`` (not on the page)."""
     import shutil
 
     import pandas as pd
 
     rows = [json.loads(x) for x in open(OUT / f"{a.name}.jsonl", encoding="utf-8")]
     d = m109.derived_root()
-    path = d / "manifest_sfxp_speech.parquet"
+    name = "mainsub_text" if a.set == "mainsub_text" else "sfxp_speech"
+    path = d / f"manifest_{name}.parquet"
     df = pd.read_parquet(path)
     pos = {
         (r.book, int(r.page), str(r.id)): i
         for i, r in enumerate(df.itertuples())
-        if r.source == "sfxp_speech"
+        if r.source == name
     }
     applied, stale, sus = 0, 0, []
     col = df.columns.get_loc("text")
@@ -842,7 +850,12 @@ def apply(a):
             df.iat[i, col] = ellipsis_fold(r["out"])
             applied += 1
     print(f"applied {applied}, stale {stale}, suspicious {len(sus)}")
-    with open(OUT / "linebreak_suspicious.jsonl", "w", encoding="utf-8") as f:
+    sus_name = (
+        "linebreak_suspicious.jsonl"
+        if name == "sfxp_speech"
+        else f"linebreak_suspicious_{name}.jsonl"
+    )
+    with open(OUT / sus_name, "w", encoding="utf-8") as f:
         for r in sus:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     if a.dry_run or not applied:
@@ -1021,7 +1034,9 @@ def main():
             "detdiag_report",
         ],
     )
-    ap.add_argument("--set", choices=["eval", "manifest"], default="eval")
+    ap.add_argument(
+        "--set", choices=["eval", "manifest", "mainsub_text"], default="eval"
+    )
     ap.add_argument("--dry_run", action="store_true", help="apply: count only")
     ap.add_argument(
         "--prefetch", type=int, default=2, help="inkread: batches prepped ahead"

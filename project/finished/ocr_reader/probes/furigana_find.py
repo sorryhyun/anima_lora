@@ -137,7 +137,7 @@ def rows(a):
     import pandas as pd
 
     d = m109.derived_root()
-    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
+    df = pd.read_parquet(d / f"manifest_{a.manifest}.parquet")
     df = df[(df.orient != "horizontal") & df.text.str.contains(KANJI)]
     if a.n:
         df = df.sample(min(a.n, len(df)), random_state=a.seed)
@@ -388,6 +388,12 @@ def main():
     ap.add_argument("--rows", type=int, default=6, help="batches: crops per sheet")
     ap.add_argument("--batch_tag", default="top2000", help="batches: output folder")
     ap.add_argument("--name", default="ruby_v1")
+    ap.add_argument(
+        "--manifest",
+        default="sfxp_speech",
+        help="find: manifest_<name>.parquet under derived/ (mainsub_text: the <text> "
+        "boxes outside the speech manifest, mainsub_text.py)",
+    )
     ap.add_argument(
         "--n", type=int, default=0, help="find: sample size (0 = all); sheet: tiles"
     )

@@ -811,6 +811,13 @@ def mainsub_rows(
             sub, extra = x["sub"], {}
             keys = [f"{x['book']}_{int(x['page']):03d}_{t}" for t in x.get("sp", [])]
             hits = [rb[k] for k in keys if k in rb and rb[k]["sub"]]
+            if "trim_ruby" in x:
+                # a trim crop shows part of its box: the ruby inside the crop only
+                hits = []
+                if x["trim_ruby"]:
+                    sub = "\n".join([x["trim_ruby"]] + ([sub] if sub else []))
+                    note = "ruby inside the crop · " + note
+                    n_rb += 1
             if hits:
                 sub = "\n".join([r["sub"] for r in hits] + ([sub] if sub else []))
                 note = " · ".join(r["note"] for r in hits) + " · " + note

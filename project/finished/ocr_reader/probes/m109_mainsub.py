@@ -169,6 +169,24 @@ def trim_lines(it: Item, quad: np.ndarray, page: np.ndarray) -> tuple[str, int]:
     return "\n".join(keep), dropped
 
 
+def visible_ruby(it: Item, quad: np.ndarray, page: np.ndarray, groups: list) -> str:
+    """The ruby reads of the ``<text>`` box ``it`` whose group centre lies in the crop,
+    one line per main column in reading order (as the furigana source joins them).
+    Group boxes are in the box's 4 px cut, whose origin ``margin_box`` gives."""
+    x0, y0 = it.hull.min(0)
+    x1, y1 = it.hull.max(0)
+    H, W = page.shape[:2]
+    bx0, by0, _, _ = margin_box(x0, y0, x1, y1, W, H)
+    (cx0, cy0), (cx1, cy1) = quad.min(0), quad.max(0)
+    cols: dict[int, list] = {}
+    for g in sorted(groups, key=lambda g: (g["col"], g["y0"])):
+        mx = bx0 + (g["x0"] + g["x1"]) / 2
+        my = by0 + (g["y0"] + g["y1"]) / 2
+        if g.get("read") and cx0 <= mx <= cx1 and cy0 <= my <= cy1:
+            cols.setdefault(g["col"], []).append(g["read"])
+    return "\n".join(" ".join(v) for _, v in sorted(cols.items()))
+
+
 def gt_iou(quad: np.ndarray, inc: list[Item]) -> float | None:
     """IoU of the crop's box with its one ``<text>`` box at the 4 px margin (the
     ``manifest_sfxp_speech`` cut), ``None`` unless the crop holds exactly that."""
@@ -188,7 +206,7 @@ def gt_iou(quad: np.ndarray, inc: list[Item]) -> float | None:
 
 def book_rows(args) -> list[dict]:
     book, splits, tables = args
-    sp_text = tables["sp_text"]
+    sp_text, ruby = tables["sp_text"], tables["ruby"]
     pages: dict[int, list[Item]] = {}
     for ln in m109.iter_coo(book):
         pages.setdefault(ln.page, []).append(Item(ln, ln.text))
@@ -220,6 +238,12 @@ def book_rows(args) -> list[dict]:
             if half:
                 trim = max(half, key=lambda it: fr[it.id])
                 main, cut = trim_lines(trim, quad, page_img(int(r["page"])))
+                rk = (book, int(r["page"]), trim.id)
+                if rk in ruby:
+                    extra = dict(extra or {})
+                    extra["trim_ruby"] = visible_ruby(
+                        trim, quad, page_img(int(r["page"])), ruby[rk]
+                    )
         stem = Path(r["path"]).stem
         out.append(
             dict(
@@ -275,6 +299,13 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--splits", nargs="+", default=["train"])
     ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument(
+        "--ruby",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="furigana_find.py read outputs: a trim row's sub takes the ruby inside its crop",
+    )
     a = ap.parse_args()
     d = m109.derived_root()
     det = pd.read_parquet(d / "manifest_sfxp_det_all.parquet")
@@ -288,6 +319,20 @@ def main():
         )
         if s in ("sfxp_speech", "m109_lines")
     }
+    # the <text> boxes outside the speech manifest (mainsub_text.py, line breaks from
+    # linebreak_auto.py apply --set mainsub_text); the speech manifest wins
+    mt = d / "manifest_mainsub_text.parquet"
+    if mt.exists():
+        extra = pd.read_parquet(mt)
+        for b, p, i, t in zip(extra.book, extra.page, extra.id, extra.text):
+            sp_text.setdefault((b, int(p), str(i)), t)
+    # furigana_find.py read files: the ruby groups per <text> box, for trim rows
+    ruby: dict[tuple, list] = {}
+    for rp in a.ruby:
+        for line in open(rp, encoding="utf-8"):
+            x = json.loads(line)
+            if x["groups"]:
+                ruby[(x["book"], int(x["page"]), str(x["id"]))] = x["groups"]
 
     def by_book(df, cols):
         return {
@@ -303,6 +348,7 @@ def main():
             dict(
                 det=det_b[b],
                 sp_text={k: v for k, v in sp_text.items() if k[0] == b},
+                ruby={k: v for k, v in ruby.items() if k[0] == b},
             ),
         )
         for b in books

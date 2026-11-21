@@ -62,7 +62,7 @@ its convex hull inside the crop:
   (`linebreak_auto.segment`); a column stays when half of it is inside, a glyph when its
   centre is (glyphs spread over the column's ink). Applied only when the ink is one column
   or the label's `\n` lines match the columns; an unbroken multi-column label stays whole.
-  180 of the 576 `trim` rows are cut. In a 16-row sample, 12 read as the crop shows, 3
+  180 of the 576 `trim` rows are cut (201 after the line-break pass below). In a 16-row sample, 12 read as the crop shows, 3
   drop one glyph too many, 1 is wrong (MisutenaideDaisy_053_21).
   DollGun_015_14 (one column, the detector cut below `だ`): `な…なんだ　今…` → `な…なんだ`.
 - Speech texts take `ellipsis_fold` (the speech labels' dot spelling) on every `<text>`
@@ -70,13 +70,23 @@ its convex hull inside the crop:
   with Hangul is left as is: Korean keeps `...` and `…` apart.
 - The furigana source (`probes/furigana_find.py`, ruby read ×3 at 12 px pad, the agents'
   fixes where they reviewed the row) heads the sub proposal, through the `<text>` ids in
-  the crop.
+  the crop. A `trim` row takes only the ruby groups whose centre is in its crop
+  (`trim_ruby`).
+- The 60,810 `<text>` boxes outside `manifest_sfxp_speech` (2026-11-21,
+  `probes/mainsub_text.py` → `manifest_mainsub_text.parquet`, crops under
+  `crops_sfxp/mainsub_text/`) went through the speech labels' passes: `linebreak_auto.py
+  inkread --set mainsub_text` (stock reader, 113,461 column crops, 663 s) and `apply --set
+  mainsub_text` (gate passed 32,182; 6,398 to `linebreak_suspicious_mainsub_text.jsonl`, not
+  on the page; 35,122 of 60,810 now broken); then `furigana_find.py find --manifest
+  mainsub_text --name ruby_mt` and `read` (32,081 groups on 16,836 crops, 508 s; aligned
+  over a kanji 5,029 before the breaks, 26,553 after; read as kana 23,287). The page and
+  `m109_mainsub.py` take `ruby_m109_read_u3p12.jsonl` = `ruby_all` + `ruby_mt`.
 
 Train split, `mainsub_det` (`output/ocr/mainsub/m109_mainsub.jsonl`, local):
 
 | crops | 122,853: pos 20,978, pos_mixed 354, neg_speech 101,521 |
 |---|---|
-| sub proposed | 11,744 (11,376 from ruby) |
+| sub proposed | 26,794 (26,468 from ruby; 11,744 before the `mainsub_text` pass) |
 | partly visible text | 3,469 |
 | main to trim | 576 |
 | main and sub both empty | neg_speech 982 before `trim` |
@@ -87,7 +97,15 @@ box's 4 px cut: median 0.845; 5 / 25 / 75 / 90th percentile 0.683 / 0.786 / 0.88
 
 Furigana finder, as measured when it was built: 74 % of the ruby groups over kanji read as
 kana, about 80 % of those right. Agent review of the 2,000 most doubtful furigana rows:
-edit 1,773, ok 82, none 74, unsure 71.
+edit 1,773, ok 82, none 74, unsure 71. On 14 `ruby_mt` rows read against the crop: 7
+right, 3 partial (groups missed: 秘薬, 復活, 藩主), 4 poor (misreads ヴェラしゃ / おば,
+junk `゙` / `ら`). Line breaks on 10 `mainsub_text` rows: 10 right.
+
+The user's 12 `trim` edits of 11-21 against the rebuilt proposals: main as edited on 4;
+ruby close on 1 (`さ きすけさま` for `き き すけさま`). Misses: horizontal text has no
+furigana pass (`furigana_find` skips `orient == horizontal`, `１年前`), the finder found 1
+of the 4 groups on AkkeraKanjinchou_050_16, two partly inside boxes in one crop
+(MisutenaideDaisy_097_40).
 
 Not covered by the annotations: unannotated text (signs, titles, asides outside a box) and
 smaller lettering inside one `<text>` box.
@@ -107,10 +125,10 @@ smaller lettering inside one `<text>` box.
 ```
 ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/ocr/build_sfx_prefix.py --det_all
 ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/probes/m109_mainsub.py \
-    --out output/ocr/mainsub/m109_mainsub.jsonl
+    --out output/ocr/mainsub/m109_mainsub.jsonl --ruby output/ocr/furigana/ruby_m109_read_u3p12.jsonl
 python project/finished/ocr_reader/probes/ko_label_review.py --out ~/ko_label_review \
     --flags <ko_reads>_flags.parquet --doujin_reads <sfx>_cap4_sfx.jsonl \
-    --ruby output/ocr/furigana/ruby_all_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
+    --ruby output/ocr/furigana/ruby_m109_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
     --mainsub output/ocr/mainsub/m109_mainsub.jsonl
 python project/finished/ocr_reader/probes/apply_ko_review.py <export.tsv>
 ```
