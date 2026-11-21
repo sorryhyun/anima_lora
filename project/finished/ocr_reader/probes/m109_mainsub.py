@@ -12,7 +12,8 @@ Every crop is an axis-aligned quad in page coordinates. Each COO polygon and
 * ``0.05 … 0.8`` — partly visible (``part``): shown as a hint (cut text the reviewer
   types as far as it is visible, e.g. a speech edge in an SFX crop). One exception: a
   crop with nothing whole inside takes the speech box ≥ 0.5 in as its main (``trim``: the
-  detector split lettering the annotation joins; the reviewer cuts it down).
+  detector split lettering the annotation joins), cut to the lines the crop shows
+  (``trim_lines``, ``trim_cut`` = lines dropped); the reviewer checks the rest.
 
 The crop's own label stays as the manifests hold it (line breaks, review edits): a
 speech item's text comes from ``manifest_sfxp_speech`` when that row exists, a det crop
@@ -46,7 +47,15 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import manga109 as m109  # noqa: E402
+from build_sfx_prefix import margin_box  # noqa: E402
+from linebreak_auto import (  # noqa: E402
+    glyph_weight,
+    guess_vertical,
+    ink_mask,
+    segment,
+)
 
 INCLUDE, PART, TRIM = 0.8, 0.05, 0.5
 SAME = 0.7
@@ -108,6 +117,56 @@ def propose(items: list[Item], fr: dict, own: set[str], own_text: str | None):
     return main_text, sub, inc, part
 
 
+def trim_lines(it: Item, quad: np.ndarray, page: np.ndarray) -> tuple[str, int]:
+    """A ``trim`` main cut to what the crop shows. The ``<text>`` box is cut from the
+    page at the 4 px margin and split into columns / rows by ink projection
+    (``linebreak_auto.segment``, its eval settings). The text takes the columns by its
+    ``\\n`` when the counts agree, or whole when the ink is one column; otherwise it is
+    left whole (an unbroken label spread over ink lengths lands on the wrong columns:
+    BakuretsuKungFuGirl_024_29, PlatinumJungle_021_04). A column stays when half its width is inside the crop; along it, the glyphs spread over
+    the column's ink by ``glyph_weight`` and a glyph stays when its centre is inside.
+    Returns (text, glyphs dropped), the text unchanged when it is left whole or nothing
+    drops."""
+    x0, y0 = it.hull.min(0)
+    x1, y1 = it.hull.max(0)
+    H, W = page.shape[:2]
+    bx0, by0, bx1, by1 = margin_box(x0, y0, x1, y1, W, H)
+    box = page[by0:by1, bx0:bx1]
+    text = it.text.strip()
+    if box.size == 0 or not text:
+        return it.text, 0
+    vert = guess_vertical(box, text)
+    segs = segment(ink_mask(box), vert, 0.03, 0.55, 0.0)
+    if not segs:
+        return it.text, 0
+    lines = [s.strip() for s in text.split("\n") if s.strip()]
+    if len(segs) == 1:
+        lines = ["".join(lines)]
+    elif len(lines) != len(segs):
+        return it.text, 0
+    (cx0, cy0), (cx1, cy1) = quad.min(0), quad.max(0)
+    # a = across the columns, b = along them, in page coordinates
+    ao, bo, c0, c1, d0, d1 = (
+        (bx0, by0, cx0, cx1, cy0, cy1) if vert else (by0, bx0, cy0, cy1, cx0, cx1)
+    )
+    keep, dropped = [], 0
+    for s, (a0, a1, b0, b1) in zip(lines, segs):
+        if min(a1 + ao, c1) - max(a0 + ao, c0) < 0.5 * (a1 - a0):
+            dropped += sum(not c.isspace() for c in s)
+            continue
+        w = np.array([glyph_weight(c) for c in s])
+        mid = b0 + bo + (np.cumsum(w) - w / 2) / w.sum() * (b1 - b0)
+        vis = "".join(c for c, m in zip(s, mid) if d0 <= m <= d1).strip()
+        dropped += sum(
+            not c.isspace() for c, m in zip(s, mid) if not d0 <= m <= d1
+        )
+        if vis:
+            keep.append(vis)
+    if not keep or not dropped:
+        return it.text, 0
+    return "\n".join(keep), dropped
+
+
 def gt_iou(quad: np.ndarray, inc: list[Item]) -> float | None:
     """IoU of the crop's box with its one ``<text>`` box at the 4 px margin (the
     ``manifest_sfxp_speech`` cut), ``None`` unless the crop holds exactly that."""
@@ -135,6 +194,12 @@ def book_rows(args) -> list[dict]:
         t = sp_text.get((book, ln.page, str(ln.id)), ln.text)
         pages.setdefault(ln.page, []).append(Item(ln, t))
     out = []
+    imgs: dict[int, np.ndarray] = {}
+
+    def page_img(p: int) -> np.ndarray:
+        if p not in imgs:
+            imgs[p] = cv2.imread(str(m109.page_path(book, p)))
+        return imgs[p]
 
     def emit(src, r, quad, own, own_text, cat, extra=None):
         items = pages.get(int(r["page"]), [])
@@ -142,12 +207,12 @@ def book_rows(args) -> list[dict]:
         main, sub, inc, part = propose(items, fr, own, own_text)
         # nothing whole inside but a speech box half in (the detector split what the
         # annotation joined): its text as main, for the reviewer to cut down
-        trim = None
+        trim, cut = None, 0
         if not inc:
             half = [it for it in part if it.kind == "speech" and fr[it.id] >= TRIM]
             if half:
                 trim = max(half, key=lambda it: fr[it.id])
-                main = trim.text
+                main, cut = trim_lines(trim, quad, page_img(int(r["page"])))
         stem = Path(r["path"]).stem
         out.append(
             dict(
@@ -173,6 +238,7 @@ def book_rows(args) -> list[dict]:
                 sp=[it.id for it in order(inc) if it.kind == "speech"]
                 + ([trim.id] if trim else []),
                 trim=int(trim is not None),
+                trim_cut=cut,
                 gt_iou=gt_iou(quad, inc),
                 **(extra or {}),
             )

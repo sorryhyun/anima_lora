@@ -57,8 +57,14 @@ its convex hull inside the crop:
   glyphs)`), joined with same-kind items of at least 0.7× that glyph and with repeats of
   the same text. sub = the other items.
 - 0.05 to 0.8: partly visible, shown on the review page. A crop with nothing whole inside
-  takes a speech box that is at least half inside as its main (`trim`), to be cut down to
-  what shows.
+  takes a speech box that is at least half inside as its main (`trim`), cut to what shows
+  (`trim_lines`): the `<text>` box's columns come from the ink projection
+  (`linebreak_auto.segment`); a column stays when half of it is inside, a glyph when its
+  centre is (glyphs spread over the column's ink). Applied only when the ink is one column
+  or the label's `\n` lines match the columns; an unbroken multi-column label stays whole.
+  180 of the 576 `trim` rows are cut. In a 16-row sample, 12 read as the crop shows, 3
+  drop one glyph too many, 1 is wrong (MisutenaideDaisy_053_21).
+  DollGun_015_14 (one column, the detector cut below `だ`): `な…なんだ　今…` → `な…なんだ`.
 - The furigana source (`probes/furigana_find.py`, ruby read ×3 at 12 px pad, the agents'
   fixes where they reviewed the row) heads the sub proposal, through the `<text>` ids in
   the crop.
