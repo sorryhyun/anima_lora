@@ -65,7 +65,9 @@ def main():
             if crop.size == 0:
                 continue
             split = want[k]
-            rel = f"crops_sfxp/mainsub_text/{split}/{book}_{int(ln.page):03d}_{ln.id}.png"
+            rel = (
+                f"crops_sfxp/mainsub_text/{split}/{book}_{int(ln.page):03d}_{ln.id}.png"
+            )
             (d / rel).parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(d / rel), crop)
             h, w = crop.shape[:2]

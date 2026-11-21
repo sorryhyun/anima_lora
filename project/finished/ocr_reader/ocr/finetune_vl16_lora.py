@@ -11,6 +11,7 @@
     … --train_tower --init_tower output/ocr/simmim_at/ep5/tower.safetensors   # SSL-adapted tower (ssl_tower_simmim.py)
     … --tower_rank 64 --lm_full --lm_lr 1e-5   # ocr_reader P2b: tower LoRA + LM decoder layers full FT
     … --sfx_prefix                   # two prompts: OCR: (speech) + SFX: (sound effects), build_sfx_prefix.py crops
+    … --mainsub                      # two prompts: OCR: (main text) + OCR2: (sub), crop_dataset.load_mainsub
 
 Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 (q/k/v/o) + MLP (gate/up/down) projections, selected by module path so the
@@ -365,6 +366,12 @@ def main():
         "effects, each answers '' on the other; ignores --speech_ratio / --extra_*",
     )
     ap.add_argument(
+        "--mainsub",
+        action="store_true",
+        help="main / sub data (crop_dataset.load_mainsub, main-sub-approach.md): OCR: "
+        "reads the main text, OCR2: the sub; best by val main exact",
+    )
+    ap.add_argument(
         "--neg_share", type=float, default=0.2, help="max negative share per prompt"
     )
     ap.add_argument(
@@ -448,6 +455,8 @@ def main():
         help="run the largest-area batches first (a peak-VRAM probe with --steps)",
     )
     a = ap.parse_args()
+    if a.mainsub and a.sfx_prefix:
+        ap.error("--mainsub and --sfx_prefix are two data mixes; pick one")
     if a.tower_rank and a.train_tower:
         ap.error("--tower_rank and --train_tower both train the tower; pick one")
     if a.init_adapter and (a.tower_rank or a.lm_full):
@@ -630,7 +639,14 @@ def main():
     )
     print(f"prompt {prompt!r}", flush=True)
 
-    if a.sfx_prefix:
+    if a.mainsub:
+        tr_df = cd.load_mainsub(
+            "train", neg_share=a.neg_share, limit=a.max_train, seed=a.seed
+        )
+        va_df = cd.load_mainsub(
+            "val", neg_share=a.neg_share, limit=a.val_limit, seed=a.seed
+        )
+    elif a.sfx_prefix:
         tr_df = cd.load_sfxp(
             "train",
             neg_share=a.neg_share,
@@ -660,12 +676,16 @@ def main():
         va_df = cd.load_split("val", limit=a.val_limit, seed=a.seed)
     # --sfx_prefix crops carry the 4 px margin: no pad jitter, rotation on an expanded canvas
     tr = cd.CropDataset(
-        tr_df, augment=not a.no_augment, seed=a.seed, tight=a.sfx_prefix
+        tr_df,
+        augment=not a.no_augment,
+        seed=a.seed,
+        tight=a.sfx_prefix or a.mainsub,
     )
     va = cd.CropDataset(va_df, augment=False)
     tr_prompt, va_prompt = prompt, prompt
-    if a.sfx_prefix:
-        chats = {t: chat(t) for t in (cd.OCR_TASK, cd.SFX_TASK)}
+    if a.sfx_prefix or a.mainsub:
+        tasks = (cd.OCR_TASK, cd.OCR2_TASK) if a.mainsub else (cd.OCR_TASK, cd.SFX_TASK)
+        chats = {t: chat(t) for t in tasks}
         tr_prompt = [chats[t] for t in tr_df.task]
         va_prompt = [chats[t] for t in va_df.task]
         print(f"prompts {chats}", flush=True)
@@ -784,6 +804,7 @@ def main():
     model.train()
     step, micro, t0, seen = 0, 0, time.time(), 0
     best = (-1.0, None)
+    best_key = "main_exact" if a.mainsub else "sfx_exact"
     for ep in range(1, a.epochs + 1):
         batches = make_batches(rng)
         if a.largest_first:
@@ -853,8 +874,8 @@ def main():
             save_full(ep_dir / file, ps)
         m = evaluate(f"ep{ep}", step)
         m["train_loss"] = torch.stack(losses).mean().item()
-        if m["sfx_exact"] > best[0]:
-            best = (m["sfx_exact"], ep)
+        if m[best_key] > best[0]:
+            best = (m[best_key], ep)
             b = out / "best"
             if b.is_symlink() or b.exists():
                 b.unlink() if b.is_symlink() else shutil.rmtree(b)
@@ -870,20 +891,24 @@ def main():
         + (f"LM layers full FT lr {a.lm_lr}, " if a.lm_full else "")
         + (f"init {a.init_adapter}, " if a.init_adapter else "")
         + f"speech_ratio {a.speech_ratio}, train {len(tr)}, val {len(va)})\n",
-        "| tag | sfx exact | sfx sim | sfx runaway | speech exact | speech sim | speech runaway |",
-        "|---|---|---|---|---|---|---|",
     ]
+    # one column group per val metric (sfx / speech / *_neg, or main / sub / *_neg)
+    groups = (
+        [k[: -len("_exact")] for k in rows[-1] if k.endswith("_exact")] if rows else []
+    )
+    md.append("| tag | " + " | ".join(f"{g} exact | {g} sim" for g in groups) + " |")
+    md.append("|---|" + "---|---|" * len(groups))
     for r in rows:
         md.append(
-            f"| {r['tag']} | {100 * r['sfx_exact']:.1f} % | {r['sfx_sim']:.3f} | {r['sfx_runaway']} | "
-            f"{100 * r['speech_exact']:.1f} % | {r['speech_sim']:.3f} | {r['speech_runaway']} |"
-            + "".join(
-                f" {k} empty {100 * r[k + '_exact']:.1f} % |"
-                for k in ("ocr_neg", "sfx_neg")
-                if k + "_exact" in r
+            f"| {r['tag']} | "
+            + " | ".join(
+                f"{100 * r.get(g + '_exact', float('nan')):.1f} % | "
+                f"{r.get(g + '_sim', float('nan')):.3f}"
+                for g in groups
             )
+            + " |"
         )
-    md.append(f"\nbest = ep{best[1]} (val SFX exact {100 * best[0]:.1f} %)")
+    md.append(f"\nbest = ep{best[1]} (val {best_key} {100 * best[0]:.1f} %)")
     (out / "summary.md").write_text("\n".join(md) + "\n")
     print("\n".join(md), flush=True)
 

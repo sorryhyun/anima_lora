@@ -51,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import manga109 as m109  # noqa: E402
 from build_sfx_prefix import ellipsis_fold, margin_box  # noqa: E402
+from ko_label_review import agent_subs  # noqa: E402
 from linebreak_auto import (  # noqa: E402
     glyph_weight,
     guess_vertical,
@@ -159,14 +160,22 @@ def trim_lines(it: Item, quad: np.ndarray, page: np.ndarray) -> tuple[str, int]:
         w = np.array([glyph_weight(c) for c in s])
         mid = b0 + bo + (np.cumsum(w) - w / 2) / w.sum() * (b1 - b0)
         vis = "".join(c for c, m in zip(s, mid) if d0 <= m <= d1).strip()
-        dropped += sum(
-            not c.isspace() for c, m in zip(s, mid) if not d0 <= m <= d1
-        )
+        dropped += sum(not c.isspace() for c, m in zip(s, mid) if not d0 <= m <= d1)
         if vis:
             keep.append(vis)
     if not keep or not dropped:
         return it.text, 0
     return "\n".join(keep), dropped
+
+
+def ruby_text(groups: list) -> str:
+    """The reads of a box's ruby groups, one line per main column in reading order, a
+    column's groups top down joined by a space (as the review page's furigana source)."""
+    cols: dict[int, list] = {}
+    for g in sorted(groups, key=lambda g: (g["col"], g["y0"])):
+        if g.get("read"):
+            cols.setdefault(g["col"], []).append(g["read"])
+    return "\n".join(" ".join(v) for _, v in sorted(cols.items()))
 
 
 def visible_ruby(it: Item, quad: np.ndarray, page: np.ndarray, groups: list) -> str:
@@ -206,7 +215,7 @@ def gt_iou(quad: np.ndarray, inc: list[Item]) -> float | None:
 
 def book_rows(args) -> list[dict]:
     book, splits, tables = args
-    sp_text, ruby = tables["sp_text"], tables["ruby"]
+    sp_text, ruby, fixed = tables["sp_text"], tables["ruby"], tables["fixed"]
     pages: dict[int, list[Item]] = {}
     for ln in m109.iter_coo(book):
         pages.setdefault(ln.page, []).append(Item(ln, ln.text))
@@ -245,6 +254,21 @@ def book_rows(args) -> list[dict]:
                         trim, quad, page_img(int(r["page"])), ruby[rk]
                     )
         stem = Path(r["path"]).stem
+        sp = [it.id for it in order(inc) if it.kind == "speech"] + (
+            [trim.id] if trim else []
+        )
+        # the sub proposal with the ruby first: per <text> box the agents' fix where they
+        # reviewed it, else the reads; a trim crop the ruby inside it
+        heads = []
+        for t in sp:
+            rid = f"{book}_{int(r['page']):03d}_{t}"
+            if trim is not None and t == trim.id:
+                heads.append((extra or {}).get("trim_ruby", ""))
+            elif rid in fixed:
+                heads.append(fixed[rid])
+            elif (book, int(r["page"]), t) in ruby:
+                heads.append(ruby_text(ruby[(book, int(r["page"]), t)]))
+        subp = "\n".join([h for h in heads if h] + ([sub] if sub else []))
         out.append(
             dict(
                 source=src,
@@ -266,8 +290,8 @@ def book_rows(args) -> list[dict]:
                     for it in order(part)
                 ],
                 box=[int(v) for v in quad.min(0)] + [int(v) for v in quad.max(0)],
-                sp=[it.id for it in order(inc) if it.kind == "speech"]
-                + ([trim.id] if trim else []),
+                sp=sp,
+                subp=subp,
                 trim=int(trim is not None),
                 trim_cut=cut,
                 gt_iou=gt_iou(quad, inc),
@@ -304,7 +328,14 @@ def main():
         type=Path,
         nargs="*",
         default=[],
-        help="furigana_find.py read outputs: a trim row's sub takes the ruby inside its crop",
+        help="furigana_find.py read outputs: the ruby reads head each row's sub "
+        "proposal (subp); a trim row takes the ruby inside its crop",
+    )
+    ap.add_argument(
+        "--ruby_fix",
+        type=Path,
+        help="agent outputs (furigana_find.py batches, **/out*.tsv): their sub replaces "
+        "the reads of the boxes they reviewed",
     )
     a = ap.parse_args()
     d = m109.derived_root()
@@ -327,6 +358,7 @@ def main():
         for b, p, i, t in zip(extra.book, extra.page, extra.id, extra.text):
             sp_text.setdefault((b, int(p), str(i)), t)
     # furigana_find.py read files: the ruby groups per <text> box, for trim rows
+    fixed = {k: v[0] for k, v in agent_subs(a.ruby_fix).items()}
     ruby: dict[tuple, list] = {}
     for rp in a.ruby:
         for line in open(rp, encoding="utf-8"):
@@ -349,6 +381,7 @@ def main():
                 det=det_b[b],
                 sp_text={k: v for k, v in sp_text.items() if k[0] == b},
                 ruby={k: v for k, v in ruby.items() if k[0] == b},
+                fixed={k: v for k, v in fixed.items() if k.startswith(b + "_")},
             ),
         )
         for b in books

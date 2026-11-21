@@ -80,7 +80,20 @@ its convex hull inside the crop:
   on the page; 35,122 of 60,810 now broken); then `furigana_find.py find --manifest
   mainsub_text --name ruby_mt` and `read` (32,081 groups on 16,836 crops, 508 s; aligned
   over a kanji 5,029 before the breaks, 26,553 after; read as kana 23,287). The page and
-  `m109_mainsub.py` take `ruby_m109_read_u3p12.jsonl` = `ruby_all` + `ruby_mt`.
+  `m109_mainsub.py` take `ruby_m109_read_u3p12.jsonl` = `ruby_all` + `ruby_mt` + the
+  horizontal reads below.
+- Horizontal text (`furigana_find.py find --orient horizontal`): a crop counts as horizontal
+  when its longest x ink run (gaps ≤ 3 px closed) is 1.5× its longest y run
+  (`ink_horizontal`); the box shape does not tell (most crops tagged `horizontal` hold
+  vertical columns in a wide balloon) and neither do the gap widths (tried first: a single
+  column has no gap across). The crop is turned 90° clockwise for the finder and the boxes
+  turned back. 2,186 crops judged horizontal; 299 with groups, 527 groups, 290 read as kana;
+  49 replace a vertical record of the same box. In a 12-crop sheet 10 were horizontal text;
+  ruby on the top row is often missed (it touches the crop edge and `ink_mask` drops it).
+- `m109_mainsub.py --ruby … --ruby_fix output/ocr/furigana/agent` writes `subp`: per
+  `<text>` box in the crop the agents' sub where they reviewed it, else the reads, a trim
+  crop the ruby inside it, then the annotated sub items. The training loader reads `subp`;
+  the page assembles its own (with the furigana rows' notes and sub state).
 
 Train split, `mainsub_det` (`output/ocr/mainsub/m109_mainsub.jsonl`, local):
 
@@ -144,11 +157,62 @@ python project/finished/ocr_reader/probes/apply_ko_review.py <export.tsv>
   sub) and the other sources' subs to `assets/sub_labels.tsv` (KO / ZH, furigana). The
   manifests are not touched by `mainsub_*` rows.
 
+## Training
+
+### Facts
+
+`finetune_vl16_lora.py --mainsub` → `crop_dataset.load_mainsub` (2026-11-21):
+
+- Manga109: the detector crops with `m109_mainsub[_val].jsonl` (`main`, `subp`); a row in
+  `assets/m109_mainsub.tsv` as reviewed, `drop` out; an unreviewed `trim` row out (561
+  train).
+- KO / ZH (`manifest_sfxp_kozh`, train only): `OCR:` = the label; `OCR2:` =
+  `sub_labels.tsv`, else `kozh_sfx.tsv`, else `""`.
+- `OCR2:` rows only where the sub counts as complete: reviewed; or no partly visible text
+  and a sub proposal; or `""` where the main holds no kanji. A kanji main with no ruby
+  found is left out of `OCR2:`.
+- Negatives ≤ 20 % per prompt (`--neg_share`). Val metrics `main` / `main_neg` / `sub` /
+  `sub_neg` (val has no KO / ZH); best by `main_exact`.
+
+Train rows: `OCR:` main 121,878, main_kozh 24,145, main_neg 406; `OCR2:` sub 26,490, sub_neg
+6,622 (total 179,541). Val (`--val_limit 500`): main 500, main_neg 59, sub 500, sub_neg 292.
+
+### First run: `mainsub_1121_1806` (2026-11-21)
+
+`--mainsub --steps 1000 --val_limit 500 --tower_rank 64 --lm_full --grad_ckpt
+--ckpt_lm_only --compile` from the stock base (the `sfxpc_1121_0117` recipe, 1,000 steps;
+842 s, 18.9 crops/s, 12.2 GB). Purpose: does the main / sub data train.
+
+| val metric | n | `mainsub_1121_1806` | `sfxpc_1121_0117` under `OCR:` (`probes/eval_mainsub.py`) |
+|---|---|---|---|
+| main exact / sim | 500 | 86.4 % / 0.976 | 73.8 % / 0.806 |
+| main_neg (`""`) | 59 | 0.0 % | 20.3 % |
+| sub exact / sim | 500 | 49.2 % / 0.816 | 0.2 % / 0.068 |
+| sub_neg (`""`) | 292 | 98.3 % | 52.4 % |
+
+On main, 85 rows only the new run reads right, 22 only the old one. Many of the old
+reader's misses are `""` on short speech in a detector crop (`そう`, `え…`).
+The old reader trained on `<text>` crops, so the det crops are new to it. The new run's
+misses are mostly lengthening and dash spellings (`ーーー` / `―`).
+
+All 59 main_neg rows show text (a box under half inside, a sign such as `寿司処 つかさ`):
+the run reads it, the `""` label is wrong. Since then `load_mainsub` leaves an unreviewed
+empty main out.
+
+Of 10 sub misses read, 4 have a wrong label where the prediction is right (`とうきろ` for
+東京 → pred `とうきょう`, `たいと` → `たいど`): the sub labels are unreviewed ruby reads.
+
+### Interpretation
+
+- The data trains: main reads the det crops at 86 % after 1,000 steps, `OCR2:` answers `""`
+  where no ruby can be (98 %) and reads ruby where it is (sim 0.82).
+- Sub exact is capped by label noise, not measured against a clean set; it says little
+  until the val subs are reviewed.
+
 ## Open
 
-- A loader that builds `OCR:` / `OCR2:` rows from `manifest_sfxp_det_all`, the KO / ZH
-  manifests and the two TSVs, in place of `crop_dataset.load_sfxp`'s speech / SFX split.
-- Which crops count as complete for `OCR2:` before the review covers them.
+- The `OCR2:` completeness rule in the loader is a first cut: most `OCR2:` positives are
+  unreviewed ruby reads (about half right in the 14-row read above).
 - `drop` boxes (an SFX cut partway, 2,678 train) and `neg_other` boxes (no annotation inside,
   22,718 train) stay out; under main / sub a cut SFX could be sub.
 - The gate under main / sub: the v7 gates (COO SFX / speech, doujin SFX, K3) read per kind;

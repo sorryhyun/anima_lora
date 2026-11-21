@@ -4,7 +4,9 @@
 Manga109 labels carry no ruby, so a crop showing furigana has no label for it. This
 probe finds the ruby by ink projection and reads it alone with a reader:
 
-``find`` (CPU) — vertical crops whose label holds a kanji. Ink as ``linebreak_auto``
+``find`` (CPU) — vertical crops whose label holds a kanji (``--orient horizontal``: the
+crops whose ink reads as rows, turned 90° so their ruby sits right of a column, boxes
+turned back). Ink as ``linebreak_auto``
 (Otsu, edge-touching components dropped); the x projection splits into runs. Main
 columns are runs ≥ ``--main_frac`` × the median wide run (``wm``, the main glyph size);
 a ruby run is narrower than ``--ruby_frac`` · wm, sits right of a main column within
@@ -133,12 +135,47 @@ def find_ruby(crop: np.ndarray, label: str, a) -> dict:
     return dict(wm=wm, mains=mains, groups=groups)
 
 
+def ink_horizontal(crop: np.ndarray, bridge: int = 3) -> bool:
+    """Horizontal text by the ink: glyphs are set solid along a line and lines sit apart,
+    so along the reading axis the ink runs on for a whole line while across it a run is
+    one glyph (plus touching ruby). Runs are taken on the projections with gaps of at
+    most ``bridge`` px closed; horizontal when the longest x run is 1.5× the longest y
+    run. The box shape does not tell (most crops tagged horizontal hold vertical columns
+    in a wide balloon), nor do the gap widths (a single column has none across)."""
+    ink = ink_mask(crop)
+
+    def longest(prof: np.ndarray) -> int:
+        on = prof > 0
+        for a, b in runs(~on):
+            if b - a <= bridge and a > 0 and b < len(on):
+                on[a:b] = True
+        return max((b - a for a, b in runs(on)), default=0)
+
+    return longest(ink.sum(axis=0)) > 1.5 * longest(ink.sum(axis=1))
+
+
+def find_ruby_horizontal(crop: np.ndarray, label: str, a) -> dict:
+    """Horizontal text (ruby above each row): :func:`find_ruby` on the crop turned 90°
+    clockwise (rows top to bottom become columns right to left, the ruby above a row
+    lands right of its column, a row's left end on top), the boxes turned back, so
+    ``read`` cuts the groups upright. ``mains`` are the rows' (y0, y1); ``rot`` = 1."""
+    H = crop.shape[0]
+    res = find_ruby(cv2.rotate(crop, cv2.ROTATE_90_CLOCKWISE), label, a)
+    for g in res["groups"]:
+        g["x0"], g["x1"], g["y0"], g["y1"] = g["y0"], g["y1"], H - g["x1"], H - g["x0"]
+    res["mains"] = [(H - x1, H - x0) for x0, x1 in res["mains"]]
+    res["rot"] = 1
+    return res
+
+
 def rows(a):
     import pandas as pd
 
     d = m109.derived_root()
     df = pd.read_parquet(d / f"manifest_{a.manifest}.parquet")
-    df = df[(df.orient != "horizontal") & df.text.str.contains(KANJI)]
+    df = df[df.text.str.contains(KANJI)]
+    if a.orient == "vertical":
+        df = df[df.orient != "horizontal"]
     if a.n:
         df = df.sample(min(a.n, len(df)), random_state=a.seed)
     return d, df
@@ -151,7 +188,13 @@ def find(a):
     with open(OUT / f"{a.name}.jsonl", "w", encoding="utf-8") as f:
         for r in df.itertuples():
             crop = cv2.imread(str(d / r.path))
-            res = find_ruby(crop, r.text, a)
+            if a.orient == "horizontal" and not ink_horizontal(crop):
+                continue
+            res = (
+                find_ruby_horizontal(crop, r.text, a)
+                if a.orient == "horizontal"
+                else find_ruby(crop, r.text, a)
+            )
             tot["crops"] += 1
             tot["count_ok"] += len(r.text.split("\n")) == len(res["mains"])
             tot["with_groups"] += bool(res["groups"])
@@ -398,6 +441,13 @@ def main():
         "--n", type=int, default=0, help="find: sample size (0 = all); sheet: tiles"
     )
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--orient",
+        choices=["vertical", "horizontal"],
+        default="vertical",
+        help="find: vertical = the crops not tagged horizontal (as before); horizontal = "
+        "any crop whose ink reads as rows (ink_horizontal), ruby above the rows",
+    )
     ap.add_argument("--main_frac", type=float, default=0.7)
     ap.add_argument("--ruby_frac", type=float, default=0.6)
     ap.add_argument("--ruby_gap", type=float, default=0.5)

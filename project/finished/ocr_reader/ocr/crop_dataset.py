@@ -261,6 +261,169 @@ def load_sfxp(
     ).reset_index(drop=True)
 
 
+OCR2_TASK = "OCR2:"
+ASSETS = Path(__file__).resolve().parents[1] / "assets"
+MAINSUB_JSONL = m109.REPO / "output/ocr/mainsub"
+KANJI = __import__("re").compile(r"[一-鿿々〆ヶ]")
+
+
+def load_mainsub(
+    split: str,
+    *,
+    neg_share: float = 0.2,
+    limit: int | None = None,
+    seed: int = 0,
+) -> pd.DataFrame:
+    """The main / sub mix (``main-sub-approach.md``): ``OCR:`` reads the main text of a
+    crop, ``OCR2:`` the rest (furigana, smaller lettering), one item per line.
+
+    * Manga109: the detector crops (``manifest_sfxp_det_all``) with ``m109_mainsub.py``'s
+      proposals (``output/ocr/mainsub/m109_mainsub[_val].jsonl``: ``main``, ``subp`` = ruby
+      reads, the agents' fixes, other annotated items), a row reviewed on the page
+      (``assets/m109_mainsub.tsv``) as reviewed, a dropped one out. An unreviewed ``trim``
+      row (its main a box only partly inside) is out, and so is an unreviewed empty main
+      (mainsub_1121_1806 read text on all 59 val ones: a box cut under half, a sign).
+    * KO / ZH (``manifest_sfxp_kozh``, train only): ``OCR:`` = the label; ``OCR2:`` =
+      ``assets/sub_labels.tsv``'s sub, else ``assets/kozh_sfx.tsv``'s SFX text, else ``""``.
+    * ``OCR2:`` only where the sub is complete: reviewed, or a proposal on a crop with no
+      partly visible text, or ``""`` on a crop whose main holds no kanji (no ruby
+      possible). A kanji main with no ruby found is left out of ``OCR2:``.
+
+    Negatives (target ``""``) are at most ``neg_share`` of each prompt's rows; ``metric``
+    is ``main`` / ``main_kozh`` / ``main_neg`` / ``sub`` / ``sub_neg``. ``limit`` caps every
+    ``metric`` group."""
+    import json
+
+    d = m109.derived_root()
+    rng = np.random.default_rng(seed)
+    rd = lambda p: (  # noqa: E731
+        pd.read_csv(p, sep="\t", dtype=str, keep_default_na=False, quoting=3)
+        if p.exists()
+        else None
+    )
+    un = lambda t: t.replace("\\n", "\n")  # noqa: E731
+    rev = {}
+    if (t := rd(ASSETS / "m109_mainsub.tsv")) is not None:
+        rev = {
+            f"{r.source}:{r.id}": (r.status, un(r.main), un(r.sub))
+            for r in t.itertuples()
+        }
+    subl = {}
+    if (t := rd(ASSETS / "sub_labels.tsv")) is not None:
+        subl = {(r.source, r.id): un(r.sub) for r in t.itertuples()}
+    ks = {}
+    if (t := rd(KOZH_SFX)) is not None:
+        ks = {(r.source, r.id): un(r.text) for r in t.itertuples()}
+    det = pd.read_parquet(d / "manifest_sfxp_det_all.parquet")
+    det = det[det.split == split]
+    geo = {p: (w, h, o) for p, w, h, o in zip(det.path, det.w, det.h, det.orient)}
+    name = "m109_mainsub.jsonl" if split == "train" else f"m109_mainsub_{split}.jsonl"
+    recs = []
+    n_trim = n_drop = n_rev = n_empty = 0
+    for line in open(MAINSUB_JSONL / name, encoding="utf-8"):
+        x = json.loads(line)
+        if x["path"] not in geo:
+            continue
+        w, h, o = geo[x["path"]]
+        v = rev.get(f"{x['source']}:{x['id']}")
+        if v is not None and v[0] == "drop":
+            n_drop += 1
+            continue
+        if v is None and x["trim"]:
+            n_trim += 1
+            continue
+        # an empty main proposal: no annotated text whole inside, yet text shows (a box
+        # cut under half, a sign the annotation lacks): "" would teach ignoring it
+        if v is None and not x["main"].strip():
+            n_empty += 1
+            continue
+        if v is not None:
+            n_rev += 1
+            main, sub, done = v[1], v[2], True
+        else:
+            main, sub = x["main"], x["subp"]
+            done = not x["part"] and (bool(sub) or not KANJI.search(main))
+        base = dict(
+            book=x["book"],
+            page=x["page"],
+            id=x["id"],
+            orient=o,
+            w=w,
+            h=h,
+            path=x["path"],
+        )
+        recs.append(
+            dict(base, text=main, task=OCR_TASK, kind="main", source="m109_" + x["cat"])
+        )
+        if done:
+            recs.append(
+                dict(
+                    base,
+                    text=sub,
+                    task=OCR2_TASK,
+                    kind="sub",
+                    source="m109_" + x["cat"],
+                )
+            )
+    if split == "train":
+        kozh = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
+        kozh = kozh[kozh.split == split]
+        for r in kozh.itertuples():
+            base = dict(
+                book=r.book,
+                page=r.page,
+                id=r.id,
+                orient=r.orient,
+                w=r.w,
+                h=r.h,
+                path=r.path,
+            )
+            k = (r.source, r.id)
+            sub = subl.get(k, ks.get(k, ""))
+            recs.append(
+                dict(
+                    base, text=r.text, task=OCR_TASK, kind="main_kozh", source=r.source
+                )
+            )
+            recs.append(
+                dict(base, text=sub, task=OCR2_TASK, kind="sub", source=r.source)
+            )
+    df = pd.DataFrame(recs)
+    df = cap_targets(df, f"mainsub {split}")
+    empty = df.target.str.len() == 0
+    df["metric"] = np.where(
+        df.task == OCR_TASK,
+        np.where(
+            empty, "main_neg", np.where(df.kind == "main_kozh", "main_kozh", "main")
+        ),
+        np.where(empty, "sub_neg", "sub"),
+    )
+    cap = neg_share / (1 - neg_share)
+    parts = []
+    for task in (OCR_TASK, OCR2_TASK):
+        t = df[df.task == task]
+        pos, neg = t[~t.metric.str.endswith("_neg")], t[t.metric.str.endswith("_neg")]
+        n = int(min(len(neg), cap * len(pos)))
+        parts += [pos, neg.iloc[rng.permutation(len(neg))[:n]]]
+    out = pd.concat(parts, ignore_index=True)
+    print(
+        f"[data] mainsub {split}: reviewed {n_rev}, dropped {n_drop}, unreviewed trim "
+        f"out {n_trim}, unreviewed empty main out {n_empty}; "
+        f"{out.groupby(['task', 'metric']).size().to_dict()}",
+        flush=True,
+    )
+    if limit:
+        out = pd.concat(
+            [
+                g.sample(min(limit, len(g)), random_state=seed)
+                for _, g in out.groupby("metric")
+            ]
+        )
+    return out.sort_values(
+        ["task", "metric", "source", "book", "page", "id"]
+    ).reset_index(drop=True)
+
+
 class CropDataset(Dataset):
     def __init__(
         self, df: pd.DataFrame, *, augment: bool, seed: int = 0, tight: bool = False

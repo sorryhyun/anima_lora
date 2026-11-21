@@ -11,14 +11,17 @@ rebuild the page after each apply.
 
 Every editable row has an ``SFX`` checkbox (exported as the ``sfx`` column;
 ``apply_ko_review.py`` keeps the marks in ``assets/sfx_marks.tsv``, training does not read
-them); a row the ``--flags`` reader read under ``SFX:`` comes up checked. ``m109_sfx`` / ``m109_speech`` are read-only references: a seeded sample of the
-Manga109 COO onomatopoeia and the speech text (``manifest.parquet``), to compare against.
+them); a row the ``--flags`` reader read under ``SFX:`` comes up checked. ``--ref_n N``
+adds ``m109_sfx`` / ``m109_speech``, read-only references: a seeded sample of the Manga109
+COO onomatopoeia and the speech text (``manifest.parquet``); off by default.
 
 Every editable row has a ``+ sub`` button: a second box for the ``OCR2:`` label of the same
 crop (furigana, a smaller SFX, a hand-lettered aside; one item per line, reading order),
-exported as the ``sub`` column (``-`` = removed). ``furigana`` (``--ruby``,
-``furigana_find.py``): speech crops with ruby groups found, the sub box prefilled with the
-groups read as kana.
+exported as the ``sub`` column (``-`` = removed). The furigana reads (``--ruby``,
+``furigana_find.py``; ``--ruby_fix`` the agents' fixes) are not a source of their own
+(dropped 11-21): they head the ``mainsub_*`` sub proposals, and the ``furigana`` /
+``furigana suspicious`` sorts list the mainsub rows with a ruby proposal (by id / most
+doubtful groups first).
 
 ``mainsub_det`` / ``mainsub_speech`` (``--mainsub``, ``m109_mainsub.py``):
 every Manga109 training crop, the box holding the proposed ``OCR:`` main (the largest text),
@@ -30,13 +33,13 @@ Rules: ``main-sub-approach.md``. The header's ``has`` filter (any source) lists 
 hold now: main only, sub only, both, or partly visible text.
 ``apply_ko_review.py`` writes these rows to ``assets/m109_mainsub.tsv``.
 
-``linebreak_suspicious`` (``linebreak_auto.py apply``): JA speech rows whose automatic line
-breaks missed the gate; the box holds the proposed breaks, the meta line the per-column
-read and its distance to the label (largest first). ``ok`` takes the proposal.
-``odd_dots``: speech rows with text whose dots ``ellipsis_fold`` left odd, the box holding
-``round_dots``' spelling; same ``ok`` rule, split runs first. (``dots_suspicious``, the
-dot-only rows ``linebreak_auto.py dots`` could not spell, was reviewed in full on 11-18 and
-is no longer listed; ``apply_ko_review.py`` still takes its rows.)
+Line breaks that missed ``linebreak_auto.py apply``'s gate are not a source of their own
+(dropped 11-21): a ``mainsub_*`` row whose main is one such ``<text>`` box holds the
+proposed breaks in its main box (the meta line: the label, the column reads), and the
+``linebreak suspicious`` sort lists those rows, largest read distance first. Its ``ok``
+goes to ``m109_mainsub.tsv`` (the det crop's main), not the speech manifest.
+(``odd_dots`` and ``dots_suspicious`` are no longer listed: the first was empty by 11-21,
+the second reviewed in full on 11-18; ``apply_ko_review.py`` still takes their rows.)
 
 hito rows also show the twin crop (the other edition's lettering of the same region) with
 its v4 read, and the read's mean token logprob (``prelabel_v4lp.jsonl``); they sort lowest
@@ -154,6 +157,9 @@ header .pager { margin:0; }
     <option value="edge">edge text (label beyond __READER__'s read)</option>
     <option value="dis">__READER__ disagrees, lowest confidence first</option>
     <option value="run">longest run first</option>
+    <option value="lb">linebreak suspicious: proposed breaks, largest read distance first (mainsub)</option>
+    <option value="furi">furigana: rows with a ruby proposal (mainsub)</option>
+    <option value="furisus">furigana suspicious: most doubtful ruby first (mainsub)</option>
     <option value="id">id</option><option value="todo">unreviewed first</option></select></label>
   <label>has <select id="has"><option value="">all</option><option value="main">main only</option>
     <option value="sub">sub only</option><option value="both">main + sub</option>
@@ -169,7 +175,7 @@ header .pager { margin:0; }
 const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
-                      "linebreak_suspicious": "sus", "odd_dots": "sus", "furigana": "sus", "doujin_sfx": "__DOUJIN_SORT__",
+                      "doujin_sfx": "__DOUJIN_SORT__",
                       "mainsub_det": "sus", "mainsub_speech": "sus"};
 // mainsub rows carry paths relative to the Manga109 folder
 const M109 = __M109__;
@@ -273,6 +279,9 @@ function rows() {
                              .sort((a, b) => a.conf - b.conf);
   else if (k === "nolf") r = r.slice().sort((a, b) => (a.lf - b.lf) || (b.len - a.len));
   else if (k === "run") r = r.slice().sort((a, b) => b.run - a.run || a.id.localeCompare(b.id));
+  else if (k === "lb") r = r.filter(x => x.lbs != null).sort((a, b) => b.lbs - a.lbs || a.id.localeCompare(b.id));
+  else if (k === "furi") r = r.filter(x => x.rb).sort((a, b) => a.id.localeCompare(b.id));
+  else if (k === "furisus") r = r.filter(x => x.rb).sort((a, b) => b.rsus - a.rsus || a.id.localeCompare(b.id));
   else if (k === "id") r = r.slice().sort((a, b) => a.id.localeCompare(b.id));
   else r = r.slice().sort((a, b) => !!store[s + ":" + a.id] - !!store[s + ":" + b.id]);
   // has: what the row's boxes hold now (a drop holds nothing)
@@ -606,53 +615,53 @@ def furigana_rows(
     return {"furigana": rows}
 
 
-def linebreak_rows(d: Path) -> dict[str, list[dict]]:
-    """``linebreak_auto.py apply``'s rows that missed the gate: the proposed breaks as
-    the label, the column reads as a note, sorted by read distance, the rows with a dot
-    run :func:`ellipsis_fold` left alone (:func:`odd_dots`) first."""
-    path = REPO / "output/ocr/linebreak/linebreak_suspicious.jsonl"
-    if not path.exists():
-        return {}
-    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
-    df = df[df.source == "sfxp_speech"]
-    crop = {(r.book, int(r.page), str(r.id)): r.path for r in df.itertuples()}
-    cur = {(r.book, int(r.page), str(r.id)): r.text for r in df.itertuples()}
-    rows = []
-    for line in open(path, encoding="utf-8"):
-        x = json.loads(line)
-        k = (x["book"], int(x["page"]), str(x["id"]))
-        # dot-only labels are linebreak_auto.py dots' (dots_suspicious), not this source's
-        if k not in crop or not DOT_FREE.sub("", x["raw"]):
-            continue
-        text = round_dots(ellipsis_fold(x["out"]))
-        odd = odd_dots(text)
-        page = m109.page_path(x["book"], int(x["page"]))
-        reads = " ⏎ ".join(x["lines"])
-        rows.append(
-            dict(
-                id=f"{x['book']}_{int(x['page']):03d}_{x['id']}",
-                text=text,
-                run=0,
-                sus=x["dist"] + (100.0 if odd else 0.0),
-                why=f"{x['n_segs']} segments" + (f" · dots {odd}" if odd else ""),
-                lf=int("\n" in x["out"]),
-                len=len(x["raw"]),
-                status="",
-                note=f"distance {x['dist']:.2f} · label: {x['raw']} · column reads: {reads}",
-                # the manifest's text now; ``done`` = ``ok`` already applied
-                cur=cur[k],
-                done=cur[k] == ellipsis_fold(text),
-                img=(d / crop[k]).as_uri(),
-                page=page.as_uri() if page.exists() else "",
-                box=[],
+def linebreak_proposals(d: Path) -> dict[str, dict]:
+    """``linebreak_auto.py apply``'s rows that missed the gate (``linebreak_suspicious.jsonl``
+    from the speech manifest, ``linebreak_suspicious_mainsub_text.jsonl`` from the boxes
+    outside it), keyed ``<book>_<page:03d>_<id>``: the proposed breaks (``round_dots`` ∘
+    ``ellipsis_fold``), the label now, the read distance (+100 when a dot run stays odd)
+    and a note with the column reads. A label that has a line break by now (applied or
+    edited) is left out; so are dot-only labels (``linebreak_auto.py dots``)."""
+    cur = {}
+    for name, srcs in (
+        ("sfxp_speech", ("sfxp_speech",)),
+        ("mainsub_text", ("mainsub_text",)),
+    ):
+        p = d / f"manifest_{name}.parquet"
+        if p.exists():
+            df = pd.read_parquet(p)
+            df = df[df.source.isin(srcs)]
+            cur.update(
+                {
+                    f"{b}_{int(pg):03d}_{i}": t
+                    for b, pg, i, t in zip(df.book, df.page, df.id, df.text)
+                }
             )
-        )
-    print(f"[review] linebreak_suspicious: {len(rows)} rows", flush=True)
-    return {"linebreak_suspicious": rows}
+    out = {}
+    for fn in ("linebreak_suspicious.jsonl", "linebreak_suspicious_mainsub_text.jsonl"):
+        path = REPO / "output/ocr/linebreak" / fn
+        if not path.exists():
+            continue
+        for line in open(path, encoding="utf-8"):
+            x = json.loads(line)
+            k = f"{x['book']}_{int(x['page']):03d}_{x['id']}"
+            if k not in cur or "\n" in cur[k] or not DOT_FREE.sub("", x["raw"]):
+                continue
+            text = round_dots(ellipsis_fold(x["out"]))
+            odd = odd_dots(text)
+            reads = " ⏎ ".join(x["lines"])
+            out[k] = dict(
+                text=text,
+                cur=cur[k],
+                lbs=round(x["dist"] + (100.0 if odd else 0.0), 3),
+                note=f"line breaks proposed ({x['n_segs']} segments"
+                + (f", dots {odd}" if odd else "")
+                + f", read distance {x['dist']:.2f}) · label: {cur[k]} · column reads: {reads}",
+            )
+    return out
 
 
 LINE_DOT_RUN = re.compile(r"[.．・･…‥]+")
-RAW_DOT = re.compile(r"[.．・･]{2,}|[.．・･][…‥\n]|[…‥\n][.．・･]")
 
 
 def round_dots(t: str) -> str:
@@ -671,56 +680,6 @@ def round_dots(t: str) -> str:
         return r if n < 2 else "…" * max(1, round(n / 3))
 
     return LINE_DOT_RUN.sub(sub, t)
-
-
-def odd_dot_rows(d: Path) -> dict[str, list[dict]]:
-    """``manifest_sfxp_speech`` rows with text whose dots :func:`ellipsis_fold` left
-    odd (:func:`odd_dots`; ``linebreak_suspicious``'s rows are listed there): the
-    :func:`round_dots` spelling as the label (``ok`` takes it), the label as a note.
-    Suspicion order: a run a line break splits first (its place is the page's), then
-    dots next to ``…``, then the other runs, longest run first."""
-    sus_path = REPO / "output/ocr/linebreak/linebreak_suspicious.jsonl"
-    skip = set()
-    if sus_path.exists():
-        for line in open(sus_path, encoding="utf-8"):
-            x = json.loads(line)
-            skip.add((x["book"], int(x["page"]), str(x["id"])))
-    df = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
-    df = df[df.source.isin(["sfxp_speech", "m109_lines"])]
-    rows = []
-    for r in df.itertuples():
-        k = (r.book, int(r.page), str(r.id))
-        if k in skip or not DOT_FREE.sub("", r.text):
-            continue
-        odd = odd_dots(r.text)
-        # ``…\n…`` alone (dot columns already spelled) is not odd here
-        if not odd or not RAW_DOT.search(r.text):
-            continue
-        longest = max(len(m) for m in LINE_DOT_RUN.findall(r.text))
-        page = m109.page_path(r.book, int(r.page))
-        rows.append(
-            dict(
-                id=f"{r.book}_{int(r.page):03d}_{r.id}",
-                text=round_dots(r.text),
-                run=0,
-                sus=100.0 * ("split" in odd)
-                + 10.0 * ("mixed" in odd)
-                + 1.0
-                + longest / 100,
-                why=f"dots {odd}",
-                lf=int("\n" in r.text),
-                len=len(r.text),
-                status="",
-                note=f"label: {r.text}",
-                cur=r.text,
-                done=False,
-                img=(d / r.path).as_uri(),
-                page=page.as_uri() if page.exists() else "",
-                box=[],
-            )
-        )
-    print(f"[review] odd_dots: {len(rows)} rows", flush=True)
-    return {"odd_dots": rows}
 
 
 def doujin_rows(reads_path: Path | None) -> dict[str, list[dict]]:
@@ -782,13 +741,14 @@ def mainsub_rows(
     base = d.parent
     rel = lambda p: os.path.relpath(p, base)  # noqa: E731
     rb = {r["id"]: r for r in ruby or []}
+    lb = linebreak_proposals(d)
     by: dict[str, list[dict]] = {}
     for line in open(path, encoding="utf-8"):
         x = json.loads(line)
         by.setdefault(x["source"], []).append(x)
     out = {}
     for src, xs in by.items():
-        rows, n_rb = [], 0
+        rows, n_rb, n_lb = [], 0, 0
         for x in xs:
             # a neg_speech box had no label to move off (it was an SFX: negative)
             moved = x["cat"] != "neg_speech" and x["main"] != x["label"]
@@ -808,17 +768,28 @@ def mainsub_rows(
             if moved:
                 lab = x["label"] or "(SFX: negative)"
                 note += f" · label now: {lab}".replace("\n", " ⏎ ")
-            sub, extra = x["sub"], {}
+            sub, extra = x["sub"], {"rb": 0, "rsus": 0.0}
             keys = [f"{x['book']}_{int(x['page']):03d}_{t}" for t in x.get("sp", [])]
+            main = x["main"]
+            # the main is one <text> box whose automatic breaks missed the gate: the
+            # box holds the proposal (ok takes it), the meta line the label and reads
+            lp = lb.get(keys[0]) if len(keys) == 1 and not x.get("trim") else None
+            if lp and DOT_FREE.sub("", main) == DOT_FREE.sub("", lp["cur"]):
+                main, extra["lbs"] = lp["text"], lp["lbs"]
+                note = lp["note"] + " · " + note
+                n_lb += 1
             hits = [rb[k] for k in keys if k in rb and rb[k]["sub"]]
             if "trim_ruby" in x:
                 # a trim crop shows part of its box: the ruby inside the crop only
                 hits = []
                 if x["trim_ruby"]:
+                    extra["rb"] = 1
                     sub = "\n".join([x["trim_ruby"]] + ([sub] if sub else []))
                     note = "ruby inside the crop · " + note
                     n_rb += 1
             if hits:
+                extra["rb"] = 1
+                extra["rsus"] = sum(r["sus"] for r in hits)
                 sub = "\n".join([r["sub"] for r in hits] + ([sub] if sub else []))
                 note = " · ".join(r["note"] for r in hits) + " · " + note
                 if len(hits) == 1:
@@ -827,15 +798,15 @@ def mainsub_rows(
             rows.append(
                 dict(
                     id=x["id"],
-                    text=x["main"],
+                    text=main,
                     run=0,
                     sus=2.0 * len(x["part"])
                     + 1.0 * moved
                     + 0.5 * bool(sub)
                     + 3.0 * x.get("trim", 0),
                     why="",
-                    lf=int("\n" in x["main"]),
-                    len=len(x["main"]),
+                    lf=int("\n" in main),
+                    len=len(main),
                     status=x["cat"]
                     if x["split"] == "train"
                     else f"{x['split']} · {x['cat']}",
@@ -853,6 +824,7 @@ def mainsub_rows(
         print(
             f"[review] {src}: {len(rows)} rows "
             f"({sum(bool(r['sub']) for r in rows)} with a sub proposal, {n_rb} from ruby; "
+            f"{n_lb} with proposed line breaks; "
             f"{sum(r['part'] > 0 for r in rows)} with partly visible text)",
             flush=True,
         )
@@ -942,8 +914,8 @@ def main():
     ap.add_argument(
         "--ref_n",
         type=int,
-        default=3000,
-        help="Manga109 reference rows per kind (m109_sfx / m109_speech); 0 = none",
+        default=0,
+        help="Manga109 reference rows per kind (m109_sfx / m109_speech); 0 = none (default)",
     )
     ap.add_argument(
         "--doujin_reads",
@@ -1024,11 +996,11 @@ def main():
         data[src] = out
         print(f"[review] {src}: {len(out)} rows", flush=True)
     data.update(hito_rows(d, flags))
-    data.update(odd_dot_rows(d))
-    data.update(linebreak_rows(d))
-    data.update(furigana_rows(d, a.ruby, a.ruby_fix))
     data.update(doujin_rows(a.doujin_reads))
-    data.update(mainsub_rows(d, a.mainsub, data.get("furigana")))
+    # the furigana rows are not a source of their own: they head the mainsub sub
+    # proposals (and their earlier sub edits carry over through ``fk``)
+    fur = furigana_rows(d, a.ruby, a.ruby_fix).get("furigana")
+    data.update(mainsub_rows(d, a.mainsub, fur))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     a.out.mkdir(parents=True, exist_ok=True)
