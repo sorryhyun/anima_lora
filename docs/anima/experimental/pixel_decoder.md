@@ -244,11 +244,14 @@ glyphs are slightly soft under zoom. The loss has no perceptual or local-tone te
 
 P1–P4 are complete (2026-11-19). Per-phase record: `project/pixel_decoder/reports/phases_p1_p4_2026_11_19.md`.
 
-## ×2 output (P5, in progress)
+## ×2 output (P5)
 
 The goal is to decode and upscale 2× in one readout, so a 1024-tier render leaves the head at
-2048. A second 2× stage goes on top of the release head. The ×1 output stays, so one file
-serves both.
+2048. A second 2× stage goes on top of the release head. In the preview file the ×1 output
+stays, so one file serves both; the shipped ×2 file (`anima_pixel_head_x2`, `x2bgan2_1121_1340`,
+2026-11-21: real 2× targets, ×1 loss off, PE-Spatial GAN) drops the ×1 output layer and decodes
+at ×2 only ([../inference/pixel_head.md](../inference/pixel_head.md#×2-output)). The rest of
+this section is the research record.
 
 ```
    release head (as above) ── … ── ConvNeXt ×1, width 512, 8 px per position

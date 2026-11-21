@@ -12,7 +12,7 @@ python inference.py … --decoder pixel_head [--pixel_head <file>]
 
 The weight is the catalog row `anima_pixel_head` (`sorryhyun/anima-pixel-decoder`,
 `models/vae/anima_pixel_head.safetensors`), fetched on first use;
-`make download-model ARGS=anima-pixel-head` fetches it ahead of time. `PIXEL_HEAD=<file>` or
+`make download-model ARGS=anima-pixel-head` fetches it (and the ×2 file) ahead of time. `PIXEL_HEAD=<file>` or
 `--pixel_head` points at another head (a `bench/pixel_readout/` run's `head.safetensors`).
 
 ## Where it reads
@@ -38,26 +38,34 @@ and back) or ~850 ms (VAE loaded from disk). On turbo the VAE is 15 % of DiT + d
 
 ## ×2 output
 
-A ×2 head file (metadata `x2_depth`) carries a second 2× stage after the head's own: one
-readout writes a 32×32 RGB patch per token, so a 1024-tier render leaves the head at 2048.
-The same file decodes at ×1 too.
+The ×2 file `anima_pixel_head_x2` (`models/vae/anima_pixel_head_x2.safetensors`, same Hub repo,
+fetched on first use) carries a second 2× stage after the head's own: one readout writes a 32×32
+RGB patch per token, so a 1024-tier render leaves the head at 2048 (~12 ms on 85 × 48 tokens).
 
 ```bash
-make test PIXEL=1 PIXEL_SCALE=2 PIXEL_HEAD=<head_x2.safetensors>
-python inference.py … --decoder pixel_head --pixel_scale 2 --pixel_head <file>
+make test PIXEL=1 PIXEL_SCALE=2   # takes the catalog's ×2 file
+python inference.py … --decoder pixel_head --pixel_scale 2
+python inference.py … --decoder pixel_head --pixel_head <×2 file>   # scale from the file
 ```
 
-The saved image is twice `--image_size`. A ×1 file refuses `--pixel_scale 2` at load. The ×2
-stage was trained on the released ResShift ×2 student's upscale of the VAE decode, so the
-level to read it against is VAE → ResShift ×2 (3.16 s per image), not a real 2× image. No ×2
-file is in the catalog yet: the ×2 preview is in progress (`project/pixel_decoder/x2_plan.md`).
+The file decides the scale. With `--pixel_scale` unset the head decodes at its file's own: ×1
+for `anima_pixel_head`, ×2 for `anima_pixel_head_x2` (stamped `scales = "2"`), ×1 for the old
+two-scale preview file. An explicit scale the file does not hold refuses at load, in both
+directions: the ×2 file has no ×1 output layer (it was trained with the ×1 loss off), and a ×1
+file has no ×2 stage. With no `--pixel_head`, `--pixel_scale 2` takes the ×2 catalog row.
+
+The ×2 file (`x2bgan2_1121_1340`) was trained against real 2× images at the base points only
+(shift-3 Euler 20 … 50 steps, σ 0.058 … 0.136), with LPIPS, a tone term and a PE-Spatial GAN
+term from rollout 1000 of 4,000; on the turbo it decodes with a warning. Against the real 2×
+image on held-out images: 29.82 / 25.52 dB, LPIPS 0.158 / 0.145 (test 12 / text 5). Records:
+`project/pixel_decoder/x2_plan.md`.
 
 ## ComfyUI
 
 The node pack `ComfyUI-Anima-PixelDecoder` (`comfyui-anima-pixel-decoder` under
 `../comfy/custom_nodes/`): **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or
 Spectrum), **Anima Pixel Decode** (tapped MODEL, the sampler's LATENT, head file) in place of VAE
-Decode; its `scale` input (1 / 2) reads a ×2 head file's 2× output. The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
+Decode; its `scale` input defaults to `auto` (the file's own scale; `1` / `2` ask for one). The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
 `pixel_head`. Run the DiT on the fp32 stream (Anima Adapter Loader `stream = fp32`), as the head
 was trained. Turbo in ComfyUI 0.43: 1.127 s per image with VAE Decode, 1.005 s with the head
 (`bench/pixel_readout/comfy_e2e.py`, `project/pixel_decoder/reports/comfy_node_2026_11_19.md`).

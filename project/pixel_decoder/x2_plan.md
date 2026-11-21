@@ -278,6 +278,39 @@ setting gives its own scale in principle: "ㅇㅋㅇㅋ 그걸 deploy plan으로
    place of the preview on the user's read, the card's Use section,
    `docs/anima/inference/pixel_head.md`.
 
+### Deployed (2026-11-21)
+
+#### Facts
+
+- The user (2026-11-21): "최근에 학습된 x2bgan2 … 의 head_x2를 sorryhyun/anima-pixel-decoder 에
+  anima_pixel_head_x2 로 올리자. 아니마 팻말 든 이미지를 리드미에 올리면 될듯? 올린 후 comfy 노드에서는
+  배포 플랜대로 동작 변경"; then "리드미에선 use를 compatibility 위에 올려놔야 할듯". The render read
+  of step 3 of "Next" was not run; the user's read of the pair sheets stands for it.
+- The head files of `…-1500-x2bgan2_1121_1340` and `…-1505-safe_x2bgan2_1121_1340` hold the
+  same tensors (the safe read rewrote the stamp). The deploy file
+  `…-1500-x2bgan2_1121_1340/anima_pixel_head_x2.safetensors` (sha256 0f99a4e7…, 106 MB): no
+  `base.norm_out` / `base.out`, stamp `scales = "2"`, `sigma`, `stream`, `run`, `init`,
+  `points`, `x2_target`, `pegan`; its ×2 output equals the source file's on a random input.
+- Library (plan items 1, 2): `drop_x1_output`, `default_scale`, `check_scale` in
+  `library/anima/pixel_head.py`; `load_pixel_head` reads `scales`; `PixelTap.decode`,
+  `--pixel_scale`, `PIXEL_SCALE=` and `GenerationRequest.pixel_scale` default to the file's
+  scale; `resolve_pixel_head_path(None, 2)` takes the new catalog row `anima_pixel_head_x2`
+  (same pack). `train_x2.py` drops the ×1 output layer at build and `save_x2_head` stamps
+  `scales`. Tests: `test_pixel_head.py`, `test_pixel_head_train.py`, `test_downloads.py`, 30 pass
+  on CPU.
+- Card renders (`inference.py`, base 28 steps CFG 4 seed 42, the ANIMA sign prompt and its
+  `monochrome, comic` variant): with `--pixel_head <deploy file>` and no `--pixel_scale` the log
+  reads `scales (2,), decoding ×2` and the image is 2048². Claude's read of the crops: colour
+  lines sharper than the VAE's bicubic ×2; on the monochrome shorts the screentone comes out as
+  a wavy pattern instead of dots (on the card under Known limits).
+- Hub `sorryhyun/anima-pixel-decoder`: `anima_pixel_head_x2.safetensors` (commit beb531f4);
+  card with Use before Compatibility, a ×2 section with the samples, the preview moved to
+  `old/anima_pixel_head_x2_preview.safetensors` (commit 96a559b7). Local copy of the card:
+  `deploy/README.md`. The catalog fetch writes the same sha256.
+- Node `~/ComfyUI-Anima-PixelDecoder` (plan item 3): `scale` = `auto` / `1` / `2`, `auto` by
+  default (the file's scale); `_vendor/pixel_head.py` from `build_pixel_vendor`; 0.3.0; README ×2
+  section. Not run inside ComfyUI.
+
 ## Next arms
 
 Claude's drafts, none queued. Micro arms on arm B's recipe, read as arm B is. Item 1 is

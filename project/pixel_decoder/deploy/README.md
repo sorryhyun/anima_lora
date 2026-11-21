@@ -9,26 +9,36 @@ tags:
 - decoder
 ---
 
-# Anima pixel head
+# Anima Pixel Decoder
 
 A 25M-parameter decoder that reads the last-layer features of the
 [Anima](https://huggingface.co/circlestone-labs/Anima) DiT at the final sampling step and
 writes RGB pixels directly, in place of the VAE decode. The head and its training follow
-FastFrames' pixel head (a ConvNeXt readout on the diffusion transformer's features).
+[FastFrames](https://arxiv.org/html/2611.23226)' pixel head (a ConvNeXt readout on the diffusion transformer's features).
 
 | | |
 |---|---|
-| File | `anima_pixel_head.safetensors` (fp32, 95 MB; shape in the file's metadata) |
-| Input | the input of the DiT's `final_layer.linear` (2048-dim per token, after the adaLN-modulated LayerNorm), CFG-combined as f_u + g·(f_c − f_u), and x_t at that step as 2×2 latent patches (64 values per token) |
-| Output | a 16×16 RGB patch per token, in [-1, 1] |
-| Architecture | linear projection of the feature + linear embedding of the x_t patch, 2 ConvNeXt blocks at token resolution (width 1024), one 2× pixel-shuffle upsample, 1 ConvNeXt block at width 512, linear to 8×8×3 per upsampled position |
-| DiT | `anima-base-v1.0` (28 blocks), fp32 residual stream |
-| Target | VAE(x̂0) of the same forward, x̂0 = x_t − σ·v |
+| Files | `anima_pixel_head.safetensors` (×1, fp32, 95 MB) and `anima_pixel_head_x2.safetensors` (×2, fp32, 101 MB); shape and scale in each file's metadata |
+| Input | the input of the DiT's `final_layer.linear` (2048-dim per token, after the adaLN-modulated LayerNorm) |
+| Output | a 16×16 RGB patch per token (×2 file: 32×32), in [-1, 1] |
+| Architecture | linear projection of the feature + linear embedding of the x_t patch, 2 ConvNeXt, one 2× pixel-shuffle upsample, 1 ConvNeXt, linear to 8×8×3 |
+| DiT | `anima-base-v1.0` (28 blocks) |
+| Target | base points: the original image, with LPIPS (weight 0.05); turbo point: VAE(x̂0) of the same forward, x̂0 = x_t − σ·v |
 
-The file also holds an unused `linear.*` tensor pair (a skip that is off in this head,
-`skip = 0` in the metadata).
 
-## Where it was trained
+## Use
+
+- ComfyUI: the [ComfyUI-Anima-PixelDecoder](https://github.com/sorryhyun/ComfyUI-Anima-PixelDecoder)
+  node pack (ComfyUI Manager: "Anima Pixel Decoder"). Put the file in `models/pixel_heads/`,
+  add **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or Spectrum) and decode
+  the sampler's LATENT with **Anima Pixel Decode** instead of VAE Decode. Its `scale = auto`
+  decodes at the file's own scale: ×1 for `anima_pixel_head`, ×2 for `anima_pixel_head_x2`.
+  Run the DiT on the fp32 stream (Anima Adapter Loader, `stream = fp32`).
+- [anima_lora](https://github.com/sorryhyun/anima_lora): `inference.py --decoder pixel_head`
+  (`make test PIXEL=1`, `make test-turbo PIXEL=1`; ×2: `make test PIXEL=1 PIXEL_SCALE=2`); the
+  module, loader and feature tap are in `library/anima/pixel_head.py`.
+
+## Compatibility
 
 Read the head only where it was trained:
 
@@ -36,20 +46,22 @@ Read the head only where it was trained:
   Spectrum included (its last step is an actual forward).
 - **Turbo**: the 4-step turbo LoRA of
   [anima-turbo-4step](https://huggingface.co/sorryhyun/anima-turbo-4step), Euler 4 steps,
-  shift 3, CFG 1 (last-step σ 0.5). The turbo point was trained with
-  `old/anima_turbo_4step.safetensors` from that repo; on v3 and v4 the head reads about
-  3 dB lower against the VAE (31.5 / 31.4 dB vs 34.6 dB, 32 generated images).
+  shift 3, CFG 1 (last-step σ 0.5). Trained on `anima_turbo_4step_v4_longer.safetensors`.
 
-Outside those settings the head still decodes; quality there is unmeasured.
+The ×2 file was trained at the base points only; on the turbo it decodes with a warning.
 
-## Measured
+The previous head is `old/anima_pixel_head.safetensors` (VAE(x̂0) target at every point, turbo
+point on that repo's `old/anima_turbo_4step.safetensors`); the ×2 preview is
+`old/anima_pixel_head_x2_preview.safetensors`.
+
+## Benchmark
+
+The benchmarks, samples and held-out reads below were measured on the previous head
+(`old/anima_pixel_head.safetensors`).
 
 ### In ComfyUI
 
-Turbo 4 steps, CFG 1, RTX 5070 Ti, 16 prompts at ~1 MP, one seed, in ComfyUI 0.43.0 (dynamic
-VRAM, PyTorch attention); medians. Workflow: Load Diffusion Model → Anima Adapter Loader (turbo LoRA, fp32 stream) →
-Anima Block Compile → KSampler (euler, simple, 4 steps, CFG 1) → VAE Decode; the head column adds
-Anima Pixel Head Tap before the KSampler and uses Anima Pixel Decode in place of VAE Decode.
+Turbo 4 steps, CFG 1, RTX 5070 Ti, 16 prompts at ~1 MP, one seed
 
 | | KSampler + VAE Decode | KSampler + Anima Pixel Decode |
 |---|---|---|
@@ -70,16 +82,12 @@ card for the decode.
 | | turbo + VAE | turbo + pixel head |
 |---|---|---|
 | DiT sampling | 0.97 s | 0.97 s |
+| load VAE | 710 ms | — |
 | VAE move to the card and back | 35 ms | — |
 | decode | 141 ms | 7 ms |
 | decode peak VRAM above the DiT | 1.38 GB | 0.24 GB |
-| PSNR against the VAE decode | — | 35.4 dB |
-| **total per image (DiT + decode)** | **1.15 s** | **0.98 s (1.17×)** |
+| **total per image (DiT + decode)** | **1.86 s** | **0.98 s** |
 
-The move row is the moved-VAE path (176 ms) minus a decode with the VAE already on the card
-(141 ms). Loading the VAE from disk per image instead costs ~710 ms (851 ms with the decode,
-total 1.82 s); keeping it on the card saves the move (total 1.11 s, 1.30 GB). Text encoding
-(~0.3 s per prompt) is outside the totals.
 
 ## Samples
 
@@ -93,17 +101,43 @@ x 192–576, y 512–896.
 
 | | VAE Decode | pixel head |
 |---|---|---|
-| colour, 37.3 dB | ![colour, VAE](samples/color_vae.png) | ![colour, pixel head](samples/color_head.png) |
+| colour| ![colour, VAE](samples/color_vae.png) | ![colour, pixel head](samples/color_head.png) |
 | crop | ![colour crop, VAE](samples/color_vae_crop.png) | ![colour crop, pixel head](samples/color_head_crop.png) |
-| monochrome, comic, 31.1 dB | ![mono, VAE](samples/mono_vae.png) | ![mono, pixel head](samples/mono_head.png) |
+| monochrome | ![mono, VAE](samples/mono_vae.png) | ![mono, pixel head](samples/mono_head.png) |
 | crop | ![mono crop, VAE](samples/mono_vae_crop.png) | ![mono crop, pixel head](samples/mono_head_crop.png) |
 
 On the monochrome crop the VAE keeps the screentone dots on the shorts; the head renders them as
 flat grey (see Known limits).
 
+## ×2 output
+
+`anima_pixel_head_x2.safetensors` decodes and upscales 2× in one readout: the ×1 head plus a
+second 2× stage (pixel shuffle, 2 ConvNeXt blocks at width 256, linear to 8×8×3 per position), so
+a 1024² render leaves the head at 2048². The file has no ×1 output and decodes at ×2 only.
+Trained against real 2× images at the base points, with LPIPS, a tone term and a GAN term on
+PE-Spatial features. Head time ~12 ms per image against ~3.2 s for VAE Decode → a ResShift ×2
+upscaler.
+
+Held-out against the real 2× image (one seed): 29.82 dB / LPIPS 0.158 on 12 test images,
+25.52 dB / LPIPS 0.145 on 5 text images.
+
+Base DiT, Euler 28 steps, shift 3, CFG 4, seed 42, 1024×1024, the prompts of the samples above,
+through anima_lora's `inference.py`; left VAE Decode (1024²), right the ×2 head (2048²). Crops:
+left 384×384 of the VAE decode, bicubic to 768×768; right the same region of the ×2 output at
+native resolution.
+
+| | VAE Decode | ×2 head |
+|---|---|---|
+| colour | ![colour, VAE](samples/x2_color_vae.png) | ![colour, ×2 head](samples/x2_color_head.png) |
+| crop | ![colour crop, VAE bicubic ×2](samples/x2_color_vae_crop.png) | ![colour crop, ×2 head](samples/x2_color_head_crop.png) |
+| monochrome | ![mono, VAE](samples/x2_mono_vae.png) | ![mono, ×2 head](samples/x2_mono_head.png) |
+| crop | ![mono crop, VAE bicubic ×2](samples/x2_mono_vae_crop.png) | ![mono crop, ×2 head](samples/x2_mono_head_crop.png) |
+
+On the monochrome crop the ×2 head turns the screentone on the shorts into a wavy pattern.
+
 ## Held-out reads
 
-Held-out reads during training (dB, colour / mono):
+Held-out reads during training, ×1 (dB, colour / mono):
 
 | decode point | colour | mono |
 |---|---|---|
@@ -119,18 +153,8 @@ Held-out reads during training (dB, colour / mono):
   dense hatching) come out about 1 – 2.5 levels darker than the VAE in linear light.
   The lowest per-image PSNRs are manga pages and sketches (turbo 28.7 – 30.9 dB).
 - Speed lines and footnote-size glyphs are slightly soft under zoom.
-- One trained head, one seed; no run spread.
-
-## Use
-
-- ComfyUI: the [ComfyUI-Anima-PixelDecoder](https://github.com/sorryhyun/ComfyUI-Anima-PixelDecoder)
-  node pack (ComfyUI Manager: "Anima Pixel Decoder"). Put this file in `models/pixel_heads/`,
-  add **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or Spectrum) and decode
-  the sampler's LATENT with **Anima Pixel Decode** instead of VAE Decode. Run the DiT on the
-  fp32 stream (Anima Adapter Loader, `stream = fp32`).
-- [anima_lora](https://github.com/sorryhyun/anima_lora): `inference.py --decoder pixel_head`
-  (`make test PIXEL=1`, `make test-turbo PIXEL=1`); the module, loader and feature tap are in
-  `library/anima/pixel_head.py`.
+- ×2: screentone comes out as a wavy pattern instead of dots (see the monochrome crop).
+- One trained head per file, one seed; no run spread.
 
 ## License
 

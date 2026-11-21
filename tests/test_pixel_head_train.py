@@ -145,6 +145,22 @@ def test_save_load_round_trip(tmp_path):
         assert torch.equal(back(f, lat, 2), head(f, lat, 2))
 
 
+def test_save_without_x1_output(tmp_path):
+    from library.anima.pixel_head import drop_x1_output, head_scales
+
+    head = drop_x1_output(_head().eval())
+    path = tmp_path / "head_x2.safetensors"
+    save_x2_head(head, path, {"sigma": "0.0577-0.1364"})
+    back = load_pixel_head(path)
+    assert back.meta["scales"] == "2" and head_scales(back) == (2,)
+    assert not any(
+        k.startswith(("base.out.", "base.norm_out.")) for k in back.state_dict()
+    )
+    f, lat = torch.randn(3, 4, D_FEAT), torch.randn(3, 4, 64)
+    with torch.no_grad():
+        assert torch.equal(back(f, lat, 2), head(f, lat, 2))
+
+
 def test_load_x2flex(tmp_path):
     npz = tmp_path / "a_1024x768_anima.npz"
     npz.touch()

@@ -35,7 +35,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from library.anima.pixel_head import PATCH, PixelHeadX2, lat_patches
+from library.anima.pixel_head import PATCH, PixelHeadX2, head_scales, lat_patches
 
 # --------------------------------------------------------------------------- data
 
@@ -637,7 +637,9 @@ def pair_sheet(cols, path: Path, at: tuple[int, int, int] | None = None) -> None
 
 def save_x2_head(head: PixelHeadX2, path: str | Path, stamp: dict[str, str]) -> None:
     """Write the head with the shape metadata ``load_pixel_head`` reads, plus ``stamp``
-    (``sigma`` = the trained decode range, and whatever names the run)."""
+    (``sigma`` = the trained decode range, and whatever names the run). A head without
+    its ×1 output layer (:func:`~library.anima.pixel_head.drop_x1_output`) is stamped
+    ``scales = "2"``."""
     from safetensors.torch import save_file
 
     b = head.base
@@ -647,6 +649,7 @@ def save_x2_head(head: PixelHeadX2, path: str | Path, stamp: dict[str, str]) -> 
         "up": str(b.up),
         "skip": "0",
         "x2_depth": str(len(head.up2_blocks)),
+        "scales": ",".join(str(v) for v in head_scales(head)),
         **{k: str(v) for k, v in stamp.items()},
     }
     save_file(

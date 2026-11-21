@@ -12,6 +12,9 @@ from library.anima.pixel_head import (
     PixelHead,
     PixelHeadX2,
     PixelTap,
+    check_scale,
+    default_scale,
+    drop_x1_output,
     head_scales,
     lat_patches,
     load_pixel_head,
@@ -155,6 +158,36 @@ def test_tap_decode_x2_and_x1_refusal(tmp_path):
         tap.decode(x1_head, 1.0, scale=2)
 
 
+def test_x2_only_file_decides_scale(tmp_path):
+    """A file stamped scales = 2 has no ×1 output layer, decodes at 2 by default and
+    refuses 1; a two-scale file defaults to 1; a ×1 file refuses 2."""
+    head, _ = _x2_file(tmp_path)
+    drop_x1_output(head)
+    assert not hasattr(head.base, "out") and not hasattr(head.base, "norm_out")
+    path = tmp_path / "head_x2_only.safetensors"
+    meta = {"width": "16", "depth": "3", "up": "1", "skip": "0", "x2_depth": "2"}
+    save_file(
+        {k: v.contiguous() for k, v in head.state_dict().items()},
+        str(path),
+        {**meta, "scales": "2"},
+    )
+    loaded = load_pixel_head(path)
+    assert head_scales(loaded) == (2,) and default_scale(loaded) == 2
+    dit = _ToyDiT()
+    tap = PixelTap(dit)
+    x = torch.randn(2, 16, 1, 8, 6)  # 4×3 tokens
+    dit(x, torch.tensor([0.1, 0.1]), feature=torch.randn(2, 1, 4, 3, D_FEAT))
+    assert tap.decode(loaded, 1.0).shape == (2, 3, 128, 96)
+    with pytest.raises(ValueError, match="no ×1 output"):
+        tap.decode(loaded, 1.0, scale=1)
+    two = load_pixel_head(_x2_file(tmp_path)[1])
+    assert default_scale(two) == 1
+    assert tap.decode(two, 1.0).shape == (2, 3, 64, 48)
+    assert default_scale(_head(up=1)) == 1
+    with pytest.raises(ValueError, match="×2 head file"):
+        check_scale(_head(up=1), 2)
+
+
 def test_sigma_ranges():
     assert parse_sigma_ranges("") == DEFAULT_SIGMA_RANGES
     assert not out_of_range(0.1)  # base 28 steps
@@ -172,3 +205,6 @@ def test_catalog_row():
         downloads.default_pixel_head_path()
         == asset.dest / downloads.ANIMA_PIXEL_HEAD_FILE
     )
+    x2 = downloads.by_id()["anima_pixel_head_x2"]
+    assert x2.files == (downloads.ANIMA_PIXEL_HEAD_X2_FILE,)
+    assert x2.repo == asset.repo and x2.dest == asset.dest

@@ -72,7 +72,7 @@ class GenerationRequest:
     vae: Optional[str] = None
     # ``pixel_head`` decodes with the pixel head (library.anima.pixel_head) instead
     # of the VAE; ``pixel_head`` names the file (default: the catalog row);
-    # ``pixel_scale`` 2 reads a ×2 head file's 2× output.
+    # ``pixel_scale``: None decodes at the file's own scale; 2 reads a ×2 file's output.
     decoder: Optional[str] = None  # ``vae`` | ``pixel_head``
     pixel_head: Optional[str] = None
     pixel_scale: Optional[int] = None  # 1 | 2

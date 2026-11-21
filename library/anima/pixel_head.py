@@ -12,7 +12,9 @@ Pieces:
 - :class:`PixelHead` / :func:`load_pixel_head` — the module and a loader that reads the
   shape from the file's metadata (``width``, ``depth``, ``up``, ``skip``).
 - :class:`PixelHeadX2` — a ``PixelHead`` plus a second 2× stage (files stamped
-  ``x2_depth``): one file decodes at ×1 and ×2 (32×32 output pixels per token).
+  ``x2_depth``, 32×32 output pixels per token). The file decides its scales: stamped
+  ``scales = "2"`` it holds no ×1 output layer and decodes at ×2 only; unstamped (the
+  preview file) it decodes at ×1 and ×2. :func:`default_scale` is the file's own.
 - :class:`PixelTap` — forward hooks on a built DiT that keep the last actual forward's
   (σ, x_t, feature) per CFG branch; :meth:`PixelTap.decode` runs the head on them.
 - :func:`out_of_range` — whether a decode point lies outside the σ ranges the head was
@@ -155,8 +157,9 @@ class PixelHeadX2(nn.Module):
     The second stage: LayerNorm + per-position linear ``w`` → 4 × ``width2``, pixel
     shuffle, ``depth2`` ConvNeXt blocks at 4-px spacing, and a linear writing an 8×8 RGB
     patch per position, i.e. 32×32 output pixels per DiT token. The ×1 output is the base
-    head's, so one file decodes at either scale. ``forward(…, scale=1 | 2)`` runs only the
-    stages that scale needs; ``scale=None`` returns both (training)."""
+    head's. ``scales=(2,)`` drops it (``base.norm_out`` / ``base.out``): a file trained
+    with the ×1 loss off carries no usable ×1 output. ``forward(…, scale=1 | 2)`` runs only
+    the stages that scale needs; ``scale=None`` returns both (training, two-scale heads)."""
 
     def __init__(
         self,
@@ -164,11 +167,12 @@ class PixelHeadX2(nn.Module):
         depth2: int = 2,
         ls_init: float = 1.0,
         width2: int | None = None,
+        scales: tuple[int, ...] = (1, 2),
     ):
         super().__init__()
         assert base.up and not base.use_skip, "base head: one upsample stage, no skip"
         self.base = base
-        w = base.out.in_features
+        w = base.up_proj.out_features // 4
         w2 = width2 or w // 2
         self.patch2 = base.patch  # 8 output px per 4-px position = 2× the base
         self.up2_norm = nn.LayerNorm(w, eps=1e-6)
@@ -178,6 +182,11 @@ class PixelHeadX2(nn.Module):
         )
         self.norm2 = nn.LayerNorm(w2, eps=1e-6)
         self.out2 = nn.Linear(w2, self.patch2 * self.patch2 * 3)
+        self.scales = (1, 2)
+        if tuple(scales) == (2,):
+            drop_x1_output(self)
+        elif tuple(scales) != (1, 2):
+            raise ValueError(f"PixelHeadX2: scales {scales}; (1, 2) or (2,)")
 
     @staticmethod
     def _unpatch(tok: torch.Tensor, p: int) -> torch.Tensor:
@@ -196,6 +205,8 @@ class PixelHeadX2(nn.Module):
             h = blk(h)
         x1 = x2 = None
         if scale != 2:
+            if 1 not in self.scales:
+                raise ValueError("pixel head: this ×2 file has no ×1 output (scales 2)")
             h1 = b.norm_out(h[0].permute(1, 2, 0))
             with torch.autocast(h.device.type, enabled=False):  # output layer in fp32
                 x1 = self._unpatch(b.out(h1.float()), b.patch)
@@ -211,9 +222,41 @@ class PixelHeadX2(nn.Module):
         return x2 if scale == 2 else (x1, x2)
 
 
+def drop_x1_output(head: PixelHeadX2) -> PixelHeadX2:
+    """Remove the ×1 output layer (``base.norm_out`` / ``base.out``) in place: the head
+    decodes at ×2 only and its file is stamped ``scales = "2"``."""
+    for name in ("norm_out", "out"):
+        if hasattr(head.base, name):
+            delattr(head.base, name)
+    head.scales = (2,)
+    return head
+
+
 def head_scales(head: nn.Module) -> tuple[int, ...]:
-    """The output scales a loaded head can decode: (1,) or (1, 2)."""
-    return (1, 2) if isinstance(head, PixelHeadX2) else (1,)
+    """The output scales a loaded head can decode: (1,), (1, 2) or (2,)."""
+    if isinstance(head, PixelHeadX2):
+        return tuple(getattr(head, "scales", (1, 2)))
+    return (1,)
+
+
+def default_scale(head: nn.Module) -> int:
+    """The scale a head decodes at when none is asked for: its only one, 1 for a
+    two-scale file."""
+    return min(head_scales(head))
+
+
+def check_scale(head: nn.Module, scale: int | None, name: str = "pixel head") -> int:
+    """``scale`` (``None`` → the file's default) if the head holds it, else ValueError."""
+    have = head_scales(head)
+    if scale is None:
+        return default_scale(head)
+    if scale not in have:
+        if scale == 2:
+            why = "needs a ×2 head file (stamped x2_depth); this file has the ×1 output only"
+        else:
+            why = "this ×2 file has no ×1 output (stamped scales = 2); use the ×1 file"
+        raise ValueError(f"{name}: scale {scale} {why}")
+    return scale
 
 
 def parse_sigma_ranges(stamp: str | None) -> tuple[tuple[float, float], ...]:
@@ -233,7 +276,8 @@ def load_pixel_head(
     """A trained head from a ``.safetensors`` file, shape from its metadata.
 
     A file stamped ``x2_depth`` (keys ``base.*``, ``up2_*``, ``out2.*``) loads as a
-    :class:`PixelHeadX2`, which decodes at ×1 and ×2; any other as a :class:`PixelHead`.
+    :class:`PixelHeadX2`: at ×2 only when also stamped ``scales = "2"`` (no ×1 output
+    layer in the file), else at ×1 and ×2; any other file as a :class:`PixelHead`.
     ``d_feat`` defaults to the stored ``proj.weight``'s input width (2048 on Anima). The
     trained σ ranges ride along as ``head.sigma_ranges``, the rest of the stamp as
     ``head.meta``."""
@@ -259,7 +303,8 @@ def load_pixel_head(
         up=int(meta.get("up", "0")),
     )
     if x2:
-        head = PixelHeadX2(head, int(meta["x2_depth"]), width2=width2)
+        scales = tuple(int(v) for v in meta.get("scales", "1,2").split(","))
+        head = PixelHeadX2(head, int(meta["x2_depth"]), width2=width2, scales=scales)
     head.load_state_dict(load_file(str(path)))
     head.sigma_ranges = parse_sigma_ranges(meta.get("sigma"))
     head.meta = dict(meta)
@@ -273,18 +318,21 @@ def default_pixel_head_path() -> Path:
     return downloads.default_pixel_head_path()
 
 
-def resolve_pixel_head_path(path: str | None) -> Path:
-    """An explicit path, or the catalog default (fetched from the Hub on first use)."""
+def resolve_pixel_head_path(path: str | None, scale: int | None = None) -> Path:
+    """An explicit path, or the catalog file for ``scale`` (``anima_pixel_head_x2`` at
+    2, else ``anima_pixel_head``; fetched from the Hub on first use)."""
     from library import downloads
     from library.env import resolve_under_home
 
     if path:
         return Path(resolve_under_home(path))
-    asset = downloads.by_id()["anima_pixel_head"]
+    asset = downloads.by_id()[
+        "anima_pixel_head_x2" if scale == 2 else "anima_pixel_head"
+    ]
     if not asset.installed:
         logger.info(f"pixel head: fetching {asset.repo} -> {asset.dest}")
         downloads.fetch(asset, log=logger.info)
-    return downloads.default_pixel_head_path()
+    return asset.dest / asset.files[0]
 
 
 def out_of_range(
@@ -360,15 +408,15 @@ class PixelTap:
 
     @torch.no_grad()
     def decode(
-        self, head: PixelHead | PixelHeadX2, guidance_scale: float, scale: int = 1
+        self,
+        head: PixelHead | PixelHeadX2,
+        guidance_scale: float,
+        scale: int | None = None,
     ) -> torch.Tensor:
         """Pixels (B, 3, scale·H, scale·W) fp32 on the head's device, clamped to
-        [-1, 1]. ``scale=2`` needs a ×2 head file (:class:`PixelHeadX2`)."""
-        if scale not in head_scales(head):
-            raise ValueError(
-                f"pixel head: scale {scale} needs a ×2 head file (stamped x2_depth); "
-                "this file has the ×1 output only"
-            )
+        [-1, 1]. ``scale=None`` decodes at the file's own (:func:`default_scale`); a scale
+        the file does not hold raises."""
+        scale = check_scale(head, scale)
         if isinstance(head, PixelHeadX2):
             fwd = lambda f, lat: head(f, lat, scale=scale)  # noqa: E731
         else:

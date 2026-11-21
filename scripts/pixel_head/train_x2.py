@@ -113,6 +113,7 @@ def run(req: X2TrainRequest) -> Path:
     from library.anima.pixel_head import (
         PATCH,
         PixelHeadX2,
+        drop_x1_output,
         load_pixel_head,
         resolve_pixel_head_path,
     )
@@ -190,6 +191,8 @@ def run(req: X2TrainRequest) -> Path:
         base = load_pixel_head(src, device, anima.final_layer.hidden_size)
         assert not isinstance(base, PixelHeadX2), f"--init {src}: a ×1 head file"
         head = PixelHeadX2(base, req.depth2).to(device)
+    # the ×1 loss is off in this recipe: the file carries no ×1 output (scales = 2)
+    drop_x1_output(head)
     head.train()
     print(
         f"head {sum(q.numel() for q in head.parameters()) / 1e6:.1f}M params from {src}",

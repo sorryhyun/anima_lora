@@ -65,6 +65,8 @@ ANIMA_DIT_INT8_FILE = "anima-base-v1.0_int8_gptq.safetensors"
 # (``library/anima/pixel_head.py``, ``inference.py --decoder pixel_head``).
 ANIMA_PIXEL_HEAD_REPO = "sorryhyun/anima-pixel-decoder"
 ANIMA_PIXEL_HEAD_FILE = "anima_pixel_head.safetensors"
+# The ×2 file (``--pixel_scale 2``): decodes and 2× upscales in one readout, no ×1 output.
+ANIMA_PIXEL_HEAD_X2_FILE = "anima_pixel_head_x2.safetensors"
 
 # PE-Core-L14-336 — global/CLIP-aligned vision features (CMMD validation
 # only). PE-Spatial, the REPA/grouping tower, is the package's row.
@@ -173,8 +175,9 @@ TRAINER_PACKS: tuple[Pack, ...] = (
     Pack(
         "anima-pixel-head",
         "Anima pixel head",
-        "A ~95 MB decoder that turns the DiT's last-step features into the image "
-        "in place of the VAE, for --decoder pixel_head: fetched on first use.",
+        "Decoders (~95 MB each, ×1 and ×2) that turn the DiT's last-step features "
+        "into the image in place of the VAE, for --decoder pixel_head: fetched on "
+        "first use.",
     ),
     Pack(
         "pe",
@@ -460,6 +463,18 @@ def anima_catalog() -> tuple[Asset, ...]:
             notes="~95 MB. Reads the DiT's last-step features and writes RGB in "
             "place of the VAE decode; trained on the base DiT at shift-3 Euler "
             "20-50 steps and the 4-step turbo LoRA. Fetched on first use.",
+        ),
+        Asset(
+            id="anima_pixel_head_x2",
+            pack="anima-pixel-head",
+            title="Anima pixel head ×2 (decoder + 2× upscale)",
+            repo=ANIMA_PIXEL_HEAD_REPO,
+            files=(ANIMA_PIXEL_HEAD_X2_FILE,),
+            dest=models_dir() / kind_dir("vae"),
+            used_by="inference.py --decoder pixel_head --pixel_scale 2 (PIXEL=1 PIXEL_SCALE=2)",
+            notes="~100 MB. The ×1 head plus a second 2× stage: one readout writes the "
+            "image at twice the latent's pixel size; no ×1 output. Trained on the base "
+            "DiT at shift-3 Euler 20-50 steps only. Fetched on first use.",
         ),
         Asset(
             id="pe_core",
