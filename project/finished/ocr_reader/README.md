@@ -84,7 +84,7 @@ Labelling next: the Korean set (`probes/ko_label_review.py` → `apply_ko_review
 Interpretation (notes on the table): v4's mean token logprob ranks well on K3 (P1 relabel
 row). Hito JA sits far more confident than the sincos SFX (P1b row).
 
-Plan and gates: [`roadmap.md`](roadmap.md).
+Current plan (`OCR:` main / `OCR2:` sub): [`main-sub-approach.md`](main-sub-approach.md). The P0–P3 roadmap is in git history.
 
 ## The gate — sincos 597
 

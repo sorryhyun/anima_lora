@@ -17,13 +17,13 @@ exported as the ``sub`` column (``-`` = removed). ``furigana`` (``--ruby``,
 ``furigana_find.py``): speech crops with ruby groups found, the sub box prefilled with the
 groups read as kana.
 
-``mainsub_sfx_wide`` / ``mainsub_det`` / ``mainsub_speech`` (``--mainsub``, ``m109_mainsub.py``):
-Manga109 crops with the box holding the proposed ``OCR:`` main (the largest text) and the
-sub box the proposed ``OCR2:`` sub (the other annotated text in the crop); the meta line
-lists each item's glyph size and the text only partly inside the crop (type what is
-visible into the sub). Every row with a sub or partly visible text is listed, plus
-``--mainsub_main_n`` seeded main-only rows per source. An emptied main box is a crop with
-only sub text. The header's ``has`` filter (any source) lists rows by what their boxes
+``mainsub_det`` / ``mainsub_speech`` / ``mainsub_missed`` (``--mainsub``, ``m109_mainsub.py``):
+every Manga109 training crop, the box holding the proposed ``OCR:`` main (the largest text),
+the sub box the proposed ``OCR2:`` sub (the other annotated text in the crop; on a speech
+crop with ruby groups, the furigana source's reads first, and that row's sub edits carry
+over). The meta line lists each item's glyph size and the text only partly inside the
+crop (type what is visible into the sub). An emptied main box is a crop with only sub text.
+Rules: ``main-sub-approach.md``. The header's ``has`` filter (any source) lists rows by what their boxes
 hold now: main only, sub only, both, or partly visible text.
 ``apply_ko_review.py`` writes these rows to ``assets/m109_mainsub.tsv``.
 
@@ -68,7 +68,6 @@ import re
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
@@ -168,7 +167,10 @@ const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
                       "linebreak_suspicious": "sus", "odd_dots": "sus", "furigana": "sus", "doujin_sfx": "__DOUJIN_SORT__",
-                      "mainsub_sfx_wide": "sus", "mainsub_det": "sus", "mainsub_speech": "sus"};
+                      "mainsub_det": "sus", "mainsub_speech": "sus", "mainsub_missed": "sus"};
+// mainsub rows carry paths relative to the Manga109 folder
+const M109 = __M109__;
+const url = (p) => !p || p.includes(":") ? p : M109 + p;
 const PER = 50;
 const KEY = "ko_label_review_v1";
 let store = {};
@@ -181,7 +183,8 @@ try { subs = JSON.parse(localStorage.getItem(KEY + ":sub") || "{}"); } catch (e)
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store));
   localStorage.setItem(KEY + ":sfx", JSON.stringify(marks));
   localStorage.setItem(KEY + ":sub", JSON.stringify(subs)); } catch (e) {} };
-const subOf = (key, x) => key in subs ? subs[key] : (x.sub || "");
+// a mainsub speech row falls back to its furigana row's sub box (fk) before the proposal
+const subOf = (key, x) => key in subs ? subs[key] : (x.fk && x.fk in subs ? subs[x.fk] : (x.sub || ""));
 const $ = (id) => document.getElementById(id);
 // a read from the reader's SFX: pass checks the row's SFX box once; an uncheck is kept as 0
 (() => {
@@ -267,16 +270,16 @@ function render() {
     const d = document.createElement("div");
     if (x.ro) {  // reference row: crop, label, page link only
       d.className = "row";
-      d.innerHTML = `<div class="crop"><img loading="lazy" src="${x.img}"></div>
-        <div><div class="meta">${esc(x.id)}${x.page ? ` · <a href="${x.page}" target="_blank">page</a>` : ""}
+      d.innerHTML = `<div class="crop"><img loading="lazy" src="${url(x.img)}"></div>
+        <div><div class="meta">${esc(x.id)}${x.page ? ` · <a href="${url(x.page)}" target="_blank">page</a>` : ""}
           box ${x.box.join(",")}</div><div class="orig" style="font-size:17px">${esc(x.text)}</div></div>`;
       list.appendChild(d); continue;
     }
     d.className = "row" + (v ? " " + v.status : "");
-    d.innerHTML = `<div class="crop"><img loading="lazy" src="${x.img}"></div>
+    d.innerHTML = `<div class="crop"><img loading="lazy" src="${url(x.img)}"></div>
       <div><div class="meta">${esc(x.id)}${x.status ? " · " + x.status : ""} · run ${x.run}
         · sus ${x.sus.toFixed(1)}${x.why ? " (" + esc(x.why) + ")" : ""}${x.lp != null ? " · logprob " + x.lp.toFixed(3) : ""}
-        ${x.page ? `· <a href="${x.page}" target="_blank">page</a>` : ""} box ${x.box.join(",")}</div>
+        ${x.page ? `· <a href="${url(x.page)}" target="_blank">page</a>` : ""} box ${x.box.join(",")}</div>
       <div class="orig">${marked(x.text, +minIn.value || 0)}</div>
       ${x.note ? `<div class="meta">${esc(x.note)}</div>` : ""}
       ${x.rd != null ? `<div class="meta">__READER__${x.rsfx ? " SFX:" : ""} (${x.conf.toFixed(2)})${x.rwhy ? " [" + x.rwhy + "]" : ""}: ${esc(x.rd || "—").replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
@@ -340,7 +343,7 @@ $("export").onclick = () => {
     // sub column: the row's sub when the reviewer touched it ("-" = removed); a reviewed
     // row whose sub box shows the proposal untouched exports the proposal; else empty
     const sb = k in subs ? (subs[k].trim() ? subs[k].replace(/\\n/g, "\n") : "-")
-             : (store[k] && store[k].status !== "drop" && x.sub ? x.sub : "");
+             : (store[k] && store[k].status !== "drop" ? subOf(k, x) : "");
     const q = t => (t == null ? "" : t).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\n/g, "\\n");
     // a typed "\\n" counts as a line break, same as Enter
     const nt = v.status === "edit" ? v.text.replace(/\\n/g, "\n") : "";
@@ -715,25 +718,26 @@ def doujin_rows(reads_path: Path | None) -> dict[str, list[dict]]:
 
 
 def mainsub_rows(
-    d: Path, path: Path | None, main_n: int, seed: int = 0
+    d: Path, path: Path | None, ruby: list[dict] | None = None
 ) -> dict[str, list[dict]]:
-    """``m109_mainsub.py``'s crops, one source each: every row with a proposed sub or
-    partly visible text, plus ``main_n`` seeded main-only rows. ``sus`` puts partly
-    visible text and a main that moved off the crop's label first."""
+    """``m109_mainsub.py``'s crops, one source each, every row. A speech crop the
+    furigana source holds takes its ruby reads (the agent's where it reviewed the row) as
+    the head of its sub proposal, and ``fk`` points the page at that row's sub box state.
+    Image and page paths are relative to the Manga109 folder (``__M109__`` on the page).
+    ``sus`` puts partly visible text, then a main that moved off the crop's label, first."""
     if path is None or not path.exists():
         return {}
+    base = d.parent
+    rel = lambda p: os.path.relpath(p, base)  # noqa: E731
+    rb = {r["id"]: r for r in ruby or []}
     by: dict[str, list[dict]] = {}
     for line in open(path, encoding="utf-8"):
         x = json.loads(line)
         by.setdefault(x["source"], []).append(x)
-    rng = np.random.default_rng(seed)
     out = {}
     for src, xs in by.items():
-        cand = [x for x in xs if x["sub"] or x["part"]]
-        rest = [x for x in xs if not (x["sub"] or x["part"])]
-        pick = rng.permutation(len(rest))[: min(main_n, len(rest))]
-        rows = []
-        for x in cand + [rest[i] for i in sorted(pick)]:
+        rows, n_rb = [], 0
+        for x in xs:
             moved = x["main"] != x["label"]
             items = " | ".join(
                 f"{i['k']} {i['t']} (g {i['g']:.0f})".replace("\n", " ⏎ ")
@@ -743,35 +747,44 @@ def mainsub_rows(
                 f"{p['k']} {p['t']} ({p['f']:.0%})".replace("\n", " ⏎ ")
                 for p in x["part"]
             )
-            note = f"in crop: {items}"
+            note = f"in crop: {items or '—'}"
             if part:
                 note += f" · partly visible: {part}"
             if moved:
-                note += f" · label now: {x['label']}".replace("\n", " ⏎ ")
-            page = m109.page_path(x["book"], int(x["page"]))
+                lab = x["label"] or "(SFX: negative)"
+                note += f" · label now: {lab}".replace("\n", " ⏎ ")
+            sub, extra = x["sub"], {}
+            r = rb.get(x["id"]) if src == "mainsub_speech" else None
+            if r is not None and r["sub"]:
+                sub = "\n".join(t for t in (r["sub"], sub) if t)
+                note = f"ruby {r['note']} · {note}"
+                extra["fk"] = "furigana:" + x["id"]
+                n_rb += 1
             rows.append(
                 dict(
                     id=x["id"],
                     text=x["main"],
                     run=0,
-                    sus=2.0 * len(x["part"]) + 1.0 * moved + 0.5 * bool(x["sub"]),
+                    sus=2.0 * len(x["part"]) + 1.0 * moved + 0.5 * bool(sub),
                     why=f"{len(x['items'])} in crop, {len(x['part'])} partly",
                     lf=int("\n" in x["main"]),
                     len=len(x["main"]),
                     status=f"{x['split']} · {x['cat']}",
                     note=note,
-                    sub=x["sub"],
+                    sub=sub,
                     part=len(x["part"]),
                     ms=1,
-                    img=(d / x["path"]).as_uri(),
-                    page=page.as_uri() if page.exists() else "",
+                    img=rel(d / x["path"]),
+                    page=rel(m109.page_path(x["book"], int(x["page"]))),
                     box=x["box"],
+                    **extra,
                 )
             )
         out[src] = rows
         print(
-            f"[review] {src}: {len(rows)} rows ({len(cand)} with sub / partly "
-            f"visible text, {len(pick)} main-only of {len(rest)})",
+            f"[review] {src}: {len(rows)} rows "
+            f"({sum(bool(r['sub']) for r in rows)} with a sub proposal, {n_rb} from ruby; "
+            f"{sum(r['part'] > 0 for r in rows)} with partly visible text)",
             flush=True,
         )
     return out
@@ -854,14 +867,7 @@ def main():
         "--mainsub",
         type=Path,
         help="m109_mainsub.py's output/ocr/mainsub/m109_mainsub.jsonl: the Manga109 "
-        "main / sub sources (mainsub_sfx_wide, mainsub_det, mainsub_speech)",
-    )
-    ap.add_argument(
-        "--mainsub_main_n",
-        type=int,
-        default=2000,
-        help="seeded main-only rows per --mainsub source (rows with a sub or partly "
-        "visible text are all listed)",
+        "main / sub sources (mainsub_det, mainsub_speech, mainsub_missed)",
     )
     a = ap.parse_args()
     d = m109.derived_root()
@@ -922,12 +928,13 @@ def main():
     data.update(linebreak_rows(d))
     data.update(furigana_rows(d, a.ruby, a.ruby_fix))
     data.update(doujin_rows(a.doujin_reads))
-    data.update(mainsub_rows(d, a.mainsub, a.mainsub_main_n))
+    data.update(mainsub_rows(d, a.mainsub, data.get("furigana")))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     a.out.mkdir(parents=True, exist_ok=True)
     html = (
         PAGE.replace("__READER__", reader)
+        .replace("__M109__", json.dumps(d.parent.as_uri() + "/"))
         .replace("__DOUJIN_SORT__", "dis" if a.doujin_reads else "sus")
         .replace("__DATA__", json.dumps(data, ensure_ascii=False))
         .replace("__MINRUN__", json.dumps({s: a.min_run for s in data}))

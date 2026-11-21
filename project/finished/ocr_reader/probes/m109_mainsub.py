@@ -2,8 +2,8 @@
 """Manga109 crops as ``OCR:`` main / ``OCR2:`` sub proposals, for the review page
 (``ko_label_review.py --mainsub``).
 
-Every crop is a quad in page coordinates (an axis-aligned box for the 4 px ``sfxp``
-crops, ``pilot.deskew_crop``'s rotated rect for the 12 % grey crops). Each COO polygon and
+Every crop is a quad in page coordinates (an axis-aligned box for the detector and speech
+crops, ``pilot.deskew_crop``'s rotated rect for the missed polygons). Each COO polygon and
 ``<text>`` box on the page is scored by the share of its convex hull inside that quad:
 
 * ``≥ 0.8`` — in the crop (``items``): ``main`` = the item with the largest glyph
@@ -19,14 +19,15 @@ speech item's text comes from ``manifest_sfxp_speech`` when that row exists, a d
 whose main is all its SFX keeps ``sfx_text``. Unannotated text (signs, titles, ruby
 outside a ``<text>`` box) is invisible here; the page's eye catches it.
 
-Sources (train split by default):
+Sources: every Manga109 crop the two-prompt mix trains on (``crop_dataset.load_sfxp``),
+train split by default:
 
-* ``mainsub_sfx_wide`` — ``manifest.parquet``'s COO crops (12 % margin, deskewed: the
-  ``m109_sfx`` reference crops);
-* ``mainsub_det`` — ``manifest_sfxp_det_clean``'s ``pos`` / ``pos_mixed`` crops (the
-  ``SFX:`` training crops);
-* ``mainsub_speech`` — ``manifest_sfxp_speech``'s ``sfxp_speech`` crops (the ``OCR:``
-  training crops).
+* ``mainsub_det`` — ``manifest_sfxp_det_clean``'s written crops: ``pos`` / ``pos_mixed``
+  (the ``SFX:`` rows) and ``neg_speech`` (the ``SFX:`` negative pool; its main is the
+  speech, or empty when every speech box is cut);
+* ``mainsub_speech`` — ``manifest_sfxp_speech`` (``sfxp_speech`` and ``m109_lines``: the
+  ``OCR:`` rows);
+* ``mainsub_missed`` — ``manifest_sfxp_missed``'s cut polygons (``--sfxp_missed`` rows).
 
     ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/probes/m109_mainsub.py \\
         --out output/ocr/mainsub/m109_mainsub.jsonl
@@ -49,7 +50,6 @@ import manga109 as m109  # noqa: E402
 
 INCLUDE, PART = 0.8, 0.05
 SAME = 0.7
-GREY_PAD = 0.12
 SOFT = set("!！?？・…‥~〜ー-―.．、。")
 STRIP = "・…~ー〜！!？?"
 
@@ -82,10 +82,11 @@ def glyphs(t: str) -> float:
 
 
 class Item:
-    __slots__ = ("kind", "id", "text", "hull", "area", "cx", "cy", "g")
+    __slots__ = ("kind", "id", "text", "pts", "hull", "area", "cx", "cy", "g")
 
     def __init__(self, line, text: str):
         pts = np.asarray(line.poly, dtype=np.float32).reshape(-1, 2)
+        self.pts = pts
         self.hull = cv2.convexHull(pts).reshape(-1, 2).astype(np.float32)
         self.area = max(float(cv2.contourArea(self.hull)), 1.0)
         self.cx, self.cy = (float(v) for v in pts.mean(0))
@@ -168,29 +169,27 @@ def book_rows(args) -> list[dict]:
             )
         )
 
-    for r in tables["grey"]:
-        if r["split"] not in splits:
-            continue
-        emit(
-            "mainsub_sfx_wide",
-            r,
-            rot_rect(r["poly"], GREY_PAD),
-            {str(r["id"])},
-            r["text"],
-            "coo",
-        )
-    for r in tables["det"]:
-        if r["split"] not in splits:
-            continue
-        x0, y0, x1, y1 = r["box"]
-        quad = rect_quad(x0, y0, x1, y1)
-        items = pages.get(int(r["page"]), [])
-        own = {
+    def own_sfx(items, quad):
+        return {
             it.id
             for it in items
             if it.kind == "sfx" and it.frac(quad) >= INCLUDE and it.text
         }
-        emit("mainsub_det", r, quad, own, r["sfx_text"], r["cat"])
+
+    for r in tables["det"]:
+        if r["split"] not in splits:
+            continue
+        quad = rect_quad(*r["box"])
+        items = pages.get(int(r["page"]), [])
+        label = r["sfx_text"] if isinstance(r["sfx_text"], str) else None
+        emit("mainsub_det", r, quad, own_sfx(items, quad), label, r["cat"])
+    for r in tables["missed"]:
+        items = pages.get(int(r["page"]), [])
+        it = next((x for x in items if x.kind == "sfx" and x.id == str(r["id"])), None)
+        if it is None:
+            continue
+        quad = rot_rect(it.pts, cap_frac(it.pts))
+        emit("mainsub_missed", r, quad, {it.id}, r["text"], r["source"])
     for r in tables["speech"]:
         if r["split"] not in splits:
             continue
@@ -209,7 +208,7 @@ def book_rows(args) -> list[dict]:
             rect_quad(x0 - p, y0 - p, x1 + p, y1 + p),
             {own_it.id},
             r["text"],
-            "speech",
+            r["source"],
         )
     return out
 
@@ -223,17 +222,10 @@ def main():
     ap.add_argument("--workers", type=int, default=12)
     a = ap.parse_args()
     d = m109.derived_root()
-    grey = pd.read_parquet(d / "manifest.parquet")
-    grey = grey[(grey.kind == "sfx") & grey.split.isin(a.splits)]
-    grey = grey.assign(
-        poly=grey.poly.map(
-            lambda p: [float(v) for v in (json.loads(p) if isinstance(p, str) else p)]
-        )
-    )
     det = pd.read_parquet(d / "manifest_sfxp_det_clean.parquet")
-    det = det[
-        det.cat.isin(["pos", "pos_mixed"]) & det.path.notna() & det.split.isin(a.splits)
-    ]
+    det = det[det.path.notna() & det.split.isin(a.splits)]
+    missed = pd.read_parquet(d / "manifest_sfxp_missed.parquet")
+    missed = missed[missed.path.notna() & missed.split.isin(a.splits)]
     det = det.assign(box=det.box.map(lambda b: [int(v) for v in b]))
     speech = pd.read_parquet(d / "manifest_sfxp_speech.parquet")
     sp_text = {
@@ -241,9 +233,11 @@ def main():
         for b, p, i, t, s in zip(
             speech.book, speech.page, speech.id, speech.text, speech.source
         )
-        if s == "sfxp_speech"
+        if s in ("sfxp_speech", "m109_lines")
     }
-    speech = speech[(speech.source == "sfxp_speech") & speech.split.isin(a.splits)]
+    speech = speech[
+        speech.source.isin(["sfxp_speech", "m109_lines"]) & speech.split.isin(a.splits)
+    ]
 
     def by_book(df, cols):
         return {
@@ -251,17 +245,17 @@ def main():
         }
 
     base = ["split", "id", "page", "path", "text"]
-    grey_b = by_book(grey, base + ["poly"])
     det_b = by_book(det, ["split", "id", "page", "path", "cat", "box", "sfx_text"])
-    sp_b = by_book(speech, base)
-    books = sorted(set(grey_b) | set(det_b) | set(sp_b))
+    mi_b = by_book(missed, base + ["source"])
+    sp_b = by_book(speech, base + ["source"])
+    books = sorted(set(det_b) | set(mi_b) | set(sp_b))
     jobs = [
         (
             b,
             set(a.splits),
             dict(
-                grey=grey_b.get(b, []),
                 det=det_b.get(b, []),
+                missed=mi_b.get(b, []),
                 speech=sp_b.get(b, []),
                 sp_text={k: v for k, v in sp_text.items() if k[0] == b},
             ),

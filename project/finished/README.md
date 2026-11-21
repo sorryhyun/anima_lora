@@ -15,10 +15,10 @@ pointers, shipped artifacts, and any small open remainder. It does not
 duplicate code or bench tables — canonical sources stay where they live.
 
 **Search.** Each CJK line, `moss_lora/`, `int8_train/` and `qwen21_lora/` carry a `.ignore` that hides its record material
-(docs, reports, dead probes; `cjk_renderable_anima/`, `cjk_anima_scale/` and `ocr_reader/` whole) from ripgrep, so
+(docs, reports, dead probes; `cjk_renderable_anima/` and `cjk_anima_scale/` whole) from ripgrep, so
 Grep / Glob / Explore stay on live code; the `archive-explorer` agent searches
 it (`rg --no-ignore-dot`). What stays visible is what code outside
-`finished/` reads or runs: `sr/`, `mod_guidance/`, `cjk_aware_anima/{assets,
+`finished/` reads or runs, and `ocr_reader/` whole (its v7 / main-sub work goes on there): `sr/`, `mod_guidance/`, `cjk_aware_anima/{assets,
 probes}/` (the reseed line's eval prompts, `bench/grad_init`'s `blind_pairs.py`) and
 `moss_lora/src/` (named in `library/moss` docstrings; its logs are hidden) and `int8_train/src/`
 (the GPTQ builders the int8 docs run, `_archive/bench/anima_stream`'s prompts), and `qwen21_lora/src/` +
