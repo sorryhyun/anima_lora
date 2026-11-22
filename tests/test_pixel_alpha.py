@@ -1,12 +1,12 @@
-"""Alpha head (library/anima/pixel_alpha*.py): a changed input re-encodes, the read
-images never train, and training runs from the cache alone."""
+"""Alpha head (library/anima/pixel_alpha.py, scripts/pixel_head/*alpha*.py): a changed input re-encodes, the read
+images never train, and training needs no VAE or TE."""
 
 import numpy as np
 import pytest
 import torch
 
-from library.anima import pixel_alpha_cache as C
-from library.anima import pixel_alpha_data as D
+from scripts.pixel_head import _alpha_cache as C
+from scripts.pixel_head import _alpha_data as D
 from library.anima.pixel_alpha import AlphaHead, load_alpha_head
 from library.anima.pixel_head import LAT_PATCH_DIM, PixelHead
 from library.anima.pixel_head_train_x1 import save_x1_head
@@ -32,17 +32,20 @@ def _build(root, recipe, cuts, fit, read):
     by_key = {c.key: c for c in cuts}
     for row in rows:
         (root / row.set).mkdir(parents=True, exist_ok=True)
-        comp, bg, sigma = C.compose(row, by_key[row.key], PALETTE, recipe)
-        f = torch.randn(6, 8, D_FEAT).to(torch.bfloat16)
-        lat = torch.randn(6, 8, LAT_PATCH_DIM)
-        C.write_row(root, row, by_key[row.key], f, lat, sigma, comp, bg)
+        colour = row.key in {c.key for c in [*fit, *read]}
+        C.write_cutout(root, by_key[row.key], colour)
+        cross = torch.zeros(C.TEXT_TOKENS, 1024, dtype=torch.bfloat16)
+        cross[:5] = 1
+        cross[2] = 0  # a zero inside the text stays
+        C.write_text(root, row, cross)
+        C.write_latent(root, row, torch.randn(16, 12, 16).to(torch.bfloat16))
     C.write_manifest(root, recipe, rows)
     return rows
 
 
 @pytest.fixture
 def cache(tmp_path):
-    recipe = {"sigma": [0.0577, 0.1364], "seed": 0, "stream": "fp32", "dit": "a"}
+    recipe = {"seed": 0, "dit": "a", "palette": PALETTE}
     fit, read = [_cut("f", "thin")], [_cut("r", "thin")]
     cuts = [*fit, *read, _cut("t")]
     root = tmp_path / "cache"
@@ -80,16 +83,40 @@ def test_alpha_output_has_the_rgb_layout():
         assert torch.allclose(base(f, lat)[0], head(f, lat)[0], atol=1e-5)
 
 
-def test_training_needs_only_the_cache(cache, tmp_path, monkeypatch):
+def test_cached_inputs_are_max_padded(cache):
+    root, *_, rows = cache
+    latent, cross = C.read_inputs(root, rows[0])
+    assert latent.shape == (1, 16, 12, 16) and cross.shape == (1, C.TEXT_TOKENS, 1024)
+    assert [i for i in range(512) if cross[0, i].any()] == [0, 1, 3, 4]
+    for row in rows:
+        assert np.array_equal(C.read_alpha(root, row.key), _cut(row.key).a)
+
+
+class _FakeDiT(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.final_layer = torch.nn.Module()
+        self.final_layer.linear = torch.nn.Linear(D_FEAT, 64)
+
+    def forward(self, x, sigma, cross, padding_mask=None):
+        assert cross.shape == (1, 512, 1024)
+        h, w = x.shape[-2:]
+        self.final_layer.linear(torch.randn(1, 1, h // 2, w // 2, D_FEAT))
+        return torch.zeros_like(x)
+
+
+def test_training_loads_no_vae_or_te(cache, tmp_path, monkeypatch):
+    from library.inference import models
     from library.models import qwen_vae
-    from library.runtime import harness
+    from scripts.pixel_head import _setup
     from scripts.pixel_head.train_alpha import TrainAlphaRequest, run
 
     def refuse(*a, **k):
-        raise AssertionError("training loaded a model")
+        raise AssertionError("training loaded a VAE or a TE")
 
     monkeypatch.setattr(qwen_vae, "load_vae", refuse)
-    monkeypatch.setattr(harness, "build_anima", refuse)
+    monkeypatch.setattr(models, "load_text_encoder", refuse)
+    monkeypatch.setattr(_setup, "load_dit", lambda *a, **k: (_FakeDiT(), None))
     monkeypatch.setenv("ANIMA_PROGRESS", "0")
     base = PixelHead(D_FEAT, LAT_PATCH_DIM, 16, 2, use_skip=False, up=1)
     save_x1_head(base, tmp_path / "base.safetensors", {"sigma": "0.0577-0.1364"})

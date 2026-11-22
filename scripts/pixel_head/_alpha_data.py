@@ -1,4 +1,4 @@
-"""RGBA cutouts for the alpha head: loading, light backgrounds, regions and the straight decode.
+"""The alpha head's data: RGBA cutouts and the light backgrounds they are put on.
 
 Numpy on the CPU: images are (H, W, 3) and alphas (H, W), float32 in [0, 1]. A background
 is an affine colour field ``coef`` (3 × 3: colour at the centre, change across x, change
@@ -19,54 +19,17 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from library.anima.pixel_alpha import affine_grid, border_mask, fit_field
 from library.anima.pixel_head import PATCH
 
 BG_KINDS = ("white", "flat", "field")
 BG_TAGS = ("simple background", "white background", "gradient background")
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp")
 TARGET_TOKENS = 4100
-NEAR = 5 / 255  # "the same colour as the background"
 LUMA = np.array([0.299, 0.587, 0.114], np.float32)
 
 
-def fit_size(w: int, h: int) -> tuple[int, int]:
-    """About ``TARGET_TOKENS`` DiT tokens at native aspect."""
-    s = math.sqrt(TARGET_TOKENS * PATCH * PATCH / (w * h))
-    return tuple(max(PATCH, round(v * s / PATCH) * PATCH) for v in (w, h))
-
-
-# ------------------------------------------------------------------- backgrounds
-
-
-def _grid(h: int, w: int) -> np.ndarray:
-    y, x = np.mgrid[0:h, 0:w].astype(np.float32)
-    return np.stack([np.ones_like(x), x / (w - 1) - 0.5, y / (h - 1) - 0.5], -1)
-
-
-def fit_field(c: np.ndarray, mask: np.ndarray):
-    """Robust affine colour fit on ``mask`` → (coef, inlier share, residual std)."""
-    X, C = _grid(*mask.shape)[mask], c[mask]
-    if len(C) > 40000:
-        pick = np.linspace(0, len(C) - 1, 40000).astype(int)
-        X, C = X[pick], C[pick]
-    keep = np.abs(C - np.median(C, 0)).max(1) < 40 / 255
-    if keep.mean() < 0.2:
-        return None
-    for th in (30, 18, 12, 8):
-        k = np.linalg.lstsq(X[keep], C[keep], rcond=None)[0]
-        new = np.abs(C - X @ k).max(1) < th / 255
-        if new.mean() < 0.2:
-            break
-        keep = new
-    res = float((C[keep] - X[keep] @ k).std())
-    return k.astype(np.float32), float(keep.mean()), res
-
-
-def border_mask(h: int, w: int) -> np.ndarray:
-    b = max(4, round(0.025 * max(h, w)))
-    m = np.ones((h, w), bool)
-    m[b:-b, b:-b] = False
-    return m
+# ---------------------------------------------------------------- backgrounds
 
 
 def _border_fit(txt: Path):
@@ -130,10 +93,16 @@ def draw_bg(kind: str, palette: list, h: int, w: int, rng: np.random.Generator):
     k = coefs[i].copy()
     k[1:] *= rng.choice([-1.0, 1.0], size=(2, 1))
     grain = rng.normal(0, palette[i]["res"], (h, w, 1)).astype(np.float32)
-    return (_grid(h, w) @ k + grain).clip(0, 1).astype(np.float32)
+    return (affine_grid(h, w) @ k + grain).clip(0, 1).astype(np.float32)
 
 
-# ----------------------------------------------------------------------- cutouts
+# -------------------------------------------------------------------- cutouts
+
+
+def fit_size(w: int, h: int) -> tuple[int, int]:
+    """About ``TARGET_TOKENS`` DiT tokens at native aspect."""
+    s = math.sqrt(TARGET_TOKENS * PATCH * PATCH / (w * h))
+    return tuple(max(PATCH, round(v * s / PATCH) * PATCH) for v in (w, h))
 
 
 @dataclass
@@ -184,19 +153,6 @@ def base_regions(a: np.ndarray) -> dict[str, np.ndarray]:
         "translucent": soft & far,  # sheets and effects, not the antialiased edge
         "thin": (fg > 0) & (opened == 0),  # strokes narrower than 7 px
         "holes": bg & ~outer_bg(bg),
-    }
-
-
-def regions(cut: Cutout, comp: np.ndarray, bg: np.ndarray) -> dict[str, np.ndarray]:
-    a = cut.alpha
-    d = np.abs(comp - bg).max(2)
-    fg = cut.fg.astype(np.float32) / 255
-    return {
-        **base_regions(a),
-        "white_fg": (a >= 0.98) & (fg.min(2) >= 240 / 255),
-        "bg_like_fg": (a >= 0.98) & (d <= 15 / 255),
-        "hidden": (a > 0.02) & (a < 0.98) & (d <= NEAR),  # no pixel evidence
-        "all": np.ones(a.shape, bool),
     }
 
 
@@ -266,35 +222,3 @@ def bg_caption(caption: str, kind: str) -> str:
     tags = [t for t in parsed.flat_tags if t not in drop]
     add = ["white background"] if kind == "white" else []
     return compose_caption([*tags, "simple background", *add], parsed.clauses)
-
-
-# ---------------------------------------------------------------- alpha → colour
-
-
-def flood_alpha(c: np.ndarray, bg: np.ndarray) -> np.ndarray:
-    return 1 - outer_bg(np.abs(c - bg).max(2) <= NEAR).astype(np.float32)
-
-
-def estimate_bg(c: np.ndarray, a: np.ndarray) -> np.ndarray:
-    """An affine B from the pixels the alpha calls background."""
-    cs, sub = c[2::4, 2::4], a[2::4, 2::4]  # an affine field needs no full grid
-    mask = sub <= 0.02
-    if mask.sum() < 256:
-        mask = border_mask(*sub.shape)
-    fit = fit_field(cs, mask)
-    if fit is None:
-        return np.broadcast_to(np.median(cs[mask], 0), c.shape).astype(np.float32)
-    return (_grid(*a.shape) @ fit[0]).clip(0, 1).astype(np.float32)
-
-
-def unmix(c: np.ndarray, a: np.ndarray, bg: np.ndarray) -> np.ndarray:
-    """P = clamp(C − (1 − α)·B, 0, α), the premultiplied foreground."""
-    a = a[..., None]
-    return np.clip(c - (1 - a) * bg, 0, a).astype(np.float32)
-
-
-def on_checker(p: np.ndarray, a: np.ndarray, cell: int = 16) -> np.ndarray:
-    h, w = a.shape
-    y, x = np.mgrid[0:h, 0:w]
-    board = np.where(((y // cell) + (x // cell)) % 2, 0.65, 0.25).astype(np.float32)
-    return p + (1 - a[..., None]) * board[..., None]

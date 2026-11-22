@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Train the alpha head on cached features: the head and LPIPS on the card, nothing else.
+"""Train the alpha head: a frozen DiT forward on cached inputs each rollout.
 
-The features come from ``scripts/pixel_head/cache_alpha.py``; no DiT, VAE or TE is
-loaded here and no image folder is read. The whole head trains from the ×1 base (its
-output layer fresh at one channel) on the ×1 trainer's loop: one cached sample per
-rollout goes into the replay buffer, ``opt_steps`` updates each.
+The latents, caption embeds and alphas come from ``scripts/pixel_head/cache_alpha.py``;
+no VAE or TE is loaded here and no image folder is read. Each rollout draws σ and noise,
+runs the DiT once on a cached latent and pushes the feature into the ×1 trainer's replay
+buffer, ``opt_steps`` updates each; no feature is written to disk. The whole head trains
+from the ×1 base (its output layer fresh at one channel).
 
 Every flag is a :class:`TrainAlphaRequest` field; ``--config <file.toml>`` takes a flat
 TOML of field names (field default → ``--config`` → CLI).
@@ -28,14 +29,16 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from library.env import resolve_under_home
+from library.env import default_checkpoints, resolve_under_home
 from library.lines.requests import Request
 from library.lines.requests import request_field as _f
+
+_CKPTS = default_checkpoints()
 
 
 @dataclass
 class TrainAlphaRequest(Request):
-    """Train the alpha head on cached features."""
+    """Train the alpha head on cached inputs."""
 
     output_name: str = _f("alpha", "the run's name")
     output_dir: str = _f("output/pixel_head", "→ <output_dir>/<output_name>/")
@@ -43,18 +46,23 @@ class TrainAlphaRequest(Request):
     init: str = _f(
         "output/pixel_head/x1ll_1122_1000/head.safetensors", "the ×1 base head"
     )
-    rollouts: int = _f(1000, "cached samples pushed, opt_steps updates each")
+    rollouts: int = _f(1000, "DiT forwards, opt_steps updates each")
     opt_steps: int = _f(16, "head updates per rollout")
+    sigma_lo: float = _f(0.0577, "decode σ range, low end")
+    sigma_hi: float = _f(0.1364, "decode σ range, high end")
     replay: int = _f(64, "samples kept for the updates")
     lr: float = _f(5e-5, "LR, one cosine cycle")
     warmup: int = _f(200, "opt steps")
     lambda_lpips: float = _f(0.05, "LPIPS on the alpha as three channels; 0 = off")
     lpips_crop: int = _f(512, "LPIPS window, px; 0 = the whole image")
-    seed: int = _f(0, "output layer, sample order, replay draws")
+    seed: int = _f(0, "output layer, sample order, σ, noise, replay draws")
     eval_every: int = _f(250, "rollouts")
     n_sheets: int = _f(8, "sheets at the end")
     log_every: int = _f(25, "rollouts")
-    compile: bool = _f(True, "compile the head and LPIPS")
+    compile: bool = _f(True, "compile the DiT, the head and LPIPS")
+    dit: str = _f(_CKPTS.dit, "frozen DiT")
+    stream: str = _f("fp32", "DiT residual stream", choices=("fp32", "bf16"))
+    attn_mode: str = _f("flash", "DiT attention")
     device: str = _f("cuda", "torch device")
 
 
@@ -62,17 +70,18 @@ def run(req: TrainAlphaRequest) -> Path:
     import torch
 
     from library.anima.pixel_alpha import AlphaHead, AlphaTrainer, save_alpha_head
-    from library.anima.pixel_alpha_cache import READ_SETS, read_manifest, read_row
+    from scripts.pixel_head import _alpha_cache as C
     from library.anima.pixel_head import load_pixel_head
-    from library.anima.pixel_head_train import Lpips
+    from library.anima.pixel_head_train import DiTRollout, Lpips
     from library.anima.pixel_head_train_x1 import X1TrainConfig
+    from library.datasets.buckets import cluster_token_bands
     from library.runtime.progress import run_scope
     from scripts.pixel_head import _alpha_read as read
-    from scripts.pixel_head._setup import open_sink
+    from scripts.pixel_head._setup import load_dit, open_sink
 
     t0 = time.perf_counter()
     root = Path(resolve_under_home(req.cache_dir))
-    recipe, sets = read_manifest(root)
+    recipe, sets = C.read_manifest(root)
     rows = sets["train"]
     if not rows:
         raise ValueError(f"{root}: no train rows")
@@ -80,12 +89,25 @@ def run(req: TrainAlphaRequest) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device(req.device)
 
-    # --- the read sets, on the CPU ---
-    read_rows = [r for s in READ_SETS for r in sets[s]]
-    with ThreadPoolExecutor(6) as ex:
-        samples = list(
-            ex.map(lambda r: read.to_sample(r, *read_row(root, r)), read_rows)
-        )
+    read_rows = [r for s in C.READ_SETS for r in sets[s]]
+    bands = cluster_token_bands([r.tokens for r in rows + read_rows])
+    anima, _ = load_dit(req, device, bands)
+    rollout = DiTRollout(anima, None, device, recipe["seed"])
+
+    def forward(latent, cross, noise: int, sigma: float):
+        return rollout.forward(
+            latent.to(device).float(), cross.to(device), noise, sigma
+        )[:2]
+
+    # --- the read sets: features once, kept on the CPU ---
+    samples = []
+    for row in read_rows:
+        cut = C.read_cutout(root, row)
+        comp, bg, bg_rng = C.compose(row, cut, recipe["palette"], recipe["seed"])
+        sigma = float(bg_rng.uniform(req.sigma_lo, req.sigma_hi))
+        f, lat = forward(*C.read_inputs(root, row), row.noise, sigma)
+        f, lat = f.to("cpu", torch.bfloat16), lat.cpu()
+        samples.append(read.to_sample(row, cut, comp, bg, sigma, f, lat))
     base = load_pixel_head(resolve_under_home(req.init), device)
     for s in samples:
         s["rgb"] = read.predict(base, s, device)  # the colour the decode unmixes
@@ -106,6 +128,8 @@ def run(req: TrainAlphaRequest) -> Path:
     trainer = AlphaTrainer(head, cfg, lpips=lp, compile=req.compile)
 
     rng, order = random.Random(req.seed + 1), []
+    sigma_rng = random.Random(req.seed + 4)
+    noise0 = 1_000_000 * (req.seed + 1)  # above the read rows' noise indices
     while len(order) < req.rollouts:
         epoch = rows[:]
         rng.shuffle(epoch)
@@ -122,9 +146,8 @@ def run(req: TrainAlphaRequest) -> Path:
 
     # --- train ---
     def load(row):
-        tensors, _ = read_row(root, row)
-        tgt = tensors["alpha"].float()[None] / 127.5 - 1
-        return tensors["f"], tensors["lat"], tgt
+        a = torch.from_numpy(C.read_alpha(root, row.key).copy())
+        return *C.read_inputs(root, row), a.float()[None] / 127.5 - 1
 
     sink = open_sink(req, out_dir, "pixel_head_alpha")
     history: list[dict] = []
@@ -137,11 +160,13 @@ def run(req: TrainAlphaRequest) -> Path:
         ahead = deque(ex.submit(load, row) for row in order[:8])
         for r in range(req.rollouts):
             t_wait = time.perf_counter()
-            f, lat, tgt = ahead.popleft().result()
+            latent, cross, tgt = ahead.popleft().result()
             waited += time.perf_counter() - t_wait
             if r + 8 < req.rollouts:
                 ahead.append(ex.submit(load, order[r + 8]))
-            trainer.push(f.to(device), lat.to(device), tgt.to(device), real=True)
+            sigma = sigma_rng.uniform(req.sigma_lo, req.sigma_hi)
+            f, lat = forward(latent, cross, noise0 + r, sigma)
+            trainer.push(f, lat, tgt.to(device), real=True)
             for k, v in trainer.update().items():
                 ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
             done = r + 1
@@ -173,11 +198,10 @@ def run(req: TrainAlphaRequest) -> Path:
 
     # --- the file first, then the scores ---
     path = out_dir / "alpha_head.safetensors"
-    lo, hi = recipe["sigma"]
     stamp = {
         "ls_init": "1.0",
-        "sigma": f"{lo}-{hi}",
-        "stream": recipe["stream"],
+        "sigma": f"{req.sigma_lo}-{req.sigma_hi}",
+        "stream": req.stream,
         "lambda_lpips": req.lambda_lpips,
         "lr": req.lr,
         "rollouts": req.rollouts,

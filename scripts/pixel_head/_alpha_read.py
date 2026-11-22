@@ -8,22 +8,38 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 
-from library.anima import pixel_alpha_data as D
+from library.anima.pixel_alpha import estimate_bg, unmix
+from scripts.pixel_head import _alpha_data as D
+
+NEAR = 5 / 255  # "the same colour as the background"
 
 
-def to_sample(row, tensors: dict, sigma: float) -> dict:
-    """A read row of the cache → what :func:`score` and :func:`write_sheets` take."""
-    cut = D.Cutout(
-        key=row.key,
-        fg=tensors["fg"].numpy(),
-        a=tensors["alpha"].numpy(),
-        caption=row.caption,
-        sha="",
-        score={},
-        group=row.group,
-    )
-    comp = tensors["comp"].numpy().astype(np.float32) / 255
-    bg = tensors["bg"].numpy().astype(np.float32)
+def regions(cut: D.Cutout, comp: np.ndarray, bg: np.ndarray) -> dict[str, np.ndarray]:
+    a = cut.alpha
+    d = np.abs(comp - bg).max(2)
+    fg = cut.fg.astype(np.float32) / 255
+    return {
+        **D.base_regions(a),
+        "white_fg": (a >= 0.98) & (fg.min(2) >= 240 / 255),
+        "bg_like_fg": (a >= 0.98) & (d <= 15 / 255),
+        "hidden": (a > 0.02) & (a < 0.98) & (d <= NEAR),  # no pixel evidence
+        "all": np.ones(a.shape, bool),
+    }
+
+
+def flood_alpha(c: np.ndarray, bg: np.ndarray) -> np.ndarray:
+    return 1 - D.outer_bg(np.abs(c - bg).max(2) <= NEAR).astype(np.float32)
+
+
+def on_checker(p: np.ndarray, a: np.ndarray, cell: int = 16) -> np.ndarray:
+    h, w = a.shape
+    y, x = np.mgrid[0:h, 0:w]
+    board = np.where(((y // cell) + (x // cell)) % 2, 0.65, 0.25).astype(np.float32)
+    return p + (1 - a[..., None]) * board[..., None]
+
+
+def to_sample(row, cut: D.Cutout, comp, bg, sigma: float, f, lat) -> dict:
+    """A read row and its features → what :func:`score` and :func:`write_sheets` take."""
     return {
         "set": row.set,
         "kind": row.kind,
@@ -31,9 +47,9 @@ def to_sample(row, tensors: dict, sigma: float) -> dict:
         "comp": comp,
         "bg": bg,
         "sigma": sigma,
-        "regs": D.regions(cut, comp, bg),
-        "f": tensors["f"],
-        "lat": tensors["lat"],
+        "regs": regions(cut, comp, bg),
+        "f": f,
+        "lat": lat,
     }
 
 
@@ -61,9 +77,9 @@ def quick_l1(samples: list[dict], preds: list[np.ndarray]) -> dict[str, float]:
 
 def score(s: dict, a: np.ndarray) -> list[dict]:
     """The head and the flood null (B handed, without grain) on one sample."""
-    smooth = D.estimate_bg(s["bg"], np.zeros(a.shape, np.float32))
+    smooth = estimate_bg(s["bg"], np.zeros(a.shape, np.float32))
     out = []
-    for name, alpha in (("head", a), ("flood", D.flood_alpha(s["rgb"], smooth))):
+    for name, alpha in (("head", a), ("flood", flood_alpha(s["rgb"], smooth))):
         err = np.abs(alpha - s["cut"].alpha)
         row = {
             "name": name,
@@ -75,8 +91,8 @@ def score(s: dict, a: np.ndarray) -> list[dict]:
         for reg, m in s["regs"].items():
             if m.sum() >= 64:
                 row[f"l1_{reg}"] = float(err[m].mean())
-        est = D.estimate_bg(s["rgb"], alpha)
-        p = D.unmix(s["rgb"], alpha, est)
+        est = estimate_bg(s["rgb"], alpha)
+        p = unmix(s["rgb"], alpha, est)
         row["black_l1"] = float(np.abs(p - s["cut"].premul).mean() * 255)
         out.append(row)
     return out
@@ -151,9 +167,9 @@ def write_sheets(
                 continue
             s, a = samples[i], preds[i]
             gt, p_gt = s["cut"].alpha, s["cut"].premul
-            p = D.unmix(s["rgb"], a, D.estimate_bg(s["rgb"], a))
+            p = unmix(s["rgb"], a, estimate_bg(s["rgb"], a))
             win = _window(s["regs"]["transition" if group == "white_fg" else group])
-            checker = (D.on_checker(p_gt, gt)[win], D.on_checker(p, a)[win])
+            checker = (on_checker(p_gt, gt)[win], on_checker(p, a)[win])
             rows = [
                 ("input | on black", [_image(s["comp"], 448), _image(p, 448)]),
                 ("alpha, whole", [_image(gt, 448), _image(a, 448)]),

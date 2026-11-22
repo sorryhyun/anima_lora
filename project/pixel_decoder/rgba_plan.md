@@ -6,6 +6,20 @@ the training strategy.
 Crawling and filtering are the user's and are not planned here. R0 and R1 ran 2026-11-22
 (`reports/rgba_r0_r1_2026_11_22.md`); the steps below are what is ahead.
 
+## Priority
+
+### Facts (as set)
+
+- The user, 2026-11-22, on 8 generated renders through R2's head (`rgbar2_1122_1550`, base 28 steps
+  CFG 4, 4 prompts × seeds 0, 1; `output/pixel_head/rgbar2_1122_1550/renders/` (local)): "반투명이고
+  나발이고가 아니라 아예 블록처럼 쪼개지는게 문제니까 그 부분만 플랜에 달아놔 반투명은 2순위고 1순위는
+  무조건 깔끔하게 투명으로 나뉘어야해".
+  1. A clean split into transparent and opaque, with no blocks: none inside the foreground, none
+     left in the background.
+  2. Translucency, after 1.
+- It replaces the order of R2's question (`rgbar2_1122_1550`: "translucency first") and holds for
+  the steps below.
+
 ## State
 
 ### Facts
@@ -118,8 +132,10 @@ Crawling and filtering are the user's and are not planned here. R0 and R1 ran 20
 
 - Checked once at build: counts, sizes, alpha histogram, composite | alpha sheets of the stress set.
 - `pixel_pages` and the cached training set are not in the mix.
-- Backgrounds, σ and noise are drawn at cache time, `draws` per cutout and background kind; a
-  changed input re-encodes its rows only (`library/anima/pixel_alpha_cache.py`).
+- The cache holds the DiT's inputs only (VAE latent, TE embed, alpha), no feature (the user,
+  2026-11-22: "f를 왜 미리만들어 … 입력단만 해"). Backgrounds are drawn at cache time, `draws` per
+  cutout and background kind; σ and noise per rollout, fixed for the read rows. A
+  changed input re-encodes its rows only (`scripts/pixel_head/_alpha_cache.py`).
 
 ### Interpretation
 
@@ -138,9 +154,9 @@ Facts (as set):
 
 - Two jobs, extraction and training apart (the user, 2026-11-22: "코드 다시 짜 특징추출 (캐싱)이랑
   학습 분리"; `rgbar2_1122_1542`, which had both in one job, was cancelled at about 50 rollouts):
-  1. cache `rgbacache_1122_1550`: `scripts/pixel_head/cache_alpha.py`, 918 train rows + 96 read, about 20 GB;
-  2. train `rgbar2_1122_1550`, one arm, the whole head: `scripts/pixel_head/train_alpha.py`, the cache alone
-     on the card with LPIPS.
+  1. cache `rgbacache_1122_1550`: `scripts/pixel_head/cache_alpha.py`, 918 train rows + 96 read, inputs only;
+  2. train `rgbar2_1122_1550`, one arm, the whole head: `scripts/pixel_head/train_alpha.py`, the frozen DiT
+     and the head on the card with LPIPS, no VAE or TE.
   The generated-image read and the matting references below follow them, not part of either job.
 - Amount against R1, at 16 updates a rollout and LR 5e-5 from the base:
 
@@ -176,8 +192,8 @@ Facts (as set):
   pairs alpha head | best post-hoc baseline, on black and on checker, one (prompt, seed) per file.
   Beside them: L1 between α of the CFG and of the cond feature.
 - Bars: spread unknown. The user's read decides.
-- Cost: not measured on the cache. With the DiT in the loop the cancelled run was at about 1.0 s a
-  rollout at 50, so the base's 0.674 s is no estimate for this head.
+- Cost: with the DiT in the loop the cancelled run was at about 1.0 s a rollout at 50, so about
+  17 min for 1,000; the base's 0.674 s is no estimate for this head.
 
 Interpretation:
 
@@ -228,8 +244,9 @@ Ship set, seeds 7, 8, read by no arm before R3:
 
 ## Code to write
 
-- Written 2026-11-22: `library/anima/pixel_alpha{,_data,_cache}.py`,
-  `scripts/pixel_head/{cache_alpha,train_alpha}.py`, `tests/test_pixel_alpha.py`. The channel
+- Written 2026-11-22: `library/anima/pixel_alpha.py` (head, α → colour),
+  `scripts/pixel_head/{cache_alpha,train_alpha,_alpha_data,_alpha_cache,_alpha_read}.py`,
+  `tests/test_pixel_alpha.py`. The channel
   count goes into the vendored `pixel_head.py` at the ship step.
 - `p3_generated.py`: a prompt-set switch and the alpha read.
 - Decode, catalog, node and docs only after the ship read.

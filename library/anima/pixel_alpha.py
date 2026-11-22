@@ -1,18 +1,20 @@
-"""The alpha head: ``PixelHead``'s form with one output channel, and its trainer.
+"""The alpha head: ``PixelHead``'s form with one output channel, its trainer and α → colour.
 
 A file of its own beside the RGB head (``project/pixel_decoder/rgba_plan.md``): the RGB
 base's weights with a fresh 8 × 8 × 1 output layer, the whole head trained on 2α − 1.
 ``library/anima/pixel_head.py`` is vendored into the ComfyUI node as it is, so the
 one-channel form lives here until the alpha head ships.
 
-Cache: ``pixel_alpha_cache.py``. Entry points: ``scripts/pixel_head/cache_alpha.py``
-(DiT, VAE, TE → features on disk), ``scripts/pixel_head/train_alpha.py`` (head alone).
+Decode (numpy, float32 in [0, 1]): :func:`estimate_bg`, then :func:`unmix`. The data,
+the cache and the eval are the training scripts' own: ``scripts/pixel_head/cache_alpha.py``
+and ``train_alpha.py``, with ``_alpha_{data,cache,read}.py`` beside them.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -100,3 +102,55 @@ def load_alpha_head(path: str | Path, device="cpu") -> AlphaHead:
     head.sigma_ranges = parse_sigma_ranges(meta.get("sigma"))
     head.meta = meta
     return head.to(device).eval().requires_grad_(False)
+
+
+# ---------------------------------------------------------------- alpha → colour
+
+
+def affine_grid(h: int, w: int) -> np.ndarray:
+    y, x = np.mgrid[0:h, 0:w].astype(np.float32)
+    return np.stack([np.ones_like(x), x / (w - 1) - 0.5, y / (h - 1) - 0.5], -1)
+
+
+def fit_field(c: np.ndarray, mask: np.ndarray):
+    """Robust affine colour fit on ``mask`` → (coef, inlier share, residual std)."""
+    X, C = affine_grid(*mask.shape)[mask], c[mask]
+    if len(C) > 40000:
+        pick = np.linspace(0, len(C) - 1, 40000).astype(int)
+        X, C = X[pick], C[pick]
+    keep = np.abs(C - np.median(C, 0)).max(1) < 40 / 255
+    if keep.mean() < 0.2:
+        return None
+    for th in (30, 18, 12, 8):
+        k = np.linalg.lstsq(X[keep], C[keep], rcond=None)[0]
+        new = np.abs(C - X @ k).max(1) < th / 255
+        if new.mean() < 0.2:
+            break
+        keep = new
+    res = float((C[keep] - X[keep] @ k).std())
+    return k.astype(np.float32), float(keep.mean()), res
+
+
+def border_mask(h: int, w: int) -> np.ndarray:
+    b = max(4, round(0.025 * max(h, w)))
+    m = np.ones((h, w), bool)
+    m[b:-b, b:-b] = False
+    return m
+
+
+def estimate_bg(c: np.ndarray, a: np.ndarray) -> np.ndarray:
+    """An affine B from the pixels the alpha calls background."""
+    cs, sub = c[2::4, 2::4], a[2::4, 2::4]  # an affine field needs no full grid
+    mask = sub <= 0.02
+    if mask.sum() < 256:
+        mask = border_mask(*sub.shape)
+    fit = fit_field(cs, mask)
+    if fit is None:
+        return np.broadcast_to(np.median(cs[mask], 0), c.shape).astype(np.float32)
+    return (affine_grid(*a.shape) @ fit[0]).clip(0, 1).astype(np.float32)
+
+
+def unmix(c: np.ndarray, a: np.ndarray, bg: np.ndarray) -> np.ndarray:
+    """P = clamp(C − (1 − α)·B, 0, α), the premultiplied foreground."""
+    a = a[..., None]
+    return np.clip(c - (1 - a) * bg, 0, a).astype(np.float32)

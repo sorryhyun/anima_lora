@@ -11,17 +11,23 @@ from types import SimpleNamespace
 
 
 def load_models(req, device, seq_bands: list, adapter: str = ""):
-    """→ (VAE, frozen DiT, adapter network or None), in the order the hooks need:
-    build → stream change → adapter → compile."""
+    """→ (VAE, frozen DiT, adapter network or None)."""
     import torch
 
-    from library.anima.pixel_head_train import attach_adapter, compile_dit
     from library.models import qwen_vae
-    from library.runtime.harness import build_anima
 
     vae = qwen_vae.load_vae(
         req.vae, device="cpu", dtype=torch.bfloat16, eval=True, vae_2d=True
     ).to(device)
+    return vae, *load_dit(req, device, seq_bands, adapter)
+
+
+def load_dit(req, device, seq_bands: list, adapter: str = ""):
+    """→ (frozen DiT, adapter network or None), in the order the hooks need:
+    build → stream change → adapter → compile."""
+    from library.anima.pixel_head_train import attach_adapter, compile_dit
+    from library.runtime.harness import build_anima
+
     ns = SimpleNamespace(
         dit=req.dit,
         device=req.device,
@@ -39,7 +45,7 @@ def load_models(req, device, seq_bands: list, adapter: str = ""):
     network = attach_adapter(anima, adapter, device) if adapter else None
     if req.compile:
         compile_dit(anima, seq_bands)
-    return vae, anima, network
+    return anima, network
 
 
 def open_sink(req, out_dir: Path, method: str):
