@@ -51,9 +51,8 @@ class RunContext:
     uncond_base: torch.Tensor  # T5("") crossattn
 
     writer: object | None
-    progress_sink: ProgressSink | None
+    progress_sink: ProgressSink
     grad_log: StepGradLog | None  # <run log>/grad_steps.jsonl
-    console_steps: bool  # off a TTY: a logger line per log_interval
     metrics: TurboMetrics
     tau_profile: TauBinCriticLoss
 
@@ -69,7 +68,6 @@ class RunContext:
     # loop steps the EMA at rate lr / ema_lr_mean, so its span is a share of summed LR.
     ema_lr_mean: float
     # time.monotonic() of the last console step line (off a TTY).
-    last_console: float = 0.0
 
     def next_batch(self) -> Batch:
         """The next batch on the device; a new epoch (and anchor draw) at the end."""

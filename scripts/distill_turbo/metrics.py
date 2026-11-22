@@ -17,7 +17,6 @@ import json
 from dataclasses import dataclass, fields
 
 import torch
-from tqdm import tqdm
 
 from library.training.accumulator import ScalarAccumulator
 
@@ -228,53 +227,3 @@ def write_scalars(
     writer.add_scalar("train/dm_mag_ratio", m.mag_ratio, step)
     writer.add_scalar("train/dm_cos", m.cos, step)
     writer.add_scalar("train/grad_norm_fake", m.gn_fake, step)
-
-
-def tqdm_rate(bar: tqdm) -> float | None:
-    """Steps/sec off a tqdm bar: its EMA rate, else steps done / elapsed."""
-    fd = bar.format_dict
-    rate = fd.get("rate")
-    if rate:
-        return rate
-    elapsed = fd.get("elapsed") or 0.0
-    done = (fd.get("n") or 0) - (fd.get("initial") or 0)
-    return done / elapsed if elapsed > 0 and done > 0 else None
-
-
-def console_step_line(
-    m: FlushedMetrics,
-    *,
-    step: int,
-    total: int,
-    rate: float | None,
-    anchor_only: bool = False,
-) -> str:
-    """Greppable one-line step summary (the :func:`tqdm_postfix` numbers) for
-    redirected / headless logs."""
-    pct = f" ({100.0 * step / total:.1f}%)" if total else ""
-    stats = " ".join(
-        f"{k}={v}" for k, v in tqdm_postfix(m, anchor_only=anchor_only).items()
-    )
-    if rate:
-        speed = f"{rate:.2f} it/s | ETA {tqdm.format_interval((total - step) / rate)}"
-    else:
-        speed = "? it/s | ETA ?"
-    return f"step {step}/{total}{pct} | {stats} | {speed}"
-
-
-def tqdm_postfix(m: FlushedMetrics, *, anchor_only: bool = False) -> dict:
-    """tqdm postfix dict — short keys for the live progress line. ``anchor_only``
-    shows the anchor MSE (``div``) and the student grad norm, the only live numbers."""
-    if anchor_only:
-        return {"anchor": f"{m.div:.4f}", "gn": f"{m.gn_student:.2e}"}
-    postfix = {
-        "g": f"{m.grad:.2e}",
-        "relg": f"{m.rel_gap:.3f}",
-        "cos": f"{m.cos:.3f}",
-        "xp": f"{m.xpred:.3f}",
-        "fake": f"{m.fake:.2e}",
-        "gn": f"{m.gn_student:.2e}",
-    }
-    if m.div > 0:
-        postfix["div"] = f"{m.div:.3f}"
-    return postfix

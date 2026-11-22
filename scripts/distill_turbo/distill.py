@@ -14,7 +14,6 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
-import time
 from pathlib import Path
 
 from library.runtime.proc import no_window_main
@@ -31,7 +30,6 @@ if default_expandable_segments():
     )
 
 import torch
-from tqdm import tqdm
 
 from library.anima.uncond import uncond_for_batch
 from library.config.resolved import load_toml
@@ -40,7 +38,7 @@ from library.runtime.progress import run_scope
 from .config import TurboConfig, build_argparser, resolve_config
 from .context import Batch, RunContext
 from .diversity import run_diversity_validation
-from .metrics import console_step_line, tqdm_postfix, tqdm_rate, write_scalars
+from .metrics import write_scalars
 from .resume import resume_path_for, save_resume_state
 from .setup import build_run
 from .steps import (
@@ -55,9 +53,6 @@ from .steps import (
 
 logger = logging.getLogger(__name__)
 
-# Off a TTY: at most one console step line per this many seconds (TensorBoard
-# and the progress stream still get every log_interval).
-CONSOLE_EVERY_S = 30.0
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -77,18 +72,9 @@ def run_loop(ctx: RunContext, cfg: TurboConfig) -> None:
         if cfg.grad_accum > 1
         else None
     )
-    # Off a TTY the bar's carriage returns run into the logger lines; it keeps
-    # counting (tqdm_rate) but writes nowhere, and the console line stands in.
-    progress = tqdm(
-        range(ctx.start_step, cfg.iterations),
-        desc="turbo",
-        initial=ctx.start_step,
-        total=cfg.iterations,
-        file=open(os.devnull, "w") if ctx.console_steps else None,
-    )
     step = ctx.start_step - 1  # final_step() stays valid if the loop is empty
     with run_scope(ctx.progress_sink, final_step=lambda: step + 1):
-        for step in progress:
+        for step in range(ctx.start_step, cfg.iterations):
             batch = ctx.next_batch()
             torch.compiler.cudagraph_mark_step_begin()
             if cfg.anchor_only:
@@ -98,7 +84,7 @@ def run_loop(ctx: RunContext, cfg: TurboConfig) -> None:
 
             n = step + 1
             if n % cfg.log_interval == 0:
-                _flush_logs(ctx, cfg, progress, n)
+                _flush_logs(ctx, cfg, n)
             if ctx.val_cond is not None and n % cfg.validate_every_n_steps == 0:
                 _validate(ctx, cfg, n)
             if n % cfg.save_every == 0 or n == cfg.iterations:
@@ -197,8 +183,8 @@ def dpdmd_iteration(ctx: RunContext, cfg, batch: Batch, step: int, grad_mean) ->
         ctx.grad_log.add(step + 1, gn_student, gn_fake, dmd.tau_dm, roll.s_g, g)
 
 
-def _flush_logs(ctx: RunContext, cfg, progress, n: int) -> None:
-    """One sync per log boundary: TensorBoard, tqdm, console line, progress stream."""
+def _flush_logs(ctx: RunContext, cfg, n: int) -> None:
+    """One sync per log boundary: TensorBoard and the run's log."""
     m = ctx.metrics.flush(cfg.log_interval)
     writer = ctx.writer
     if writer is not None:
@@ -206,23 +192,7 @@ def _flush_logs(ctx: RunContext, cfg, progress, n: int) -> None:
         writer.add_scalar("train/student_lr", ctx.student_sched.get_last_lr()[0], n)
         if not cfg.anchor_only:
             writer.add_scalar("train/fake_lr", ctx.fake_sched.get_last_lr()[0], n)
-    progress.set_postfix(**tqdm_postfix(m, anchor_only=cfg.anchor_only), refresh=False)
-    now = time.monotonic()
-    if ctx.console_steps and (
-        now - ctx.last_console >= CONSOLE_EVERY_S or n == cfg.iterations
-    ):
-        ctx.last_console = now
-        logger.info(
-            console_step_line(
-                m,
-                step=n,
-                total=cfg.iterations,
-                rate=tqdm_rate(progress),
-                anchor_only=cfg.anchor_only,
-            )
-        )
-    if ctx.progress_sink is not None:
-        ctx.progress_sink.log(dataclasses.asdict(m), global_step=n, epoch=0)
+    ctx.progress_sink.step(dataclasses.asdict(m), global_step=n)
     ctx.metrics.reset()
     ctx.tau_profile.write(writer, n)
     if ctx.grad_log is not None:
@@ -249,10 +219,20 @@ def _validate(ctx: RunContext, cfg, n: int) -> None:
         ctx.writer.add_scalar("val/div_gap", dm.gap, n)
         ctx.writer.add_scalar("val/div_xpred_ac_sim", dm.xpred_ac_sim, n)
         ctx.writer.add_scalar("val/fm_mse", dm.fm_mse, n)
-    logger.info(
-        f"[val@{n}] diversity: AC sim={dm.ac_sim:.4f} (lower=more diverse) | "
-        f"DC sim={dm.dc_sim:.4f} | gap={dm.gap:+.4f} | x_pred AC sim="
-        f"{dm.xpred_ac_sim:.4f} | FM MSE={dm.fm_mse:.4f}"
+    ctx.progress_sink.val(
+        {
+            "div_ac_sim": dm.ac_sim,
+            "div_dc_sim": dm.dc_sim,
+            "div_gap": dm.gap,
+            "div_xpred_ac_sim": dm.xpred_ac_sim,
+            "fm_mse": dm.fm_mse,
+        },
+        global_step=n,
+        text=(
+            f"diversity: AC sim {dm.ac_sim:.4f} (lower = more diverse)  "
+            f"DC sim {dm.dc_sim:.4f}  gap {dm.gap:+.4f}  "
+            f"x_pred AC sim {dm.xpred_ac_sim:.4f}  FM MSE {dm.fm_mse:.4f}"
+        ),
     )
 
 
@@ -314,9 +294,7 @@ def _save(ctx: RunContext, cfg: TurboConfig, n: int) -> None:
         paths.append(str(Path(cfg.output_dir) / f"{cfg.output_name}.safetensors"))
     for path in paths:
         ctx.turbo.save_student(path, dtype=torch.bfloat16, metadata=metadata)
-        logger.info(f"saved checkpoint: {path}")
-        if ctx.progress_sink is not None:
-            ctx.progress_sink.ckpt(global_step=n, path=path)
+        ctx.progress_sink.ckpt(global_step=n, path=path)
     ema = ctx.ema
     if ema is not None and ema.started:
         ema_md = {**metadata, **ema.metadata()}

@@ -35,7 +35,6 @@ import json
 import logging
 import os
 import random
-import time
 from pathlib import Path
 
 import torch
@@ -396,11 +395,16 @@ def _build(a) -> None:
             )
         return out.squeeze(2).float()
 
-    sink = None
-    sink_path = command_job_path(None)
-    if sink_path is not None:
-        sink = ProgressSink(sink_path, run="anchor_cache", method="turbo", preset=None)
-        sink.run_start(total_steps=len(todo), total_epochs=draws, pid=os.getpid())
+    sink = ProgressSink(
+        command_job_path(None),
+        run="anchor_cache",
+        method="turbo",
+        preset=None,
+        unit="pair",
+    )
+    sink.run_start(
+        total_steps=len(todo), total_epochs=draws, pid=os.getpid(), config=vars(a)
+    )
 
     shown: list = []
     torch.cuda.synchronize()
@@ -409,7 +413,6 @@ def _build(a) -> None:
         f"load peak {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB"
     )
     torch.cuda.reset_peak_memory_stats()
-    t0 = time.time()
     for n, (key, k) in enumerate(todo, 1):
         item = dataset[index[key]]
         c = item["crossattn_emb"].unsqueeze(0).to(device, dtype=dtype)
@@ -441,17 +444,8 @@ def _build(a) -> None:
         tmp = out.with_suffix(".tmp")
         save_file({"v_target": v_target[0].cpu().contiguous()}, str(tmp))
         os.replace(tmp, out)
-        if n % 10 == 0 or n == len(todo):
-            rate = n / (time.time() - t0)
-            logger.info(
-                f"{n}/{len(todo)} pairs, {1 / rate:.2f} s/pair, "
-                f"ETA {(len(todo) - n) / rate / 60:.1f} min, "
-                f"peak {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB"
-            )
-            if sink is not None:
-                sink.log({"s_per_pair": 1 / rate}, global_step=n, epoch=k)
-    if sink is not None:
-        sink.run_end(status="ok", final_step=len(todo))
+        sink.step({}, global_step=n, epoch=k)
+    sink.run_end(status="ok", final_step=len(todo))
 
 
 def build_argparser() -> argparse.ArgumentParser:

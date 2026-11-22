@@ -64,6 +64,5 @@ repa_weight = 0.0              # 0 = off
 # sigma_uniform = 0.01
 
 # max_grad_norm = 1.0
-# log_every = 10
 # seed = 0
 # model_dir = ""

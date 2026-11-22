@@ -137,6 +137,7 @@ def run(req: X1Request) -> Path:
     torch.manual_seed(req.seed)
     out_dir = Path(resolve_under_home(req.output_dir)) / req.output_name
     out_dir.mkdir(parents=True, exist_ok=True)
+    sink = open_sink(req, out_dir, "pixel_head_x1")
 
     # --- data ---
     data = held_out_split(Path(resolve_under_home(req.cache_root)))
@@ -307,75 +308,7 @@ def run(req: X1Request) -> Path:
             for st in sets
         )
 
-    # --- train ---
-    sink = open_sink(req, out_dir, "pixel_head_x1")
-    order_rng = random.Random(req.seed + 1)
-    page_rng = random.Random(req.seed + 2)  # own stream: colour order as without pages
-    sig_rng = random.Random(req.seed + 4)
-    order: list = []
-    page_order: list = []
-    n_page_rollouts = 0
-    history: list[dict] = []
-    if req.start_eval:
-        ev = by_set(read())
-        history.append({"rollout": 0, "step": 0, **ev})
-        print(f"  eval @ 0 (as loaded): {fmt(ev)}", flush=True)
-    ema: dict[str, float] = {}
-    done = 0
-    torch.cuda.reset_peak_memory_stats()
-    t0 = time.perf_counter()
-    with run_scope(sink, final_step=lambda: done):
-        for r in range(cfg.rollouts):
-            if page_train and page_rng.random() < req.page_share:
-                if not page_order:
-                    page_order = page_train[:]
-                    page_rng.shuffle(page_order)
-                item = page_order.pop()
-                n_page_rollouts += 1
-            else:
-                if not order:
-                    order = train[:]
-                    order_rng.shuffle(order)
-                item = order.pop()
-            pt = train_points[r % len(train_points)]
-            sg = pt.lo if pt.hi == pt.lo else sig_rng.uniform(pt.lo, pt.hi)
-            f, lat, tgts = rollout(item, r, sg, pt.adapter, (pt.target,))
-            trainer.push(f, lat, tgts[pt.target], pt.target == "real")
-            for k, v in trainer.update().items():
-                ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
-            done = r + 1
-            if done % 50 == 0:
-                el = time.perf_counter() - t0
-                meters = dict(trainer.gan_log)
-                if trainer.dino_ema is not None:
-                    meters["dino"] = trainer.dino_ema
-                print(
-                    f"  rollout {done}/{cfg.rollouts}  loss {ema['loss']:.4f}  "
-                    f"psnr~{10 * math.log10(4 / ema['mse']):.2f}  "
-                    + "".join(f"{k} {v:.4g}  " for k, v in meters.items())
-                    + (
-                        f"gan steps {trainer.gan_steps}  "
-                        f"peak {torch.cuda.max_memory_allocated() / 1e9:.1f}GB  "
-                        if disc is not None
-                        else ""
-                    )
-                    + f"{el / done:.2f}s/rollout  "
-                    f"eta {(cfg.rollouts - done) * el / done / 60:.0f}m",
-                    flush=True,
-                )
-                if sink is not None:
-                    sink.log(
-                        {f"loss/{k}": v for k, v in (ema | meters).items()},
-                        global_step=done,
-                        epoch=0,
-                    )
-            if done % req.eval_every == 0 or done == cfg.rollouts:
-                ev = by_set(read())
-                history.append({"rollout": done, "step": trainer.step, **ev})
-                print(f"  eval @ {done}: {fmt(ev)}", flush=True)
-    sec_per_rollout = (time.perf_counter() - t0) / max(1, cfg.rollouts)
-
-    # --- the file, then rows and sheets ---
+    # --- the file's stamp: written at every read and at the end ---
     stamp = {
         "ls_init": ls_init,
         "sigma": ",".join(
@@ -403,7 +336,59 @@ def run(req: X1Request) -> Path:
             "pegan_lr": req.pegan_lr,
         }
     head_path = out_dir / "head.safetensors"
-    save_x1_head(head, head_path, stamp)
+
+    # --- train ---
+    order_rng = random.Random(req.seed + 1)
+    page_rng = random.Random(req.seed + 2)  # own stream: colour order as without pages
+    sig_rng = random.Random(req.seed + 4)
+    order: list = []
+    page_order: list = []
+    n_page_rollouts = 0
+    history: list[dict] = []
+    if req.start_eval:
+        ev = by_set(read())
+        history.append({"rollout": 0, "step": 0, **ev})
+        sink.val(ev, global_step=0, text=f"{fmt(ev)} (as loaded)")
+    ema: dict[str, float] = {}
+    done = 0
+    torch.cuda.reset_peak_memory_stats()
+    t0 = time.perf_counter()
+    with run_scope(sink, final_step=lambda: done):
+        for r in range(cfg.rollouts):
+            if page_train and page_rng.random() < req.page_share:
+                if not page_order:
+                    page_order = page_train[:]
+                    page_rng.shuffle(page_order)
+                item = page_order.pop()
+                n_page_rollouts += 1
+            else:
+                if not order:
+                    order = train[:]
+                    order_rng.shuffle(order)
+                item = order.pop()
+            pt = train_points[r % len(train_points)]
+            sg = pt.lo if pt.hi == pt.lo else sig_rng.uniform(pt.lo, pt.hi)
+            f, lat, tgts = rollout(item, r, sg, pt.adapter, (pt.target,))
+            trainer.push(f, lat, tgts[pt.target], pt.target == "real")
+            for k, v in trainer.update().items():
+                ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
+            done = r + 1
+            meters = {"loss": ema["loss"], "psnr": 10 * math.log10(4 / ema["mse"])}
+            meters |= trainer.gan_log
+            if trainer.dino_ema is not None:
+                meters["dino"] = trainer.dino_ema
+            if disc is not None:
+                meters["gan_steps"] = trainer.gan_steps
+            sink.step(meters, global_step=done)
+            if done % req.eval_every == 0 or done == cfg.rollouts:
+                ev = by_set(read())
+                history.append({"rollout": done, "step": trainer.step, **ev})
+                sink.val(ev, global_step=done, text=fmt(ev))
+                save_x1_head(head, head_path, stamp | {"rollouts_done": done})
+                sink.ckpt(global_step=done, path=str(head_path))
+    sec_per_rollout = (time.perf_counter() - t0) / max(1, cfg.rollouts)
+
+    # --- rows and sheets (the file is written at the last read) ---
     rows = read(refs=True)
     head.eval()
     counters: dict[tuple[str, str], int] = {}

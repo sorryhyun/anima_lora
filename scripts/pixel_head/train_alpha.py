@@ -62,7 +62,6 @@ class TrainAlphaRequest(Request):
     seed: int = _f(0, "output layer, sample order, σ, noise, replay draws")
     eval_every: int = _f(250, "rollouts")
     n_sheets: int = _f(8, "sheets at the end")
-    log_every: int = _f(25, "rollouts")
     compile: bool = _f(True, "compile the DiT, the head and the DINO term")
     dit: str = _f(_CKPTS.dit, "frozen DiT")
     stream: str = _f("fp32", "DiT residual stream", choices=("fp32", "bf16"))
@@ -91,6 +90,7 @@ def run(req: TrainAlphaRequest) -> Path:
         raise ValueError(f"{root}: no train rows")
     out_dir = Path(resolve_under_home(req.output_dir)) / req.output_name
     out_dir.mkdir(parents=True, exist_ok=True)
+    sink = open_sink(req, out_dir, "pixel_head_alpha")
     device = torch.device(req.device)
 
     read_rows = [r for s in C.READ_SETS for r in sets[s]]
@@ -155,13 +155,22 @@ def run(req: TrainAlphaRequest) -> Path:
         a = torch.from_numpy(C.read_alpha(root, row.key).copy())
         return *C.read_inputs(root, row), a.float()[None] / 127.5 - 1
 
-    sink = open_sink(req, out_dir, "pixel_head_alpha")
     history: list[dict] = []
     ema: dict[str, float] = {}
     done = 0
     waited = 0.0  # on the disk
     t1 = time.perf_counter()
-    t_log, n_log = t1, 0
+    path = out_dir / "alpha_head.safetensors"
+    stamp = {
+        "ls_init": "1.0",
+        "sigma": f"{req.sigma_lo}-{req.sigma_hi}",
+        "stream": req.stream,
+        "lambda_dino": req.lambda_dino,
+        "lr": req.lr,
+        "rollouts": req.rollouts,
+        "init": req.init,
+        "run": req.output_name,
+    }
     with ThreadPoolExecutor(3) as ex, run_scope(sink, final_step=lambda: done):
         ahead = deque(ex.submit(load, row) for row in order[:8])
         for r in range(req.rollouts):
@@ -176,47 +185,22 @@ def run(req: TrainAlphaRequest) -> Path:
             for k, v in trainer.update().items():
                 ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
             done = r + 1
-            if done % req.log_every == 0 or done == req.rollouts:
-                now = time.perf_counter()
-                pace = (now - t_log) / (done - n_log)
-                t_log, n_log = now, done
-                meters = dict(ema)
-                if trainer.dino_ema is not None:
-                    meters["dino"] = trainer.dino_ema
-                print(
-                    f"  rollout {done}/{req.rollouts}  "
-                    + "".join(f"{k} {v:.4f}  " for k, v in meters.items())
-                    + f"{pace:.2f}s/rollout  disk wait {waited / done:.3f}s  "
-                    f"eta {(req.rollouts - done) * pace / 60:.1f}m",
-                    flush=True,
-                )
-                if sink is not None:
-                    logged = {f"loss/{k}": v for k, v in meters.items()}
-                    sink.log(logged, global_step=done, epoch=0)
-            if samples and (done % req.eval_every == 0 or done == req.rollouts):
-                preds = [read.predict(head, s, device) for s in samples]
-                ev = read.quick_l1(samples, preds)
-                history.append({"rollout": done, **ev})
-                shown = "  ".join(f"{k} {v:.4f}" for k, v in ev.items())
-                print(f"  eval @ {done}: {shown}", flush=True)
-                t_log = time.perf_counter()  # the pace leaves the read out
+            meters = dict(ema)
+            if trainer.dino_ema is not None:
+                meters["dino"] = trainer.dino_ema
+            meters["disk_wait"] = waited / done
+            sink.step(meters, global_step=done)
+            if done % req.eval_every == 0 or done == req.rollouts:
+                if samples:
+                    preds = [read.predict(head, s, device) for s in samples]
+                    ev = read.quick_l1(samples, preds)
+                    history.append({"rollout": done, **ev})
+                    sink.val(ev, global_step=done)
+                save_alpha_head(head, path, stamp | {"rollouts_done": done})
+                sink.ckpt(global_step=done, path=str(path))
     train_sec = time.perf_counter() - t1
 
-    # --- the file first, then the scores ---
-    path = out_dir / "alpha_head.safetensors"
-    stamp = {
-        "ls_init": "1.0",
-        "sigma": f"{req.sigma_lo}-{req.sigma_hi}",
-        "stream": req.stream,
-        "lambda_dino": req.lambda_dino,
-        "lr": req.lr,
-        "rollouts": req.rollouts,
-        "init": req.init,
-        "run": req.output_name,
-    }
-    save_alpha_head(head, path, stamp)
-    print(f"saved {path}", flush=True)
-
+    # --- the scores (the file is written at the last read) ---
     scores, sheets = [], []
     if samples:
         preds = [read.predict(head, s, device) for s in samples]

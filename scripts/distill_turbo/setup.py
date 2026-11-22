@@ -8,10 +8,10 @@ exists; the fake head-start runs last.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import re
-import sys
 from pathlib import Path
 
 import torch
@@ -333,21 +333,27 @@ def _build_logging(args, cfg: TurboConfig):
 
     # Under the daemon the stream goes to the job dir (`make run-status RUN=<job id>`);
     # inline, logs/<output_name>.progress.jsonl.
-    progress_sink = None
-    if not cfg.no_log:
-        sink_path = command_job_path(ProgressSink.resolve_path(cfg))
-        if sink_path is not None:
-            progress_sink = ProgressSink(
-                sink_path, run=cfg.output_name, method="turbo", preset=None
-            )
-            progress_sink.run_start(
-                total_steps=cfg.iterations,
-                total_epochs=1,
-                pid=os.getpid(),
-                log_dir=str(run_log) if run_log is not None else None,
-            )
-            progress_sink.attach_log_mirror()
-            logger.info(f"progress sink: {sink_path}")
+    # --no_log keeps the console lines and drops the stream.
+    sink_path = None if cfg.no_log else command_job_path(ProgressSink.resolve_path(cfg))
+    progress_sink = ProgressSink(
+        sink_path,
+        run=cfg.output_name,
+        method="turbo",
+        preset=None,
+        console_keys=(
+            ("div", "gn_student")
+            if cfg.anchor_only
+            else ("grad", "rel_gap", "cos", "xpred", "fake", "gn_student", "div")
+        ),
+    )
+    progress_sink.run_start(
+        total_steps=cfg.iterations,
+        total_epochs=1,
+        pid=os.getpid(),
+        log_dir=str(run_log) if run_log is not None else None,
+        config=dataclasses.asdict(cfg),
+    )
+    progress_sink.attach_log_mirror()
     return writer, run_log, progress_sink
 
 
@@ -511,10 +517,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         )
 
     ema, ema_lr_mean = _build_ema(cfg, turbo, student_updates, start_step)
-    try:
-        console_steps = not sys.stderr.isatty()
-    except Exception:  # stderr detached (pythonw)
-        console_steps = True
 
     ctx = RunContext(
         model=model,
@@ -541,7 +543,6 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
             if run_log is not None
             else None
         ),
-        console_steps=console_steps,
         metrics=TurboMetrics(device),
         tau_profile=TauBinCriticLoss(device),
         val_cond=val_cond,

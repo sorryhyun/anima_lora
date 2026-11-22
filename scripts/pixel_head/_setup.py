@@ -52,7 +52,10 @@ def load_dit(req, device, seq_bands: list, adapter: str = ""):
 
 
 def open_sink(req, out_dir: Path, method: str):
-    """The run's ``progress.jsonl`` sink, or None where progress is off."""
+    """The run's log, started: the request's settings and the start line now, the
+    console and ``progress.jsonl`` lines from there on. Opened before the models
+    load, so the heartbeat covers the load and the compile."""
+    import dataclasses
     import os
 
     from library.runtime.progress import ProgressSink, command_job_path
@@ -62,8 +65,14 @@ def open_sink(req, out_dir: Path, method: str):
             SimpleNamespace(output_dir=str(out_dir), output_name=req.output_name)
         )
     )
-    if not path:
-        return None
-    sink = ProgressSink(path, run=req.output_name, method=method, preset=None)
-    sink.run_start(total_steps=req.rollouts, total_epochs=1, pid=os.getpid())
+    sink = ProgressSink(
+        path, run=req.output_name, method=method, preset=None, unit="rollout"
+    )
+    sink.run_start(
+        total_steps=req.rollouts,
+        total_epochs=1,
+        pid=os.getpid(),
+        config=dataclasses.asdict(req),
+    )
+    sink.attach_log_mirror()
     return sink

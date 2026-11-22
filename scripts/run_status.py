@@ -206,8 +206,13 @@ def format_status(st: dict, *, metric_limit: int = 6) -> str:
     lines = [head]
     if st["metrics"]:
         lines.append(f"  last:  {_fmt_metrics(st['metrics'], metric_limit)}")
-    if st["val"]:
-        lines.append(f"  val:   {_fmt_metrics(_strip_ev(st['val']), metric_limit)}")
+    if st.get("vram_peak_gb") is not None:
+        lines.append(f"  vram:  peak {st['vram_peak_gb']:.1f} GB")
+    # the eval history, oldest first, the last five
+    for rec in (st.get("vals") or [])[-5:]:
+        fields = {k: v for k, v in _strip_ev(rec).items() if k != "epoch"}
+        step = fields.pop("global_step", "?")
+        lines.append(f"  eval @ {step}: {_fmt_metrics(fields, metric_limit)}")
     if st["ckpt"]:
         lines.append(
             f"  ckpt:  {st['ckpt']['path']} (step {st['ckpt']['global_step']})"

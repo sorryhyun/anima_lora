@@ -124,6 +124,7 @@ def run(req: X2TrainRequest) -> Path:
     sig_eval = (sig_lo + sig_hi) / 2
     out_dir = Path(resolve_under_home(req.output_dir)) / req.output_name
     out_dir.mkdir(parents=True, exist_ok=True)
+    sink = open_sink(req, out_dir, "pixel_head_x2")
 
     # --- data ---
     data = load_x2flex(req.x2flex)
@@ -252,8 +253,26 @@ def run(req: X2TrainRequest) -> Path:
             for st in sets
         )
 
+    # --- the file: written at every read and at the end ---
+    head_path = out_dir / "head_x2.safetensors"
+    stamp = {
+        "sigma": req.sigma,
+        "stream": req.stream,
+        "source": Path(src).name,
+        "x2_target": "real",
+        "pegan_ratio": req.pegan_ratio,
+        "pegan_start": req.pegan_start,
+        "rollouts": req.rollouts,
+        "run": req.output_name,
+    }
+    if cfg.lambda_dino > 0:
+        stamp |= {
+            "dino": req.dino,
+            "lambda_dino": cfg.lambda_dino,
+            "dino_tiles": cfg.dino_tiles,
+        }
+
     # --- train ---
-    sink = open_sink(req, out_dir, "pixel_head_x2")
     order: list = []
     order_rng = random.Random(req.seed + 1)
     sig_rng = random.Random(req.seed + 4)
@@ -286,29 +305,17 @@ def run(req: X2TrainRequest) -> Path:
             win = pick_window(*f.shape[:2], cfg.window, cfg.margin, win_rng)
             trainer.push(f, lat, real2(item, px.result(), f), win)
             if r == cfg.pegan_start and disc is not None:
-                print(f"  PE-GAN term on from rollout {r}", flush=True)
+                print(f"PE-GAN term on from rollout {r}", flush=True)
             for k, v in trainer.update(r).items():
                 ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
             done = r + 1
-            if done % 50 == 0:
-                el = time.perf_counter() - t0
-                print(
-                    f"  rollout {done}/{cfg.rollouts}  "
-                    + " ".join(f"{k} {v:.4g}" for k, v in ema.items())
-                    + f"  {el / done:.2f}s/rollout  "
-                    f"eta {(cfg.rollouts - done) * el / done / 60:.0f}m",
-                    flush=True,
-                )
-                if sink is not None:
-                    sink.log(
-                        {f"loss/{k}": v for k, v in ema.items()},
-                        global_step=done,
-                        epoch=0,
-                    )
+            sink.step(ema, global_step=done)
             if done % req.eval_every == 0 or done == cfg.rollouts:
                 ev = by_set(read())
                 history.append({"rollout": done, "step": trainer.step, **ev})
-                print(f"  eval @ {done}: {fmt(ev)}", flush=True)
+                sink.val(ev, global_step=done, text=fmt(ev))
+                save_x2_head(head, head_path, stamp | {"rollouts_done": done})
+                sink.ckpt(global_step=done, path=str(head_path))
     sec_per_rollout = (time.perf_counter() - t0) / max(1, cfg.rollouts)
 
     # --- read: rows, sheets, the file ---
@@ -328,24 +335,6 @@ def run(req: X2TrainRequest) -> Path:
         cx, cy = densest_window(ref, req.crop)
         pair_sheet(cols, out_dir / f"{stem}_crop.png", at=(cx, cy, req.crop))
         sheets += [f"{stem}_full.png", f"{stem}_crop.png"]
-    head_path = out_dir / "head_x2.safetensors"
-    stamp = {
-        "sigma": req.sigma,
-        "stream": req.stream,
-        "source": Path(src).name,
-        "x2_target": "real",
-        "pegan_ratio": req.pegan_ratio,
-        "pegan_start": req.pegan_start,
-        "rollouts": req.rollouts,
-        "run": req.output_name,
-    }
-    if cfg.lambda_dino > 0:
-        stamp |= {
-            "dino": req.dino,
-            "lambda_dino": cfg.lambda_dino,
-            "dino_tiles": cfg.dino_tiles,
-        }
-    save_x2_head(head, head_path, stamp)
     result = {
         "request": dataclasses.asdict(req),
         "n_train": len(train),

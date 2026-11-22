@@ -107,8 +107,6 @@ from library.moss.training.memory import (  # noqa: F401
 )
 from library.runtime.progress import ProgressSink, command_job_path, run_scope
 
-PROGRESS_EVERY = 2  # steps per "  progress i/n" line (the GUI bar reads them)
-
 
 def _teacher_fn(transformer, weights, embeds, mix, attached):
     """``training_loss``'s ``teacher``: the regression target at ``(noisy, timestep)``
@@ -587,8 +585,13 @@ def train(
         str(out_path.parent.parent / "logs" / f"{out_path.stem}.progress.jsonl")
     )
     sink = ProgressSink(sink_path, run=out_path.stem, method="moss", preset=None)
-    sink.run_start(total_steps=total, total_epochs=epochs, pid=os.getpid())
-    print(f"progress sink: {sink_path}", flush=True)
+    sink.run_start(
+        total_steps=total,
+        total_epochs=epochs,
+        pid=os.getpid(),
+        config={k: getattr(req, k) for k in req.__dataclass_fields__},
+    )
+    sink.attach_log_mirror()
 
     largest = max(samples, key=lambda s: s.n_img + s.n_ref + s.n_text)
     history, losses_all, fit = [], [], None
@@ -813,9 +816,11 @@ def train(
                     if shadows and n_updates >= warmup:
                         update_ema(shadows, staging, params, decays)
                 value = loss.item()
-                sink.log(
+                losses.append(value)
+                sink.step(
                     {
                         "loss": value,
+                        "loss_epoch": sum(losses) / len(losses),
                         "sigma": sigma,
                         "lr": lr_sched.get_last_lr()[0],
                     }
@@ -825,7 +830,6 @@ def train(
                     global_step=step,
                     epoch=epoch + 1,
                 )
-                losses.append(value)
                 losses_all.append(
                     {"step": step, "loss": value, "sigma": sigma}
                     | ({"repa": aligns[-1]} if align is not None else {})
@@ -837,13 +841,6 @@ def train(
                             transformer, attached, s.n_img, embeds.shape[1]
                         )
                     t_start = time.time()  # s/step excludes step 1's allocator warm-up
-                    t_window, step_window, per_step = t_start, 1, None
-                eta_rate = (
-                    (time.time() - t_start) / max(1, step - 1)
-                    if per_step is None
-                    else per_step
-                )
-                eta = int(eta_rate * (total - step))
                 if (
                     req.save_every_steps
                     and step % req.save_every_steps == 0
@@ -851,32 +848,6 @@ def train(
                 ):
                     saved = save(f"s{step}", main_shadow)
                     sink.ckpt(global_step=step, path=str(saved))
-                    print(f"  saved {saved}", flush=True)
-                if step % PROGRESS_EVERY == 0 or step == total:
-                    print(
-                        f"  progress {step}/{total} epoch {epoch + 1}/{epochs} "
-                        f"loss {sum(losses) / len(losses):.4f} "
-                        f"eta {eta // 3600}:{eta % 3600 // 60:02d}:{eta % 60:02d}",
-                        flush=True,
-                    )
-                if step % req.log_every == 0:
-                    # s/step over the steps since the last log line, so a recompile
-                    # stays in the window it landed in. Step 1 (compile) has none.
-                    now = time.time()
-                    if step > step_window:
-                        per_step = (now - t_window) / (step - step_window)
-                        t_window, step_window = now, step
-                    rate = f" {per_step:.2f}s/step" if per_step is not None else ""
-                    if align is not None:
-                        rate += f" repa {aligns[-1]:.4f}"
-                    rate += "".join(f" {k} {v:.4f}" for k, v in parts.items())
-                    print(
-                        f"  step {step}/{total} loss {value:.4f} |g| {grad_norm:.3f} "
-                        f"sigma {sigma:.3f} lr {lr_sched.get_last_lr()[0]:.2e} "
-                        f"peak {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB"
-                        f"{rate}",
-                        flush=True,
-                    )
             if not losses:
                 break
             mean = sum(losses) / len(losses)
@@ -897,7 +868,6 @@ def train(
             ):
                 saved = save(f"e{epoch + 1}", main_shadow)
                 sink.ckpt(global_step=step, path=str(saved))
-                print(f"  saved {saved}", flush=True)
             if sampler is not None and sampler.due(epoch + 1, epochs):
                 sample(f"e{epoch + 1}")
 

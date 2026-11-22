@@ -38,7 +38,6 @@ def run_validation(
     val_loss_recorder,
     epoch,
     global_step,
-    progress_bar,
     progress_desc,
     postfix_label,
     log_avg_key,
@@ -203,9 +202,7 @@ def _try_cmmd_validation(
             continue
         cache_dir = os.path.dirname(te_path)
         ref_sidecars.append(
-            resolve_pe_sidecar(
-                item.absolute_path, encoder="pe", cache_dir=cache_dir
-            )
+            resolve_pe_sidecar(item.absolute_path, encoder="pe", cache_dir=cache_dir)
         )
         ref_items.append(item)
     if not ref_sidecars:
@@ -238,9 +235,7 @@ def _try_cmmd_validation(
     )
 
     gen_pooled: list[torch.Tensor] = []
-    seed_base = (
-        args.validation_seed if args.validation_seed is not None else args.seed
-    )
+    seed_base = args.validation_seed if args.validation_seed is not None else args.seed
 
     # Three-phase val so the DiT, VAE and PE-Core never share the GPU — the
     # peak is one model + its working set (per-sample VAE decode with the DiT
@@ -311,9 +306,7 @@ def _try_cmmd_validation(
                         key = (int(img.shape[-2]), int(img.shape[-1]))
                         bucket_groups.setdefault(key, []).append(idx)
 
-                    pooled_slots: list[torch.Tensor | None] = [None] * len(
-                        pixel_images
-                    )
+                    pooled_slots: list[torch.Tensor | None] = [None] * len(pixel_images)
                     for indices in bucket_groups.values():
                         batch = torch.stack(
                             [pixel_images[idx] for idx in indices], dim=0
@@ -347,20 +340,24 @@ def _try_cmmd_validation(
     cmmd_value = cmmd_from_pools(ref_pool, gen_pool)
     val_loss_recorder.add(epoch=epoch, step=global_step, loss=cmmd_value)
 
-    # Tracker logging below is gated on `is_tracking`; always print the score.
-    logger.info(
-        f"CMMD validation @ step {global_step} (epoch {epoch + 1}): "
-        f"{cmmd_value:.4f}  (n={len(ref_items)}, lower is better)"
-    )
-
+    logs = {
+        log_avg_key: cmmd_value,
+        log_div_key: cmmd_value - val.train_loss_recorder.moving_average,
+        log_avg_key.removesuffix("_average") + "_cmmd": cmmd_value,
+        log_avg_key.removesuffix("_average") + "_n": len(ref_items),
+    }
+    # The score always reaches the console: through the trackers' dispatch
+    # (which feeds the run's log), the run's log alone, or the logger off rank 0.
+    sink = getattr(trainer, "progress_sink", None)
     if ctx.is_tracking:
-        logs = {
-            log_avg_key: cmmd_value,
-            log_div_key: cmmd_value - val.train_loss_recorder.moving_average,
-            log_avg_key.removesuffix("_average") + "_cmmd": cmmd_value,
-            log_avg_key.removesuffix("_average") + "_n": len(ref_items),
-        }
         logging_fn(accelerator, logs, global_step, epoch + 1)
+    elif sink is not None:
+        sink.val(logs, global_step=global_step, epoch=epoch + 1)
+    if sink is None:
+        logger.info(
+            f"CMMD validation @ step {global_step} (epoch {epoch + 1}): "
+            f"{cmmd_value:.4f}  (n={len(ref_items)}, lower is better)"
+        )
     return True
 
 
@@ -474,8 +471,7 @@ def _log_fm_validation(
         fm_mean = sum(ordered_losses) / len(ordered_losses)
         logs = {
             "loss/validation/fm_average": fm_mean,
-            "loss/validation/fm_div": fm_mean
-            - val.train_loss_recorder.moving_average,
+            "loss/validation/fm_div": fm_mean - val.train_loss_recorder.moving_average,
         }
         for s, losses in per_sigma_losses.items():
             if losses:

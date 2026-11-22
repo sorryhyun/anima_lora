@@ -59,7 +59,7 @@ from gui import i18n as main_i18n
 from gui import theme as gui_theme
 from gui.jobs.mixin import DaemonJobMixin
 from gui.core.paths import ROOT, get_setting, set_setting
-from gui.jobs.progress import TQDM_RE
+from gui.jobs.progress import TQDM_RE, JsonlProgressReader
 from gui.lines.strings import LANGUAGES, UI
 from gui.theme import Pad, rich_text_pt, tok
 from gui.widgets import (
@@ -530,6 +530,9 @@ class LinePanel(DaemonJobMixin, QWidget):
         bar = QProgressBar()
         bar.setVisible(False)
         self._progress_tracker = _LineProgress(bar)
+        # A training job's progress.jsonl drives the bar once it has events;
+        # cache and test jobs have none and keep the stdout lines.
+        self._jsonl_reader = JsonlProgressReader(bar)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
@@ -886,10 +889,25 @@ class LinePanel(DaemonJobMixin, QWidget):
         self._pending = []
         self._stop_job()
 
+    def _watch_job(self, job_id: str, *, replay_log: bool) -> None:
+        self._jsonl_reader.watch(gui_daemon.progress_path(job_id))
+        super()._watch_job(job_id, replay_log=replay_log)
+
+    def _on_job_tick(self) -> None:
+        self._jsonl_reader.poll()
+
+    def _route_progress_line(self, line: str) -> bool:
+        # With the stream on the bar, tqdm redraws (sample renders) are dropped
+        # and every other line goes to the log.
+        if self._jsonl_reader.active:
+            return bool(TQDM_RE.search(line))
+        return self._progress_tracker.feed(line)
+
     def _on_job_finished(self, state: str) -> None:
         self._end_job_watch()
         label = self._job_label or "job"
         self.log.appendPlainText(tr("finished", label=label, state=state))
+        self._jsonl_reader.reset()
         self._progress_tracker.reset()
         self._set_busy(False)
         self.status.setText(tr("finished", label=label, state=state))

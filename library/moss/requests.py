@@ -1190,7 +1190,6 @@ class TrainRequest(Request):
         "--no-expandable_segments to skip",
         advanced=True,
     )
-    log_every: int = _f(10, "full log line every N steps", advanced=True)
     seed: int = _f(0, "RNG seed", advanced=True)
     model_dir: str = _f("", _MODEL_DIR_HELP, advanced=True)
 

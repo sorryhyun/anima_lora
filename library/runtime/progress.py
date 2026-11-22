@@ -1,12 +1,17 @@
-"""Structured training-progress sink.
+"""The training runs' log: a JSONL event stream and the console lines.
 
-A JSONL event stream next to the checkpoint that the GUI, the daemon and MCP
-clients tail. Append-only, line-buffered, main-process only. One event per line:
+Every trainer (Anima, MOSS, the pixel heads, turbo) reports through one
+:class:`ProgressSink`; none prints its own step, eval or checkpoint lines.
+
+The stream sits next to the checkpoint (or in the daemon job dir) and the GUI,
+the daemon and MCP clients tail it. Append-only, line-buffered, main-process
+only. One event per line:
 
     {"ev": "run_start", "ts": 0.0, "run": ..., "method": ..., "preset": ...,
-     "total_steps": ..., "total_epochs": ..., "pid": ...}
-    {"ev": "step", "ts": ..., "global_step": ..., "epoch": ..., "loss": ..., ...}
-    {"ev": "val",  "ts": ..., "global_step": ..., "epoch": ..., "cmmd": ...}
+     "total_steps": ..., "total_epochs": ..., "pid": ..., "config": {...}}
+    {"ev": "step", "ts": ..., "global_step": ..., "epoch": ..., "loss": ..., ...,
+     "vram_gb": ..., "vram_peak_gb": ...}
+    {"ev": "val",  "ts": ..., "global_step": ..., "epoch": ..., "cmmd": ..., ...}
     {"ev": "ckpt", "ts": ..., "global_step": ..., "path": ...}
     {"ev": "log",  "ts": ..., "level": "WARNING|ERROR|...", "logger": ...,
      "msg": ...}
@@ -15,7 +20,12 @@ clients tail. Append-only, line-buffered, main-process only. One event per line:
 
 ``log`` events mirror WARNING+ root-logger records
 (:meth:`ProgressSink.attach_log_mirror`). Missing file = not started; last line
-``run_end`` = done. Every write is wrapped so a logging failure cannot crash
+``run_end`` = done.
+
+The console side: the settings and a start line at ``run_start``, a step line
+at most every ``CONSOLE_EVERY_S`` (speed and ETA over the trailing
+``RATE_WINDOW_S``, VRAM), every eval and checkpoint, the end line, and a
+heartbeat after ``QUIET_S`` of silence (load, compile, an eval). Every write is wrapped so a logging failure cannot crash
 training. :func:`read_status` is the read side; ``make run-status``
 (``scripts/run_status.py``) is its CLI.
 """
@@ -25,6 +35,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from contextlib import contextmanager
 from typing import Any, Callable, Optional
@@ -58,6 +69,13 @@ def _flatten_logs(logs: dict) -> dict:
                 except Exception:
                     continue
     return out
+
+
+def _scalars(metrics: dict) -> dict:
+    """:func:`_flatten_logs` without the keys an event sets itself (a wandb
+    ``logs`` dict carries ``global_step`` / ``epoch`` / ``val_step``)."""
+    reserved = ("ev", "ts", "global_step", "epoch", "val_step")
+    return {k: v for k, v in _flatten_logs(metrics).items() if k not in reserved}
 
 
 def _find_cmmd(logs: dict) -> Optional[float]:
@@ -102,17 +120,105 @@ class _SinkLogHandler(logging.Handler):
             )
 
 
+# Console cadence: one step line per CONSOLE_EVERY_S at most, a heartbeat after
+# QUIET_S without a line, and speed / ETA over the trailing RATE_WINDOW_S (the
+# run average carries the load and compile time).
+CONSOLE_EVERY_S = 30.0
+QUIET_S = 120.0
+RATE_WINDOW_S = 300.0
+
+
+def trailing_rate(
+    samples: list[tuple[float, int]], window_s: float = RATE_WINDOW_S
+) -> Optional[float]:
+    """Steps/sec over the ``(time, step)`` samples that fall in the last
+    ``window_s`` (at least the last two samples); ``None`` before two land."""
+    if len(samples) < 2:
+        return None
+    t_end, s_end = samples[-1]
+    i = len(samples) - 2
+    while i > 0 and t_end - samples[i - 1][0] <= window_s:
+        i -= 1
+    t_0, s_0 = samples[i]
+    if s_end > s_0 and t_end > t_0:
+        return (s_end - s_0) / (t_end - t_0)
+    return None
+
+
+def fmt_duration(seconds: Optional[float]) -> str:
+    if seconds is None or seconds < 0:
+        return "?"
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m{s % 60:02d}s"
+    return f"{s // 3600}h{s % 3600 // 60:02d}m"
+
+
+def _fmt_value(value: Any) -> str:
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    return str(value)
+
+
+def _vram() -> dict[str, float]:
+    """Allocated and peak-allocated GB on the current CUDA device, or ``{}``
+    where torch or CUDA is not up yet (never initialises CUDA itself)."""
+    import sys
+
+    torch = sys.modules.get("torch")
+    try:
+        if torch is None or not torch.cuda.is_initialized():
+            return {}
+        return {
+            "vram_gb": round(torch.cuda.memory_allocated() / 1e9, 2),
+            "vram_peak_gb": round(torch.cuda.max_memory_allocated() / 1e9, 2),
+        }
+    except Exception:
+        return {}
+
+
+def _config_lines(config: dict, width: int = 160) -> list[str]:
+    """``key=value`` pairs packed into lines of at most ``width`` columns,
+    in the dict's order; ``None`` values are left out."""
+    lines: list[str] = []
+    cur = ""
+    for key, value in config.items():
+        if value is None:
+            continue
+        item = f"{key}={value}"
+        if cur and len(cur) + 2 + len(item) > width:
+            lines.append(cur)
+            cur = item
+        else:
+            cur = f"{cur}  {item}" if cur else item
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 class ProgressSink:
-    """Append-only JSONL progress writer. Construct on the main process only."""
+    """The run's log: each event is one ``progress.jsonl`` line and, at the
+    console cadence, one stdout line. Construct on the main process only.
+
+    ``path=None`` keeps the console side alone. ``unit`` names a step on the
+    console (``rollout``, ``step``); ``console_keys`` picks the metrics a
+    console line shows (a key ending in ``/`` matches its prefix), all scalars
+    when ``None``.
+    """
 
     def __init__(
         self,
-        path: str,
+        path: Optional[str],
         *,
         run: str,
         method: Optional[str],
         preset: Optional[str],
         t0: Optional[float] = None,
+        unit: str = "step",
+        console: bool = True,
+        console_keys: Optional[tuple[str, ...]] = None,
     ) -> None:
         self._path = path
         self._run = run
@@ -122,6 +228,15 @@ class ProgressSink:
         self._fh = None
         self._closed = False
         self._log_handler: Optional[_SinkLogHandler] = None
+        self.unit = unit
+        self._console = console
+        self._console_keys = console_keys
+        self._total: Optional[int] = None
+        self._samples: list[tuple[float, int]] = []
+        self._last_step: Optional[int] = None
+        self._last_print = time.time()
+        self._last_step_print = 0.0
+        self._stop = threading.Event()
 
     @staticmethod
     def resolve_path(args) -> Optional[str]:
@@ -157,6 +272,33 @@ class ProgressSink:
         except Exception as exc:  # progress logging must never crash training
             logger.debug("progress sink write failed (%s): %s", ev, exc)
 
+    def _print(self, line: str) -> None:
+        if not self._console or self._closed:
+            return
+        try:
+            print(line, flush=True)
+        except Exception:
+            pass
+        self._last_print = time.time()
+
+    def _heartbeat(self) -> None:
+        """Prints a line after ``QUIET_S`` without one: load, compile, an eval
+        or a save would otherwise leave the log silent."""
+        while not self._stop.wait(5.0):
+            quiet = time.time() - self._last_print
+            if quiet < QUIET_S:
+                continue
+            since = fmt_duration(time.time() - self._t0)
+            if self._last_step is None:
+                self._print(
+                    f"… waiting for the first {self.unit} ({since} since start)"
+                )
+            else:
+                self._print(
+                    f"… {self.unit} {self._last_step}: no line for "
+                    f"{fmt_duration(quiet)} ({since} since start)"
+                )
+
     # region lifecycle events
 
     def run_start(
@@ -166,22 +308,27 @@ class ProgressSink:
         total_epochs: int,
         pid: int,
         log_dir: Optional[str] = None,
+        config: Optional[dict] = None,
     ) -> None:
-        """Open the file fresh (truncating any stale stream) and write the
-        opening event."""
+        """Open the file fresh (truncating any stale stream), write the opening
+        event and print the run's settings. ``config`` is the resolved settings
+        the run uses, every key, not the changed ones."""
         if self._closed:
             return
-        try:
-            parent = os.path.dirname(self._path)
-            if parent:
-                os.makedirs(parent, exist_ok=True)
-            # line-buffered so tailing readers see each event immediately
-            self._fh = open(self._path, "w", buffering=1, encoding="utf-8")
-        except Exception as exc:
-            logger.debug("progress sink open failed: %s", exc)
-            self._fh = None
-            return
-        extra = {"log_dir": log_dir} if log_dir is not None else {}
+        self._total = total_steps
+        if self._path:
+            try:
+                parent = os.path.dirname(self._path)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                # line-buffered so tailing readers see each event immediately
+                self._fh = open(self._path, "w", buffering=1, encoding="utf-8")
+            except Exception as exc:
+                logger.debug("progress sink open failed: %s", exc)
+                self._fh = None
+        extra: dict[str, Any] = {"log_dir": log_dir} if log_dir is not None else {}
+        if config is not None:
+            extra["config"] = config
         self._emit(
             "run_start",
             run=self._run,
@@ -192,6 +339,18 @@ class ProgressSink:
             pid=pid,
             **extra,
         )
+        if config is not None:
+            self._print(f"settings ({len(config)}):")
+            for line in _config_lines(config):
+                self._print(f"  {line}")
+        self._print(
+            f"start {self._run} [{self._method or '-'}]: {total_steps} {self.unit}s"
+            + (f", progress {self._path}" if self._fh is not None else "")
+        )
+        if self._console:
+            threading.Thread(
+                target=self._heartbeat, name="progress-heartbeat", daemon=True
+            ).start()
 
     def run_end(
         self,
@@ -204,9 +363,85 @@ class ProgressSink:
         self._emit(
             "run_end", status=status, final_step=final_step, error=error, **fields
         )
+        peak = _vram().get("vram_peak_gb")
+        self._print(
+            f"end {status}: {self.unit} {final_step}/{self._total or '?'} in "
+            f"{fmt_duration(time.time() - self._t0)}"
+            + (f", peak vram {peak:.1f}GB" if peak is not None else "")
+            + (f" — {error}" if error else "")
+        )
         self.close()
 
     # endregion
+
+    def step(self, metrics: dict, *, global_step: int, epoch: int = 0) -> None:
+        """A ``step`` event with ``metrics``' scalars and the VRAM; a console
+        line on the first call, then at most every ``CONSOLE_EVERY_S`` and at
+        the last step."""
+        now = time.time()
+        first = self._last_step is None
+        self._last_step = global_step
+        self._samples.append((now, global_step))
+        while len(self._samples) > 2 and now - self._samples[1][0] > RATE_WINDOW_S:
+            self._samples.pop(0)
+        fields = _scalars(metrics)
+        vram = _vram()
+        self._emit("step", **fields, **vram, global_step=global_step, epoch=epoch)
+        last = self._total is not None and global_step >= self._total
+        if not (first or last or now - self._last_step_print >= CONSOLE_EVERY_S):
+            return
+        self._last_step_print = now
+        self._print(self._step_line(fields, global_step, vram, now))
+
+    def _step_line(self, fields: dict, global_step: int, vram: dict, now: float) -> str:
+        total = self._total
+        head = f"{self.unit} {global_step}/{total or '?'}"
+        if total:
+            head += f" ({100.0 * global_step / total:.1f}%)"
+        keys = self._console_keys
+        shown = [
+            f"{k} {_fmt_value(v)}"
+            for k, v in fields.items()
+            if keys is None
+            or any(k == c or (c.endswith("/") and k.startswith(c)) for c in keys)
+        ]
+        rate = trailing_rate(self._samples)
+        if rate is None:
+            speed = f"first {self.unit} at {fmt_duration(now - self._t0)}"
+        else:
+            per = (
+                f"{1 / rate:.2f} s/{self.unit}"
+                if rate < 1
+                else f"{rate:.2f} {self.unit}/s"
+            )
+            eta = (total - global_step) / rate if total else None
+            speed = f"{per}  eta {fmt_duration(eta)}"
+        parts = [head, "  ".join(shown), speed]
+        if vram:
+            parts.append(f"vram {vram['vram_gb']:.1f}/{vram['vram_peak_gb']:.1f}GB")
+        parts.append(fmt_duration(now - self._t0))
+        return "  |  ".join(p for p in parts if p)
+
+    def val(
+        self,
+        metrics: dict,
+        *,
+        global_step: int,
+        epoch: int = 0,
+        val_step: Optional[int] = None,
+        text: Optional[str] = None,
+    ) -> None:
+        """A ``val`` event with ``metrics``' scalars (``cmmd`` lifted from a
+        ``..._cmmd`` key) and a console line: ``text``, else the scalars."""
+        fields = _scalars(metrics)
+        cmmd = _find_cmmd(metrics)
+        if cmmd is not None:
+            fields["cmmd"] = cmmd
+        if val_step is not None:
+            fields["val_step"] = val_step
+        self._emit("val", **fields, global_step=global_step, epoch=epoch)
+        body = text or "  ".join(f"{k} {_fmt_value(v)}" for k, v in fields.items())
+        self._print(f"eval @ {self.unit} {global_step}: {body}")
 
     def log(
         self,
@@ -216,29 +451,17 @@ class ProgressSink:
         epoch: int,
         val_step: Optional[int] = None,
     ) -> None:
-        """Emit a ``step`` or ``val`` event from a training ``logs`` dict.
-
-        A dict carrying a ``..._cmmd`` key (or an explicit ``val_step``) is a
-        validation pass → ``val``; everything else → ``step``.
-        """
-        if self._fh is None:
-            return
-        cmmd = _find_cmmd(logs)
-        if val_step is not None or cmmd is not None:
-            fields = {"global_step": global_step, "epoch": epoch}
-            if cmmd is not None:
-                fields["cmmd"] = cmmd
-            if val_step is not None:
-                fields["val_step"] = val_step
-            self._emit("val", **fields)
+        """A tracker-style ``logs`` dict: one carrying a ``..._cmmd`` key (or an
+        explicit ``val_step``) is a validation pass → :meth:`val`; everything
+        else → :meth:`step`."""
+        if val_step is not None or _find_cmmd(logs) is not None:
+            self.val(logs, global_step=global_step, epoch=epoch, val_step=val_step)
         else:
-            fields = _flatten_logs(logs)
-            fields["global_step"] = global_step
-            fields["epoch"] = epoch
-            self._emit("step", **fields)
+            self.step(logs, global_step=global_step, epoch=epoch)
 
     def ckpt(self, *, global_step: int, path: str) -> None:
         self._emit("ckpt", global_step=global_step, path=path)
+        self._print(f"saved {path} @ {self.unit} {global_step}")
 
     def attach_log_mirror(self, *, max_events: int = 500) -> None:
         """Mirror WARNING+ records from the root logger as ``log`` events.
@@ -251,6 +474,7 @@ class ProgressSink:
         logging.getLogger().addHandler(self._log_handler)
 
     def close(self) -> None:
+        self._stop.set()
         if self._log_handler is not None:
             try:
                 logging.getLogger().removeHandler(self._log_handler)
@@ -289,16 +513,18 @@ def _pid_alive(pid: Optional[int]) -> Optional[bool]:
     return True
 
 
-def read_status(path: str, *, rate_window: int = 20) -> dict:
+def read_status(path: str, *, window_s: float = RATE_WINDOW_S) -> dict:
     """Digest a ``progress.jsonl`` stream into one run-status dict.
 
     Reads the whole file; torn lines are skipped, so it is safe on a live run.
 
     Keys: ``run``/``method``/``preset``/``pid``/``log_dir`` (from ``run_start``),
     ``global_step``/``total_steps``/``pct``, ``elapsed``/``rate``/``eta``
-    (seconds; ``rate`` is steps/sec over the last ``rate_window`` step events,
-    ``None`` before two land), ``metrics`` (last ``step`` event's scalars),
-    ``val`` (last ``val`` event), ``ckpt`` (last ``ckpt`` event), ``warnings``
+    (seconds; ``rate`` is steps/sec over the step events of the last
+    ``window_s``, ``None`` before two land), ``metrics`` (last ``step`` event's
+    scalars), ``val`` (last ``val`` event), ``vals`` (every ``val`` event, in
+    order), ``config`` (the settings ``run_start`` carries), ``ckpt`` (last
+    ``ckpt`` event), ``warnings``
     (``log`` event count) and ``status``:
 
     ``running`` · the ``run_end`` status (``ok`` / ``error`` / ``stopped`` /
@@ -340,13 +566,9 @@ def read_status(path: str, *, rate_window: int = 20) -> dict:
     elapsed = events[-1].get("ts")
 
     # Trailing window: the run average is skewed by startup (load, compile).
-    rate = None
-    window = steps[-rate_window:]
-    if len(window) >= 2:
-        d_step = window[-1].get("global_step", 0) - window[0].get("global_step", 0)
-        d_ts = window[-1].get("ts", 0) - window[0].get("ts", 0)
-        if d_step > 0 and d_ts > 0:
-            rate = d_step / d_ts
+    rate = trailing_rate(
+        [(r.get("ts", 0), r.get("global_step", 0)) for r in steps], window_s
+    )
 
     if end is not None:
         status = end.get("status") or "unknown"
@@ -362,7 +584,7 @@ def read_status(path: str, *, rate_window: int = 20) -> dict:
     metrics = {
         k: v
         for k, v in (last_step or {}).items()
-        if k not in ("ev", "ts", "global_step", "epoch")
+        if k not in ("ev", "ts", "global_step", "epoch", "vram_gb", "vram_peak_gb")
     }
     return {
         "path": path,
@@ -386,7 +608,10 @@ def read_status(path: str, *, rate_window: int = 20) -> dict:
         "eta": (remaining / rate) if (rate and remaining and remaining > 0) else None,
         "metrics": metrics,
         "val": last_val,
+        "vals": [r for r in events if r.get("ev") == "val"],
+        "config": start.get("config"),
         "ckpt": last_ckpt,
+        "vram_peak_gb": (last_step or {}).get("vram_peak_gb"),
         "warnings": sum(1 for r in events if r.get("ev") == "log"),
     }
 

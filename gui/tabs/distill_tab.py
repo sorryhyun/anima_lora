@@ -37,7 +37,12 @@ from gui.jobs import daemon as gui_daemon
 from gui.explanations import method_overview
 from gui.i18n import t
 from gui.jobs.mixin import DaemonJobMixin
-from gui.jobs.progress import TqdmProgressTracker, make_progress_bar
+from gui.jobs.progress import (
+    TQDM_RE,
+    JsonlProgressReader,
+    TqdmProgressTracker,
+    make_progress_bar,
+)
 from gui.theme import rich_text_pt as _explain_pt, tok
 from gui.widgets import (
     DirtyTrackingMixin,
@@ -100,6 +105,8 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
 
         self.progress = make_progress_bar()
         self._progress_tracker = TqdmProgressTracker(self.progress)
+        # The job dir's progress.jsonl drives the bar once it has events.
+        self._jsonl_reader = JsonlProgressReader(self.progress)
         self.progress.setVisible(False)
         lay.addWidget(self.progress)
 
@@ -131,7 +138,8 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
         lay.addWidget(vsplit)
         self._show_explain_placeholder()
 
-        # Command job → no progress.jsonl; tqdm parsing drives the bar.
+        # The bar: the job's progress.jsonl (train), tqdm lines before it or
+        # without one (the anchor cache).
         self._init_job_observer()
 
     def _lazy_init(self) -> None:
@@ -346,14 +354,25 @@ class _DistillConfigTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidge
     def _attach(self, job_id: str, *, replay: bool) -> None:
         self._set_busy()
         self.stop_btn.setEnabled(True)
+        self._jsonl_reader.watch(gui_daemon.progress_path(job_id))
         self._watch_job(job_id, replay_log=replay)
+
+    def _on_job_tick(self) -> None:
+        self._jsonl_reader.poll()
+
+    def _route_progress_line(self, line: str) -> bool:
+        if self._jsonl_reader.active:
+            return bool(TQDM_RE.search(line))
+        return self._progress_tracker.feed(line)
 
     def _emit_log_line(self, line: str) -> None:
         # _log uses insertPlainText (no auto-newline), so add one here.
         self._log(line + "\n")
 
     def _on_job_finished(self, state: str | None) -> None:
+        self._jsonl_reader.poll()
         job_id = self._end_job_watch()
+        self._jsonl_reader.reset()
         self.progress.setVisible(False)
         self._log("\n" + gui_daemon.format_finish_banner(job_id, state) + "\n")
         self._restore_idle()

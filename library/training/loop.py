@@ -24,7 +24,6 @@ from typing import Any, Callable, Optional
 
 import torch
 from accelerate import Accelerator
-from tqdm import tqdm
 
 from library import train_util
 from library.datasets import LossRecorder
@@ -84,7 +83,6 @@ class LoopState:
 
     metadata: dict
     is_tracking: bool
-    progress_bar: Any
     loss_recorder: LossRecorder
     val_step_loss_recorder: LossRecorder
     val_epoch_loss_recorder: LossRecorder
@@ -213,7 +211,7 @@ def build_loop_state(
     )
 
     # Resume prelude: ``resume_step`` (optimizer steps already taken) seeds
-    # global_step so the tqdm total is sized right; ``epoch_to_start`` skips
+    # global_step; ``epoch_to_start`` skips
     # whole epochs and ``initial_step`` is the residual batch count inside the
     # resumed epoch, consumed by skip_first_batches in _run_epoch_steps.
     global_step = resume_step
@@ -248,13 +246,6 @@ def build_loop_state(
         )
 
     clean_memory_on_device(accelerator.device)
-
-    progress_bar = tqdm(
-        range(args.max_train_steps - global_step),
-        smoothing=0,
-        disable=not accelerator.is_local_main_process,
-        desc="steps",
-    )
 
     validation_steps = (
         min(args.max_validation_steps, len(val_dataloader))
@@ -313,7 +304,6 @@ def build_loop_state(
         initial_step=initial_step,
         metadata=metadata,
         is_tracking=is_tracking,
-        progress_bar=progress_bar,
         loss_recorder=loss_recorder,
         val_step_loss_recorder=val_step_loss_recorder,
         val_epoch_loss_recorder=val_epoch_loss_recorder,
@@ -492,10 +482,9 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
 
         _profiler_step_end(state)
 
-        keys_scaled, mean_norm, maximum_norm, max_mean_logs = _maybe_scale_norm(state)
+        keys_scaled, mean_norm, maximum_norm = _maybe_scale_norm(state)
 
         if accelerator.sync_gradients:
-            state.progress_bar.update(1)
             state.global_step += 1
             if state.saver.ema is not None:
                 state.saver.ema.step()
@@ -517,7 +506,6 @@ def _run_epoch_steps(trainer, state: LoopState, epoch: int) -> None:
             keys_scaled=keys_scaled,
             mean_norm=mean_norm,
             maximum_norm=maximum_norm,
-            max_mean_logs=max_mean_logs,
         )
         _maybe_run_step_validation(trainer, state, epoch)
 
@@ -727,12 +715,8 @@ def _maybe_scale_norm(state: LoopState):
         ).apply_max_norm_regularization(
             args.scale_weight_norms, state.accelerator.device
         )
-        max_mean_logs = {
-            "Keys Scaled": keys_scaled,
-            "Average key norm": mean_norm,
-        }
-        return keys_scaled, mean_norm, maximum_norm, max_mean_logs
-    return None, None, None, {}
+        return keys_scaled, mean_norm, maximum_norm
+    return None, None, None
 
 
 def _sample_at_step(trainer, state: LoopState) -> None:
@@ -761,7 +745,6 @@ def _log_step(
     keys_scaled,
     mean_norm,
     maximum_norm,
-    max_mean_logs,
 ) -> None:
     args = state.args
     log_every = max(1, int(getattr(args, "log_every_n_steps", 1) or 1))
@@ -777,8 +760,7 @@ def _log_step(
     avr_loss: float = state.loss_recorder.moving_average
     logs = {"avr_loss": avr_loss}
     _unwrapped_net = state.accelerator.unwrap_model(state.network)
-    # get_router_entropy costs D2H syncs, so refresh only on log cadence; the
-    # bar shows the cached value in between.
+    # get_router_entropy costs D2H syncs, so refresh only on log cadence.
     if getattr(_unwrapped_net, "_use_hydra", False) and should_log_step:
         _router_H = _unwrapped_net.get_router_entropy()
         if _router_H is not None:
@@ -786,10 +768,8 @@ def _log_step(
     _router_H_cached = getattr(trainer, "_last_router_H_postfix", None)
     if _router_H_cached is not None:
         logs["router_H"] = f"{_router_H_cached:.3f}"
-    state.progress_bar.set_postfix(refresh=False, **{**max_mean_logs, **logs})
-
-    # The progress sink (GUI / daemon tail progress.jsonl) needs `step` events
-    # with no tracker too; when tracking, step_logging below feeds it.
+    # The run's log takes `step` events with no tracker too; when tracking,
+    # step_logging below feeds it.
     progress_sink = getattr(trainer, "progress_sink", None)
     if should_log_step and not state.is_tracking and progress_sink is not None:
         progress_sink.log(logs, global_step=state.global_step, epoch=epoch + 1)
@@ -875,7 +855,6 @@ def _maybe_run_step_validation(trainer, state: LoopState, epoch: int) -> None:
             val_loss_recorder=state.val_step_loss_recorder,
             epoch=epoch,
             global_step=state.global_step,
-            progress_bar=state.progress_bar,
             progress_desc="validation steps",
             postfix_label="val_avg_loss",
             log_avg_key="loss/validation/step_average",
@@ -899,7 +878,6 @@ def _run_epoch_validation(trainer, state: LoopState, epoch: int) -> None:
             val_loss_recorder=state.val_epoch_loss_recorder,
             epoch=epoch,
             global_step=state.global_step,
-            progress_bar=state.progress_bar,
             progress_desc="epoch validation steps",
             postfix_label="val_epoch_avg_loss",
             log_avg_key="loss/validation/epoch_average",

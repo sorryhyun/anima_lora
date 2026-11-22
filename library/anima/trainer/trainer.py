@@ -577,27 +577,35 @@ class AnimaTrainer:
         )
         num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
-        # Structured progress sink: a JSONL event stream next to the
-        # checkpoint the GUI/daemon can tail instead of regex-parsing tqdm.
+        # The run's log (library.runtime.progress): the console step / eval /
+        # checkpoint lines, and the JSONL stream the GUI and the daemon tail
+        # unless --progress_jsonl is off.
         self.progress_sink = None
         if is_main_process:
-            progress_path = ProgressSink.resolve_path(args)
-            if progress_path is not None:
-                self.progress_sink = ProgressSink(
-                    progress_path,
-                    run=args.output_name or "run",
-                    method=getattr(args, "method", None),
-                    preset=getattr(args, "preset", None),
-                    t0=training_started_at,
-                )
-                self.progress_sink.run_start(
-                    total_steps=args.max_train_steps,
-                    total_epochs=num_train_epochs,
-                    pid=os.getpid(),
-                    log_dir=resolve_run_log_dir(args),
-                )
-                # Mirror WARNING+ log records into the stream.
-                self.progress_sink.attach_log_mirror()
+            self.progress_sink = ProgressSink(
+                ProgressSink.resolve_path(args),
+                run=args.output_name or "run",
+                method=getattr(args, "method", None),
+                preset=getattr(args, "preset", None),
+                t0=training_started_at,
+                console_keys=(
+                    "loss/current",
+                    "loss/average",
+                    "avr_loss",
+                    "router_H",
+                    "lr/",
+                    "grad/norm",
+                ),
+            )
+            self.progress_sink.run_start(
+                total_steps=args.max_train_steps,
+                total_epochs=num_train_epochs,
+                pid=os.getpid(),
+                log_dir=resolve_run_log_dir(args),
+                config=dict(vars(args)),
+            )
+            # Mirror WARNING+ log records into the stream.
+            self.progress_sink.attach_log_mirror()
 
         if (args.save_n_epoch_ratio is not None) and (args.save_n_epoch_ratio > 0):
             args.save_every_n_epochs = (
