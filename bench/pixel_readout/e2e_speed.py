@@ -15,9 +15,9 @@ ways, each timed with a CUDA sync and its peak VRAM over the resident DiT record
 Every arm ends with the pixels on the CPU in fp32. The head's PSNR against VAE(x_final) is
 recorded too.
 
-``--scale 2`` reads a ×2 head (``--head_run`` an ``x2_head.py`` run or a
+``--scale 2`` reads a ×2 head (``--head_run`` an ``experiments/x2_head.py`` run or a
 ``head_x2.safetensors``): the ``head`` arm decodes at ×2, and a ``chain`` arm times what it
-replaces, the resident VAE then the released ResShift ×2 student (``x2_head.load_teacher``,
+replaces, the resident VAE then the released ResShift ×2 student (``_teacher.load_teacher``,
 resident). The PSNR is the head's ×2 against the chain's output.
 
 ``--adapter`` runs the sampler with a LoRA-family adapter as hooks (after the fp32 stream
@@ -49,7 +49,6 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
 
 import networks.spectrum  # noqa: F401  (registers the Spectrum runner)
-from bench.pixel_readout._compile import compile_blocks_isolated
 from bench._anima import (
     DEFAULT_NEG,
     DEFAULT_TEXT_ENCODER,
@@ -58,15 +57,16 @@ from bench._anima import (
     build_anima,
 )
 from bench._common import make_run_dir, start_heartbeat, write_result
-from bench.pixel_readout.convnext_head import (
-    attach_adapter,
+from bench.pixel_readout._prompts import PROMPTS
+from bench.pixel_readout._shared import load_head, resolve_run
+from bench.pixel_readout._teacher import TEACHER_DIR, TEACHER_REPO, load_teacher
+from library.anima.pixel_head import (
+    PATCH,
+    PixelHeadX2,
     lat_patches,
-    load_head,
-    resolve_run,
+    load_pixel_head,
 )
-from bench.pixel_readout.linear_probe import PATCH, psnr
-from bench.pixel_readout.p3_generated import PROMPTS
-from library.anima.pixel_head import PixelHeadX2, load_pixel_head
+from library.anima.pixel_head_train import attach_adapter, compile_dit, psnr
 from library.anima.vocab_pack import default_vocab_pack
 from library.anima.weights import _attach_vocab_pack_if_set
 from library.env import resolve_under_home
@@ -149,7 +149,7 @@ def main():
     _attach_vocab_pack_if_set(anima, default_vocab_pack())
     if compile_blocks:
         toks = sorted({(h // PATCH) * (w // PATCH) for _, _, (h, w) in prompts})
-        compile_blocks_isolated(anima, [(toks[0], toks[-1])])
+        compile_dit(anima, [(toks[0], toks[-1])])
 
     calls: list[dict] = []
 
@@ -173,8 +173,6 @@ def main():
         )
         head = load_pixel_head(path, device, anima.final_layer.hidden_size)
         assert isinstance(head, PixelHeadX2), f"{path}: not a ×2 head (no x2_depth)"
-        from bench.pixel_readout.x2_head import TEACHER_DIR, TEACHER_REPO, load_teacher
-
         up2 = load_teacher(
             Path(resolve_under_home(TEACHER_REPO)),
             Path(resolve_under_home(TEACHER_DIR)),

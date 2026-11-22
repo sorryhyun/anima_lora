@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""×2 pixel head: decode and 2× upscale in one readout (pixel_decoder P5, arm A).
+"""Experiment: ×2 pixel head, decode and 2× upscale in one readout (pixel_decoder P5, arm A).
+
+The settled recipe is ``scripts/pixel_head/train_x2.py``; this script keeps the arms that
+led there and the whole-image reads with the teacher / chain columns.
 
 A released head (``PixelHead`` with one upsample stage, 8-px spacing at width 512) gets a
 second stage: LayerNorm + per-position linear 512 → 4 × 256, pixel shuffle, ConvNeXt blocks
@@ -20,7 +23,7 @@ teacher's context). Evals run the head and the teacher on whole images.
 
 Usage::
 
-    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/x2_head.py \
+    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/experiments/x2_head.py \
         --compile --init mixr_1119_1455 --adapter models/loras/anima_turbo_4step.safetensors \
         --points 0.0577-0.1364 0.5:adapter --pages post_image_dataset/pixel_pages \
         --page_share 0.33 --label x2a_mmdd_hhmm"
@@ -29,12 +32,10 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import math
 import os
 import random
-import sys
 import time
 from collections import deque
 from pathlib import Path
@@ -44,7 +45,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
 from bench._anima import (
@@ -54,31 +54,36 @@ from bench._anima import (
     build_anima,
 )
 from bench._common import make_run_dir, start_heartbeat, write_result
-from bench.pixel_readout._compile import compile_blocks_isolated
-from bench.pixel_readout.convnext_head import (
-    P1_RUN,
-    attach_adapter,
-    densest_window,
-    page_token_count,
-    pick_text,
-    real_pixels,
-    rec_loss,
-    resolve_run,
-    token_count,
+from bench.pixel_readout._shared import P1_RUN, bicubic2, resolve_run
+from bench.pixel_readout._teacher import (
+    TEACHER_DIR,
+    TEACHER_FILE,
+    TEACHER_REPO,
+    load_teacher,
 )
-from bench.pixel_readout.linear_probe import PATCH, pick_samples, psnr
 from library.anima.pixel_head import (
+    PATCH,
     PixelHeadX2,
     lat_patches,
     load_pixel_head,
 )
-from library.anima.pixel_head_train import (  # noqa: F401  (re-exported for the scripts here)
+from library.anima.pixel_head_train import (
     PEDisc,
+    attach_adapter,
+    compile_dit,
     crop_margin,
     dc_loss,
-    luma8,
+    densest_window,
     pair_sheet,
+    psnr,
+    rec_loss,
     tone_stats,
+)
+from library.anima.pixel_head_train_x1 import (
+    item_tokens,
+    pick_samples,
+    pick_text,
+    real_pixels,
 )
 from library.datasets.buckets import cluster_token_bands
 from library.env import resolve_under_home
@@ -91,77 +96,6 @@ from library.io.cache import (
     load_cached_text_features,
 )
 from library.models import qwen_vae
-
-TEACHER_REPO = "../comfy/custom_nodes/comfyui-distilled-resshift"
-TEACHER_DIR = "../comfy/models/resshift"
-TEACHER_FILE = "rsd_student_18k.safetensors"  # Hub sorryhyun/Distilled-ResShift-2x
-VQGAN_FILE = "autoencoder_vq_f4.pth"
-
-
-# --------------------------------------------------------------------------- teacher
-
-
-def load_teacher(repo: Path, weights: Path, device):
-    """The released ResShift ×2 student as ``up2(img (3,H,W) in [-1,1], seed) → (3,2H,2W)``.
-
-    Loaded the way the ComfyUI node loads it (student fp32 under bf16 autocast, VQGAN
-    fp16) and run through the node's ``upscale`` at its defaults (chop 512, overlap 64,
-    tile batch 4, shared noise)."""
-    spec = importlib.util.spec_from_file_location(
-        "resshift_infer", str(repo / "resshift_infer.py")
-    )
-    R = importlib.util.module_from_spec(spec)
-    sys.modules["resshift_infer"] = R
-    spec.loader.exec_module(R)
-    cfg = R.load_configs(str(weights / VQGAN_FILE), config_path=R.CONFIGS["x2"])
-    diff = R.build_diffusion(cfg)
-    path = str(weights / TEACHER_FILE)
-    with safe_open(path, "pt") as fh:
-        meta = fh.metadata() or {}
-    nc = meta.get("noise_channels")
-    student = R.build_student(
-        cfg,
-        device,
-        noise_mode=meta.get("noise_mode", "concat"),
-        noise_channels=int(nc) if nc is not None else None,
-    )
-    R.load_student_weights(student, load_file(path))
-    vqgan = R.build_autoencoder(cfg, device, dtype=torch.float16)
-    align = R.swin_align(cfg)
-    cond = meta.get("cond_lq", "latent")
-    scale = int(cfg.diffusion.params.sf)
-    assert scale == 2, f"teacher scale {scale}"
-
-    @torch.no_grad()
-    def up2(img: torch.Tensor, seed: int) -> torch.Tensor:
-        return R.upscale(
-            cfg,
-            diff,
-            vqgan,
-            student,
-            img[None].float().clamp(-1, 1),
-            device,
-            scale,
-            align,
-            overlap=64,
-            chop=512,
-            tile_batch=4,
-            amp=True,
-            seed=seed,
-            shared_noise=True,
-            cond_mode=cond,
-        )[0].float()
-
-    return up2
-
-
-# --------------------------------------------------------------------------- helpers
-
-
-def bicubic2(img: torch.Tensor) -> torch.Tensor:
-    return F.interpolate(
-        img[None].float(), scale_factor=2, mode="bicubic", align_corners=False
-    )[0].clamp(-1, 1)
 
 
 def down2(img: torch.Tensor) -> torch.Tensor:
@@ -419,8 +353,7 @@ def main():
         page_train = sorted((proot / "train").glob("*.safetensors"))
         page_eval = sorted((proot / "eval").glob("*.safetensors"))
     seq_bands = cluster_token_bands(
-        [token_count(ci) for ci in train + test + text]
-        + [page_token_count(pth) for pth in page_train + page_eval]
+        [item_tokens(it) for it in train + test + text + page_train + page_eval]
     )
     _, sigmas = get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
     sigma_last = float(sigmas[-2])
@@ -465,7 +398,7 @@ def main():
         stream_fp32_(anima)
     network = attach_adapter(anima, args.adapter, device) if args.adapter else None
     if compile_blocks:
-        compile_blocks_isolated(anima, seq_bands)
+        compile_dit(anima, seq_bands)
     tap: dict[str, torch.Tensor] = {}
     anima.final_layer.linear.register_forward_pre_hook(
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())

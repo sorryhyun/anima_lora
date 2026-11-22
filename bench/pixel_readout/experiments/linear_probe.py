@@ -18,15 +18,13 @@ VAE image averaged per 16×16 patch, i.e. one colour per token).
 
 Usage::
 
-    make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/linear_probe.py --compile --label readout_1118_HHMM"
+    make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/experiments/linear_probe.py --compile --label readout_1118_HHMM"
 """
 
 from __future__ import annotations
 
 import argparse
-import math
 import os
-import random
 import time
 from pathlib import Path
 
@@ -34,52 +32,20 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import numpy as np
 import torch
 import torch.nn.functional as F
-from PIL import Image, ImageDraw
 from safetensors.torch import save_file
 
-from bench.pixel_readout._compile import compile_blocks_isolated
 from bench._anima import add_common_args, add_model_args, build_anima
 from bench._common import make_run_dir, start_heartbeat, write_result
+from library.anima.pixel_head import PATCH, from_patches
+from library.anima.pixel_head_train import compile_dit, psnr, zoom_sheet
+from library.anima.pixel_head_train_x1 import pick_samples
 from library.env import resolve_under_home
 from library.inference.sampling import get_timesteps_sigmas
 from library.io.cache import (
-    discover_cached_pairs,
     load_cached_latents,
     load_cached_text_features,
 )
 from library.models import qwen_vae
-
-from library.anima.pixel_head import PATCH, from_patches  # noqa: E402, F401
-
-
-def pick_samples(
-    cache_root: Path,
-    n_train: int,
-    n_test_artists: int,
-    per_artist: int,
-    max_tokens: int,
-    seed: int,
-):
-    rng = random.Random(seed)
-    artists = sorted(d.name for d in cache_root.iterdir() if d.is_dir())
-    rng.shuffle(artists)
-    test_artists, train_artists = artists[:n_test_artists], artists[n_test_artists:]
-
-    def ok(ci):
-        lat_hw = ci.npz_path.rsplit("_", 2)[-2]  # {W}x{H} in pixels
-        w, h = (int(v) for v in lat_hw.split("x"))
-        return (w // PATCH) * (h // PATCH) <= max_tokens
-
-    test = []
-    for a in test_artists:
-        pairs = [p for p in discover_cached_pairs(str(cache_root / a)) if ok(p)]
-        rng.shuffle(pairs)
-        test += pairs[:per_artist]
-    pool = []
-    for a in train_artists:
-        pool += [p for p in discover_cached_pairs(str(cache_root / a)) if ok(p)]
-    rng.shuffle(pool)
-    return pool[:n_train], test, test_artists
 
 
 def to_patches(img: torch.Tensor) -> torch.Tensor:
@@ -90,44 +56,6 @@ def to_patches(img: torch.Tensor) -> torch.Tensor:
         .permute(1, 3, 2, 4, 0)
         .reshape((h // PATCH) * (w // PATCH), PATCH * PATCH * c)
     )
-
-
-def psnr(a: torch.Tensor, b: torch.Tensor) -> float:
-    mse = F.mse_loss(a.float(), b.float()).item()  # range [-1, 1] → peak-to-peak 2
-    return 10 * math.log10(4.0 / max(mse, 1e-12))
-
-
-def to_pil(img: torch.Tensor) -> Image.Image:
-    arr = (
-        ((img.float().clamp(-1, 1) + 1) * 127.5)
-        .round()
-        .byte()
-        .permute(1, 2, 0)
-        .cpu()
-        .numpy()
-    )
-    return Image.fromarray(arr)
-
-
-def sheet(cols: list[tuple[str, torch.Tensor]], path: Path, crop: int = 384) -> None:
-    """Two rows: full images, then a 2× nearest-upscaled centre crop of each."""
-    pils = [to_pil(t) for _, t in cols]
-    w, h = pils[0].size
-    cx, cy = (w - crop) // 2, (h - crop) // 2
-    crops = [
-        p.crop((cx, cy, cx + crop, cy + crop)).resize(
-            (2 * crop, 2 * crop), Image.NEAREST
-        )
-        for p in pils
-    ]
-    cw = max(w, 2 * crop)
-    canvas = Image.new("RGB", (cw * len(cols), 24 + h + 2 * crop), "white")
-    d = ImageDraw.Draw(canvas)
-    for i, ((name, _), p, c) in enumerate(zip(cols, pils, crops)):
-        d.text((i * cw + 6, 4), name, fill="black")
-        canvas.paste(p, (i * cw, 24))
-        canvas.paste(c, (i * cw, 24 + h))
-    canvas.save(path)
 
 
 def main():
@@ -198,7 +126,7 @@ def main():
     args.compile = compile_blocks
     anima = bundle.anima
     if compile_blocks:
-        compile_blocks_isolated(anima)
+        compile_dit(anima)
     tap: dict[str, torch.Tensor] = {}
     anima.final_layer.linear.register_forward_pre_hook(
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())
@@ -295,7 +223,7 @@ def main():
         )
         if k < args.n_sheets:
             name = f"sheet_{k:02d}_{ci.stem}.png"
-            sheet(
+            zoom_sheet(
                 [
                     ("VAE decode", tgt),
                     ("linear readout", pred),

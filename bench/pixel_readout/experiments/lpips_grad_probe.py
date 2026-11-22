@@ -31,7 +31,7 @@ DiT runs 128 forwards at mixed shapes (~20 s), so ``--compile`` is off by defaul
 
 Usage::
 
-    make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/lpips_grad_probe.py --label lgrad_mmdd_hhmm"
+    make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/experiments/lpips_grad_probe.py --label lgrad_mmdd_hhmm"
 """
 
 from __future__ import annotations
@@ -48,11 +48,17 @@ import torch
 
 from bench._anima import add_common_args, add_model_args, build_anima
 from bench._common import make_run_dir, start_heartbeat, write_result
-from bench.pixel_readout._compile import compile_blocks_isolated
-from bench.pixel_readout.convnext_head import P1_RUN, resolve_run, token_count
-from bench.pixel_readout.linear_probe import pick_samples, psnr
+from bench.pixel_readout._shared import P1_RUN, resolve_run
 from library.anima.pixel_head import PATCH, lat_patches, load_pixel_head
-from library.anima.pixel_head_train import Lpips, crop_margin, pair_sheet, pick_window
+from library.anima.pixel_head_train import (
+    Lpips,
+    compile_dit,
+    crop_margin,
+    pair_sheet,
+    pick_window,
+    psnr,
+)
+from library.anima.pixel_head_train_x1 import item_tokens, pick_samples
 from library.datasets.buckets import cluster_token_bands
 from library.env import resolve_under_home
 from library.io.cache import load_cached_latents, load_cached_text_features
@@ -142,9 +148,7 @@ def main():
 
     stream_fp32_(anima)
     if compile_blocks:
-        compile_blocks_isolated(
-            anima, cluster_token_bands([token_count(ci) for ci in items])
-        )
+        compile_dit(anima, cluster_token_bands([item_tokens(ci) for ci in items]))
     tap: dict[str, torch.Tensor] = {}
     anima.final_layer.linear.register_forward_pre_hook(
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())

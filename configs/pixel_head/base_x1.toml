@@ -1,0 +1,35 @@
+# ×1 pixel head, the base — field defaults for scripts/pixel_head/base_x1.py.
+#
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/base_x1.py --config configs/pixel_head/base_x1.toml"
+#
+# Keys are BaseX1Request field names (`--help` lists them); CLI flags win over this file,
+# and a key left out keeps the field default. Values below are the confirmed base recipe
+# (project/pixel_decoder/plan.md), the settings of x1ll_1122_1000: regression only, the
+# init of the GAN finish (x1.toml), of ×2 and of RGBA.
+# For a run, copy this file to <handle>_mmdd_hhmm.toml and set output_name to that name.
+
+output_name = "base_x1"
+output_dir = "output/pixel_head"       # → <output_dir>/<output_name>/head.safetensors
+init = "bench/pixel_readout/results/20261119-1527-mixr_1119_1455/head.safetensors"   # mixr_1119_1455 (local); "" = a fresh head
+points = "0.0577-0.1364:real 0.5:adapter"   # in turn per rollout; :real = against the original image
+target = "xhat0"                       # target of the other points: the VAE's decode of the DiT's own x̂0
+adapter = "output/ckpt/release/anima_turbo_4step_v4_longer.safetensors"
+pages = "post_image_dataset/pixel_pages"    # bench/pixel_readout/build_pages.py builds it
+page_share = 0.33
+
+rollouts = 12000                       # one DiT forward each
+opt_steps = 16                         # head updates per rollout
+replay = 64
+lr = 5e-5                              # one cosine cycle
+warmup = 200                           # opt steps
+lambda_lpips = 0.05                    # on the :real points
+lpips_crop = 512
+
+eval_points = "0.03 0.25"              # read, not trained on
+eval_every = 1000
+start_eval = false
+n_sheets = 4
+
+stream = "fp32"
+compile = true
+seed = 0

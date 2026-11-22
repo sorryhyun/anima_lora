@@ -18,7 +18,7 @@ windows; the ×1 output against VAE(x̂0).
 
 Usage::
 
-    make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/x2_overfit.py \
+    make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/experiments/x2_overfit.py \
         --init mixr_1119_1455 --adapter models/loras/anima_turbo_4step.safetensors \
         --points 0.0577-0.1364 0.5:adapter --pages post_image_dataset/pixel_pages \
         --label x2fit_mmdd_hhmm"
@@ -46,24 +46,22 @@ from bench._anima import (
     build_anima,
 )
 from bench._common import make_run_dir, start_heartbeat, write_result
-from bench.pixel_readout.convnext_head import (
-    P1_RUN,
-    attach_adapter,
-    pick_text,
-    rec_loss,
-    resolve_run,
-)
-from bench.pixel_readout.linear_probe import PATCH, pick_samples, psnr
-from bench.pixel_readout.x2_head import (
-    TEACHER_DIR,
-    TEACHER_REPO,
+from bench.pixel_readout._shared import P1_RUN, bicubic2, resolve_run
+from bench.pixel_readout._teacher import TEACHER_DIR, TEACHER_REPO, load_teacher
+from library.anima.pixel_head import (
+    PATCH,
     PixelHeadX2,
-    bicubic2,
-    crop_margin,
-    load_teacher,
-    pair_sheet,
+    lat_patches,
+    load_pixel_head,
 )
-from library.anima.pixel_head import lat_patches, load_pixel_head
+from library.anima.pixel_head_train import (
+    attach_adapter,
+    crop_margin,
+    pair_sheet,
+    psnr,
+    rec_loss,
+)
+from library.anima.pixel_head_train_x1 import pick_samples, pick_text
 from library.env import resolve_under_home
 from library.inference.text import prepare_text_inputs
 from library.io.cache import (

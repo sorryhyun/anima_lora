@@ -1,0 +1,41 @@
+# ×1 pixel head, the release — field defaults for scripts/pixel_head/train_x1.py.
+#
+#   make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_x1.py --config configs/pixel_head/x1.toml"
+#
+# Keys are X1TrainRequest field names (`--help` lists them); CLI flags win over this file,
+# and a key left out keeps the field default. Values below are the GAN finish as first run
+# (x1fgan_1122_1247, project/pixel_decoder/plan.md): the base recipe on a new cosine from
+# the base, with the PE-Spatial GAN term on the :real samples. The user's read of that run
+# decides whether this is the release recipe.
+# For a run, copy this file to <handle>_mmdd_hhmm.toml and set output_name to that name.
+
+output_name = "x1"
+output_dir = "output/pixel_head"       # → <output_dir>/<output_name>/head.safetensors
+init = "output/pixel_head/x1ll_1122_1000/head.safetensors"   # the base (base_x1.toml), not the catalog's head
+points = "0.0577-0.1364:real 0.5:adapter"
+target = "xhat0"
+adapter = "output/ckpt/release/anima_turbo_4step_v4_longer.safetensors"
+pages = "post_image_dataset/pixel_pages"
+page_share = 0.33
+
+rollouts = 2000                        # the points alternate: half of them carry the term
+opt_steps = 16
+replay = 64
+lr = 5e-5
+warmup = 200
+lambda_lpips = 0.05
+lpips_crop = 512
+
+pegan_ratio = 2.0                      # GAN gradient norm over the head / the regression terms'; 0 = off
+pegan_crop = 0                         # 0 = the whole image; the PE tower runs eager
+pegan_lr = 1e-4
+pegan_lambda_max = 1.0
+
+eval_points = "0.03 0.25"
+eval_every = 500
+start_eval = false
+n_sheets = 4
+
+stream = "fp32"
+compile = true
+seed = 0

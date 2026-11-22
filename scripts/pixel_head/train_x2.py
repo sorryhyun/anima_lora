@@ -19,24 +19,25 @@ request, the eval history, per-image rows) and ``original 2x | x2 head`` sheets.
 
 from __future__ import annotations
 
-import argparse
 import dataclasses
 import json
 import os
 import random
 import time
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 
 from library.env import default_checkpoints, resolve_under_home
+from library.lines.requests import Request
+from scripts.pixel_head._setup import load_models, open_sink
 
 _CKPTS = default_checkpoints()
 
 
 @dataclass
-class X2TrainRequest:
+class X2TrainRequest(Request):
+    """Train a ×2 pixel head on the x2flex set."""
+
     output_name: str = "x2"
     output_dir: str = "output/pixel_head"
     x2flex: str = "post_image_dataset/x2flex/manifest.json"
@@ -78,33 +79,6 @@ class X2TrainRequest:
     compile: bool = True  # DiT blocks, head, LPIPS and the discriminator's tower
     device: str = "cuda"
 
-    @classmethod
-    def from_argv(cls, argv: list[str] | None = None) -> "X2TrainRequest":
-        p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-        p.add_argument("--config", default=None, help="flat TOML of the fields below")
-        for f in dataclasses.fields(cls):
-            if isinstance(f.default, bool):
-                p.add_argument(
-                    f"--{f.name}",
-                    action=argparse.BooleanOptionalAction,
-                    default=argparse.SUPPRESS,
-                )
-            else:
-                p.add_argument(
-                    f"--{f.name}",
-                    type=type(f.default),
-                    default=argparse.SUPPRESS,
-                    help=f"default {f.default!r}",
-                )
-        cli = vars(p.parse_args(argv))
-        config = cli.pop("config")
-        values: dict = {}
-        if config:
-            values = tomllib.loads(Path(resolve_under_home(config)).read_text())
-            unknown = set(values) - {f.name for f in dataclasses.fields(cls)}
-            assert not unknown, f"--config: unknown fields {sorted(unknown)}"
-        return cls(**{**values, **cli})
-
 
 def run(req: X2TrainRequest) -> Path:
     import numpy as np
@@ -123,7 +97,6 @@ def run(req: X2TrainRequest) -> Path:
         PEDisc,
         X2TrainConfig,
         X2Trainer,
-        compile_dit,
         densest_window,
         load_x2flex,
         pair_sheet,
@@ -134,9 +107,7 @@ def run(req: X2TrainRequest) -> Path:
         tone_stats,
     )
     from library.datasets.buckets import cluster_token_bands
-    from library.models import qwen_vae
-    from library.runtime.harness import build_anima
-    from library.runtime.progress import ProgressSink, command_job_path, run_scope
+    from library.runtime.progress import run_scope
 
     cfg = X2TrainConfig(
         **{f.name: getattr(req, f.name) for f in dataclasses.fields(X2TrainConfig)}
@@ -160,25 +131,7 @@ def run(req: X2TrainRequest) -> Path:
     )
 
     # --- models: VAE + frozen DiT ---
-    vae = qwen_vae.load_vae(
-        req.vae, device="cpu", dtype=torch.bfloat16, eval=True, vae_2d=True
-    ).to(device)
-    ns = SimpleNamespace(
-        dit=req.dit,
-        device=req.device,
-        dtype="bf16",
-        attn_mode=req.attn_mode,
-        gradient_checkpointing=False,
-        compile=False,  # compiled below, after the stream change
-        compile_mode=None,
-    )
-    anima = build_anima(ns, adapter=None, train_mode=False).anima
-    if req.stream == "fp32":
-        from library.anima.stream import stream_fp32_
-
-        stream_fp32_(anima)
-    if req.compile:
-        compile_dit(anima, seq_bands)
+    vae, anima, _ = load_models(req, device, seq_bands)
     rollout = DiTRollout(anima, vae, device, seed=req.seed)
 
     # --- head ---
@@ -266,17 +219,7 @@ def run(req: X2TrainRequest) -> Path:
         )
 
     # --- train ---
-    sink = None
-    path = command_job_path(
-        ProgressSink.resolve_path(
-            SimpleNamespace(output_dir=str(out_dir), output_name=req.output_name)
-        )
-    )
-    if path:
-        sink = ProgressSink(
-            path, run=req.output_name, method="pixel_head_x2", preset=None
-        )
-        sink.run_start(total_steps=cfg.rollouts, total_epochs=1, pid=os.getpid())
+    sink = open_sink(req, out_dir, "pixel_head_x2")
     order: list = []
     order_rng = random.Random(req.seed + 1)
     sig_rng = random.Random(req.seed + 4)

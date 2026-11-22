@@ -1,6 +1,10 @@
-"""×2 pixel-head training: the pieces ``scripts/pixel_head/train_x2.py`` composes.
+"""Pixel-head training: the pieces both scales share, and the ×2 recipe's own.
 
-The recipe (``project/pixel_decoder/x2_plan.md``): a frozen Anima DiT is run once per
+Shared with ×1 (``library/anima/pixel_head_train_x1.py``) and the bench:
+:class:`DiTRollout`, :func:`attach_adapter`, :func:`compile_dit`, :func:`rec_loss`,
+:class:`Lpips`, :class:`PEDisc`, :func:`cosine_lr` and the read helpers.
+
+``scripts/pixel_head/train_x2.py`` composes the ×2 recipe. The recipe (``project/pixel_decoder/x2_plan.md``): a frozen Anima DiT is run once per
 rollout on a noised cached latent at a decode point σ; the head reads the feature before
 ``final_layer.linear`` and x_t's latent patches and writes the 2× image, trained against
 the real 2× image the latent's own image was made from (the ``x2flex`` set). One random
@@ -18,7 +22,7 @@ Pieces, in the order a rollout uses them:
 - :func:`save_x2_head` — the file :func:`library.anima.pixel_head.load_pixel_head` reads.
 
 The earlier arms (teacher target, ×1 loss in a ×2 file) and the whole-image reads with the
-teacher columns are in ``bench/pixel_readout/x2_head.py``.
+teacher columns are in ``bench/pixel_readout/experiments/x2_head.py``.
 """
 
 from __future__ import annotations
@@ -53,8 +57,13 @@ class X2Item:
 
     @property
     def tokens(self) -> int:
-        w, h = (int(v) for v in self.npz.rsplit("_", 2)[-2].split("x"))
-        return (w // PATCH) * (h // PATCH)
+        return npz_tokens(self.npz)
+
+
+def npz_tokens(path: str) -> int:
+    """DiT tokens of a cached latent, from the ``WxH`` in its file name."""
+    w, h = (int(v) for v in path.rsplit("_", 2)[-2].split("x"))
+    return (w // PATCH) * (h // PATCH)
 
 
 def load_x2flex(manifest: str | Path) -> dict[str, list[X2Item]]:
@@ -120,9 +129,8 @@ class DiTRollout:
         return lat, cross.unsqueeze(0).to(self.device, torch.bfloat16)
 
     @torch.no_grad()
-    def __call__(self, item: X2Item, idx: int, sigma: float):
-        """→ (features (gh, gw, D), x_t patches (gh, gw, 64), VAE(x̂0) (3, H, W))."""
-        lat, cross = self.load(item)
+    def forward(self, lat: torch.Tensor, cross: torch.Tensor, idx: int, sigma: float):
+        """→ (features (gh, gw, D), x_t patches (gh, gw, 64), x̂0 (1, C, h, w))."""
         dev = self.device
         g = torch.Generator(device=dev).manual_seed(self.seed * 100003 + idx)
         noise = torch.randn(lat.shape, generator=g, device=dev, dtype=lat.dtype)
@@ -135,15 +143,43 @@ class DiTRollout:
             )
         f = self._tap.pop("x")[0, 0]
         x0_hat = x_t - sigma * v.float().squeeze(2)
+        return f.float(), lat_patches(x_t).float(), x0_hat
+
+    @torch.no_grad()
+    def __call__(self, item: X2Item, idx: int, sigma: float):
+        """→ (features, x_t patches, VAE(x̂0) (3, H, W))."""
+        f, lat_p, x0_hat = self.forward(*self.load(item), idx, sigma)
         img = self.vae.decode_to_pixels(x0_hat)[0].float().clamp(-1, 1)
-        return f.float(), lat_patches(x_t).float(), img
+        return f, lat_p, img
 
 
-def compile_dit(anima, seq_bands: list | None) -> None:
+def attach_adapter(anima, path: str, device):
+    """A LoRA-family adapter as hooks on a built DiT (``set_enabled`` switches it).
+
+    Call after ``stream_fp32_`` and before :func:`compile_dit`: each hook captures its
+    module's forward when it is applied, so the reverse order would keep the bf16
+    linears under the adapter. ``inference.py`` merges a plain LoRA before the stream
+    change instead; same function."""
+    from library.env import resolve_under_home
+    from networks.lora_anima.factory import create_network_from_weights
+
+    path = str(resolve_under_home(path))
+    network, _ = create_network_from_weights(
+        1.0, path, None, None, anima, for_inference=True
+    )
+    network.apply_to([], anima, apply_text_encoder=False, apply_unet=True)
+    print(f"adapter {path}: {network.load_weights(path)}", flush=True)
+    network.to(device=device, dtype=torch.bfloat16).requires_grad_(False)
+    return network
+
+
+def compile_dit(anima, seq_bands: list | None = None, tag: str = "") -> None:
     """``compile_blocks`` under a cache dir of its own signature. The persistent inductor
     cache keys on the graph, not the ``mark_dynamic`` range, so a graph compiled for
-    another script's token bands would replay its guards here. Call after
-    ``stream_fp32_``, before the first forward."""
+    another script's token bands would replay its guards here
+    (``ConstraintViolationError`` on the first trace). Call after ``stream_fp32_`` and
+    any adapter, before the first forward. ``tag`` names a base the signature cannot
+    see (``int8``)."""
     from library.runtime.dynamo import compile_signature, isolate_compile_cache
 
     isolate_compile_cache(
@@ -155,6 +191,7 @@ def compile_dit(anima, seq_bands: list | None) -> None:
             seq_bands=seq_bands,
         )
         + f";stream={getattr(anima, 'stream', 'bf16')}"
+        + (f";{tag}" if tag else "")
     )
     anima.compile_blocks(dynamic_seq=True, seq_bands=seq_bands)
 
@@ -292,8 +329,9 @@ class TokenHead(nn.Module):
 
 class PEDisc:
     """Frozen PE-Spatial-B16 + trainable token heads (FastFrames' discriminator form):
-    one logit per PE token from each tapped depth, on paired crops of the ×2 output and
-    the real 2× image at the same place, both in [-1, 1].
+    one logit per PE token from each tapped depth, on paired crops of the head's output
+    and the real image (×2: the real 2× image; ×1: the original, or the whole image) at
+    the same place, both in [-1, 1].
 
     Paired relativistic loss per token, ``L_D = softplus(−(D(real) − D(fake)))`` and
     ``L_G = softplus(−(D(fake) − D(real)))``, with the noise-perturbation form of R1 / R2
@@ -613,14 +651,47 @@ def densest_window(img: torch.Tensor, crop: int) -> tuple[int, int]:
     return ix * (crop // 4), iy * (crop // 4)
 
 
+def to_pil(img: torch.Tensor):
+    """(3, H, W) in [-1, 1] → an RGB PIL image."""
+    from PIL import Image
+
+    arr = ((img.float().clamp(-1, 1) + 1) * 127.5).round().byte()
+    return Image.fromarray(arr.permute(1, 2, 0).cpu().numpy())
+
+
+def zoom_sheet(
+    cols, path: Path, crop: int = 384, at: tuple[int, int] | None = None
+) -> None:
+    """Labelled columns over their ``crop``-px window at ``at`` = (x, y) (default: the
+    centre), doubled nearest; the window is boxed on the full images."""
+    from PIL import Image, ImageDraw
+
+    pils = [to_pil(t) for _, t in cols]
+    w, h = pils[0].size
+    cx, cy = at if at is not None else ((w - crop) // 2, (h - crop) // 2)
+    crops = [
+        p.crop((cx, cy, cx + crop, cy + crop)).resize(
+            (2 * crop, 2 * crop), Image.NEAREST
+        )
+        for p in pils
+    ]
+    cw = max(w, 2 * crop)
+    canvas = Image.new("RGB", (cw * len(cols), 24 + h + 2 * crop), "white")
+    d = ImageDraw.Draw(canvas)
+    for i, ((name, _), p, c) in enumerate(zip(cols, pils, crops)):
+        d.text((i * cw + 6, 4), name, fill="black")
+        canvas.paste(p, (i * cw, 24))
+        d.rectangle(
+            (i * cw + cx, 24 + cy, i * cw + cx + crop, 24 + cy + crop), outline="red"
+        )
+        canvas.paste(c, (i * cw, 24 + h))
+    canvas.save(path)
+
+
 def pair_sheet(cols, path: Path, at: tuple[int, int, int] | None = None) -> None:
     """Labelled columns ``[(name, (3, H, W) in [-1, 1]), …]`` side by side at native
     pixels; ``at`` = (x, y, size) crops every column."""
     from PIL import Image, ImageDraw
-
-    def to_pil(t):
-        arr = ((t.float().clamp(-1, 1) + 1) * 127.5).round().byte()
-        return Image.fromarray(arr.permute(1, 2, 0).cpu().numpy())
 
     pils = [to_pil(t) for _, t in cols]
     if at is not None:

@@ -48,22 +48,13 @@ from anime_tools.stages.resize import (
 from PIL import Image, ImageOps
 
 from bench._common import make_run_dir, write_result
-from bench.pixel_readout.x2_masters import master_of, target_2x
+from bench.pixel_readout._masters import master_of, target_2x
+from library.anima.pixel_head_train_x1 import TEST_ARTISTS, TEXT_ARTISTS
 from library.env import resolve_under_home
 from library.io.cache import TE_CACHE_SUFFIX
 from library.preprocess.latents import get_latents_npz_path
 
 Image.MAX_IMAGE_PIXELS = None
-P1_TEST_ARTISTS = (  # convnext_head.P1_RUN's test artists (its result.json)
-    "audirenze",
-    "asou_(asabu202)",
-    "gin00",
-    "kimoshi",
-    "dorontabi",
-    "butterchalk",
-    "fizz_(pixiv34498626)",
-    "sushispin",
-)
 TOK_LO = band_for_tier(768)[0]
 TOK_HI = band_for_tier(1024)[1]
 
@@ -149,8 +140,6 @@ def quoted_len(caption: Path) -> int:
 
 
 def main():
-    from bench.pixel_readout.convnext_head import TEXT_ARTISTS
-
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--resized", default="post_image_dataset/resized")
     p.add_argument("--masters", default="image_dataset")
@@ -211,8 +200,8 @@ def main():
     # held-out: the P1 test artists out of training; the read set from their down rows
     rng = random.Random(args.seed)
     for row in kept_rows:
-        row["split"] = "heldout" if row["artist"] in P1_TEST_ARTISTS else "train"
-    for a in P1_TEST_ARTISTS:
+        row["split"] = "heldout" if row["artist"] in TEST_ARTISTS else "train"
+    for a in TEST_ARTISTS:
         downs = [r for r in kept_rows if r["artist"] == a and r["kind"] == "down"]
         for r in rng.sample(downs, min(args.per_test_artist, len(downs))):
             r["split"] = "test"
@@ -232,7 +221,9 @@ def main():
     for r in kept_rows:
         if r["kind"] == "exact":
             t = (r["x1_size"][0] // 16) * (r["x1_size"][1] // 16)
-            x1_tok["≤2160" if t <= 2160 else "2161-3024" if t <= 3024 else "3025-4200"] += 1
+            x1_tok[
+                "≤2160" if t <= 2160 else "2161-3024" if t <= 3024 else "3025-4200"
+            ] += 1
     print(
         f"{len(rows)} with a master ({missing} without): down {kinds['down']}, exact "
         f"{kinds['exact']}, dropped {kinds[None]}; exact ×1 tokens {dict(x1_tok)}; "
@@ -249,7 +240,10 @@ def main():
             for i, res in enumerate(
                 pool.imap_unordered(
                     build,
-                    [(r, str(resized_root), str(master_root), str(home)) for r in kept_rows],
+                    [
+                        (r, str(resized_root), str(master_root), str(home))
+                        for r in kept_rows
+                    ],
                     chunksize=4,
                 )
             ):

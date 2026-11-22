@@ -23,10 +23,11 @@ combine is plain CFG. At ``--guidance_scale 1`` the sampler runs cond only and `
 forward, x_tf − σ·v_tf (``psnr_tf_xhat0``, what the head is trained on). At σ_last 0.06
 the two nearly coincide; at turbo's σ_last 0.5 they do not.
 
-``--x2``: ×2 heads (``head_x2.safetensors`` of an ``x2_head.py`` run, or a file path) read
+``--x2``: ×2 heads (``head_x2.safetensors`` of an ``experiments/x2_head.py`` run, or a file path) read
 through the library tap's path (the CFG feature, ``PixelHeadX2``). The reference is the
 chain the head replaces, the released ResShift ×2 student on VAE(x_final); per image:
-×2 against it (dB, LPIPS, whole-image and dark-pixel luma), ×1 against VAE(x_final), and
+×2 against it (dB, LPIPS, whole-image and dark-pixel luma), ×1 against VAE(x_final) (empty for a file with
+no ×1 output), and
 the time of VAE decode + ResShift against the head's ×2 readout. Sheets: two columns
 ``VAE → ResShift ×2 | ×2 head | bicubic ×2 of VAE``, full image and a 768-px crop at
 native pixels.
@@ -56,34 +57,34 @@ from pathlib import Path
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
 
-from bench.pixel_readout._compile import compile_blocks_isolated
 from bench._anima import (
     DEFAULT_NEG,
-    DEFAULT_PROMPT,
     DEFAULT_TEXT_ENCODER,
     add_common_args,
     add_model_args,
     build_anima,
 )
 from bench._common import make_run_dir, start_heartbeat, write_result
-from bench.pixel_readout.convnext_head import (
-    attach_adapter,
-    load_head,
-    resolve_run,
-    densest_window,
+from bench.pixel_readout._prompts import PROMPTS
+from bench.pixel_readout._shared import bicubic2, load_head, resolve_run
+from bench.pixel_readout._teacher import TEACHER_DIR, TEACHER_REPO, load_teacher
+from library.anima.pixel_head import (
+    PATCH,
+    PixelHeadX2,
+    head_scales,
     lat_patches,
-    sheet,
+    load_pixel_head,
 )
-from bench.pixel_readout.linear_probe import PATCH, psnr
-from bench.pixel_readout.x2_head import (
-    TEACHER_DIR,
-    TEACHER_REPO,
-    bicubic2,
-    load_teacher,
+from library.anima.pixel_head_train import (
+    Lpips,
+    attach_adapter,
+    compile_dit,
+    densest_window,
     pair_sheet,
+    psnr,
     tone_stats,
+    zoom_sheet,
 )
-from library.anima.pixel_head import PixelHeadX2, load_pixel_head
 from library.anima.vocab_pack import default_vocab_pack
 from library.anima.weights import _attach_vocab_pack_if_set
 from library.env import resolve_under_home
@@ -95,94 +96,6 @@ from library.inference.text import prepare_text_inputs
 from library.models import qwen_vae
 
 HEAD_RUN = "bench/pixel_readout/results/20261119-0959-convnext_1119_0938"
-Q = "masterpiece, best quality, score_7, safe. "
-PROMPTS = [  # (name, prompt, (h, w))
-    ("anima_sign", DEFAULT_PROMPT, (1024, 1024)),
-    (
-        "sakura",
-        Q
-        + "1girl, solo, silver hair, long hair, red eyes, school uniform, cherry blossoms, falling petals, wind, looking back, upper body.",
-        (1216, 832),
-    ),
-    (
-        "neon_rain",
-        Q
-        + "1boy, black jacket, city street at night, neon signs, rain, puddle reflections, cinematic lighting.",
-        (832, 1216),
-    ),
-    (
-        "castle",
-        Q
-        + "scenery, no humans, fantasy castle on a cliff, sunset, dramatic clouds, detailed background.",
-        (832, 1216),
-    ),
-    (
-        "cafe",
-        Q
-        + "2girls, cafe interior, sitting at table, cake, coffee cup, window light, smile.",
-        (1024, 1024),
-    ),
-    (
-        "maid",
-        Q
-        + "1girl, maid, frills, lace, detailed clothes, holding tray, full body, white background.",
-        (1216, 832),
-    ),
-    (
-        "chibi",
-        Q + "chibi, 1girl, flat color, thick outlines, sticker, white background.",
-        (1024, 1024),
-    ),
-    (
-        "candle",
-        Q
-        + "1girl, dark room, candlelight, low key lighting, dramatic shadows, portrait.",
-        (1024, 1024),
-    ),
-    (
-        "beach",
-        Q + "1girl, swimsuit, beach, blue sky, ocean, sunlight, splashing water.",
-        (832, 1216),
-    ),
-    (
-        "battle",
-        Q + "1girl, armor, sword, battle, sparks, dynamic pose, motion lines.",
-        (1216, 832),
-    ),
-    (
-        "kotatsu",
-        Q + "cat, kotatsu, mandarin oranges, cozy room, tatami, detailed background.",
-        (1024, 1024),
-    ),
-    (
-        "library",
-        Q + "1girl, glasses, library, bookshelf, many books, reading, soft light.",
-        (1216, 832),
-    ),
-    (
-        "shop_sign_ja",
-        Q
-        + '1girl, apron, shop front, holding sign, japanese text, the sign reads "ありがとう".',
-        (1024, 1024),
-    ),
-    (
-        "manga_page",
-        Q
-        + "monochrome, greyscale, comic, manga, panels, 1girl, speech bubble, japanese text, screentone.",
-        (1216, 832),
-    ),
-    (
-        "manga_action",
-        Q
-        + "monochrome, greyscale, comic, 1boy, 1girl, speech bubble, japanese text, action lines, sound effects.",
-        (1216, 832),
-    ),
-    (
-        "sketch",
-        Q + "monochrome, greyscale, sketch, lineart, hatching, 1girl, portrait.",
-        (1024, 1024),
-    ),
-]
 
 
 def main():
@@ -253,9 +166,7 @@ def main():
     _attach_vocab_pack_if_set(anima, default_vocab_pack())
     if compile_blocks:
         toks = sorted({(h // PATCH) * (w // PATCH) for _, _, (h, w) in prompts})
-        compile_blocks_isolated(
-            anima, [(toks[0], toks[-1])], tag="int8" if args.int8 else ""
-        )
+        compile_dit(anima, [(toks[0], toks[-1])], tag="int8" if args.int8 else "")
 
     # --- taps: every forward appends (t, x_in, feature, v); reset when t changes ---
     calls: list[dict] = []
@@ -294,21 +205,7 @@ def main():
             Path(resolve_under_home(TEACHER_DIR)),
             device,
         )
-        import lpips
-
-        lp = lpips.LPIPS(net="vgg", verbose=False).to(device).eval()
-
-        @torch.no_grad()
-        def lpips_img(a: torch.Tensor, b: torch.Tensor, tile: int = 768) -> float:
-            h, w = a.shape[-2:]
-            tot = 0.0
-            with torch.autocast("cuda", dtype=torch.bfloat16):
-                for y in range(0, h, tile):
-                    for x in range(0, w, tile):
-                        ta = a[None, :, y : y + tile, x : x + tile].float()
-                        tb = b[None, :, y : y + tile, x : x + tile].float()
-                        tot += lp(ta, tb).mean().item() * ta.shape[-2] * ta.shape[-1]
-            return tot / (h * w)
+        lp = Lpips(device)
 
         def timed(fn):
             torch.cuda.synchronize()
@@ -405,11 +302,14 @@ def main():
                         run_head()  # warm
                         x2_img, ms_head = timed(run_head)
                         x2_img = x2_img.float().clamp(-1, 1)
-                        with (
-                            torch.no_grad(),
-                            torch.autocast("cuda", dtype=torch.bfloat16),
-                        ):
-                            x1_img = head(f_cfg[0, 0].float(), lat_p, scale=1)
+                        psnr_x1 = None  # a file stamped scales = 2 has no ×1 output
+                        if 1 in head_scales(head):
+                            with (
+                                torch.no_grad(),
+                                torch.autocast("cuda", dtype=torch.bfloat16),
+                            ):
+                                x1_img = head(f_cfg[0, 0].float(), lat_p, scale=1)
+                            psnr_x1 = psnr(x1_img.float().clamp(-1, 1), tgt)
                         lum, dark = tone_stats(x2_img, t2)
                         row = {
                             "arm": arm,
@@ -418,10 +318,10 @@ def main():
                             "seed": seed,
                             "size": [h, w],
                             "psnr_x2": psnr(x2_img, t2),
-                            "lpips_x2": lpips_img(x2_img, t2),
+                            "lpips_x2": lp.image(x2_img, t2),
                             "luma_x2": lum,
                             "dark_x2": dark,
-                            "psnr_x1": psnr(x1_img.float().clamp(-1, 1), tgt),
+                            "psnr_x1": psnr_x1,
                             "psnr_bicubic": psnr(bicubic2(tgt), t2),
                             "ms_vae": ms_vae,
                             "ms_teacher": ms_teacher,
@@ -432,7 +332,8 @@ def main():
                         print(
                             f"  {arm} {hname} {name} s{seed}: ×2 {row['psnr_x2']:.2f} "
                             f"lpips {row['lpips_x2']:.4f} dark {dark if dark is None else round(dark, 1)}"
-                            f"  ×1 {row['psnr_x1']:.2f}  bicubic {row['psnr_bicubic']:.2f}  "
+                            f"  ×1 {'-' if psnr_x1 is None else f'{psnr_x1:.2f}'}"
+                            f"  bicubic {row['psnr_bicubic']:.2f}  "
                             f"ms vae {ms_vae:.0f} + rs {ms_teacher:.0f} vs head "
                             f"{ms_head:.1f}",
                             flush=True,
@@ -505,7 +406,7 @@ def main():
                     else:
                         cols.append(("head", pred_cond))
                 fn = f"sheet_{arm}_{k:02d}_{name}_s{seed}.png"
-                sheet(
+                zoom_sheet(
                     cols,
                     run_dir / fn,
                     at=densest_window(tgt, 384),

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""ConvNeXt pixel head on the frozen Anima DiT's pre-head features (pixel readout P2).
+"""Experiment: ConvNeXt pixel head on the frozen Anima DiT's pre-head features (pixel readout P2).
+
+The settled recipe is ``scripts/pixel_head/base_x1.py`` and its GAN finish
+``train_x1.py``; this script keeps the arms that led there (the P1 skip, --accum,
+--grad_ratio, one σ, heads without an upsample) and reruns the recorded runs' argv.
 
 ``project/pixel_decoder/proposal.md`` P2. The head reads the same tap as
 probe 1 (the input of ``final_layer.linear``: LayerNorm + adaLN-modulated, 2048-dim
@@ -25,7 +29,7 @@ P2 head, labelled.
 
 Usage::
 
-    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/convnext_head.py --compile --label convnext_mmdd_hhmm"
+    make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/experiments/convnext_head.py --compile --label convnext_mmdd_hhmm"
 """
 
 from __future__ import annotations
@@ -33,7 +37,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-from glob import escape as glob_escape
 import os
 import random
 import time
@@ -44,11 +47,8 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import numpy as np
 import torch
 import torch.nn as nn
-from PIL import Image, ImageDraw
-from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 
-from bench.pixel_readout._compile import compile_blocks_isolated
 from bench._anima import (
     DEFAULT_TEXT_ENCODER,
     add_common_args,
@@ -56,23 +56,22 @@ from bench._anima import (
     build_anima,
 )
 from bench._common import make_run_dir, start_heartbeat, write_result
-from bench.pixel_readout.linear_probe import (
-    PATCH,
-    from_patches,
-    pick_samples,
-    psnr,
-    to_pil,
-)
-from library.anima.pixel_head import (  # noqa: F401  (re-exported for the bench scripts)
-    ConvNeXtBlock,
-    PixelHead,
-    lat_patches,
-    load_pixel_head,
-)
-from library.anima.pixel_head_train import (  # noqa: F401  (re-exported for the scripts here)
+from bench.pixel_readout._shared import P1_RUN, resolve_run
+from library.anima.pixel_head import PATCH, PixelHead, from_patches, lat_patches
+from library.anima.pixel_head_train import (
     PEDisc,
+    attach_adapter,
+    compile_dit,
     densest_window,
+    psnr,
     rec_loss,
+    zoom_sheet,
+)
+from library.anima.pixel_head_train_x1 import (
+    item_tokens,
+    pick_samples,
+    pick_text,
+    real_pixels,
 )
 from library.datasets.buckets import cluster_token_bands
 from library.env import resolve_under_home
@@ -84,165 +83,6 @@ from library.io.cache import (
     load_cached_text_features,
 )
 from library.models import qwen_vae
-
-RESULTS = "bench/pixel_readout/results"
-P1_RUN = f"{RESULTS}/20261118-2221-readout_1118_2219"
-def _local_split(key: str) -> tuple[str, ...]:
-    """An artist list of the local split file (``output/pixel_head/x1_split.json``, kept
-    out of the repo); () when it is absent."""
-    import json
-
-    from library.env import resolve_under_home
-
-    path = resolve_under_home("output/pixel_head/x1_split.json")
-    return tuple(json.loads(path.read_text())[key]) if path.exists() else ()
-
-
-TEXT_ARTISTS = _local_split("text_artists")  # most "Japanese text" captions in post_image_dataset/resized
-
-
-# --------------------------------------------------------------------------- head
-
-
-# ConvNeXtBlock / PixelHead live in library/anima/pixel_head.py (promoted 2026-11-19).
-
-
-def resolve_run(run: str | Path) -> Path:
-    """A results directory, or a bare label → the newest ``results/*-<label>``."""
-    path = Path(resolve_under_home(str(run)))
-    if path.is_dir():
-        return path
-    hits = sorted(Path(resolve_under_home(RESULTS)).glob(f"*-{run}"))
-    if not hits:
-        raise FileNotFoundError(
-            f"no run {run} (neither a path nor a label in {RESULTS})"
-        )
-    return hits[-1]
-
-
-def load_head(run: str | Path, d_feat: int, device) -> PixelHead:
-    """A trained head from ``<run>/head.safetensors`` (shape from its metadata)."""
-    return load_pixel_head(resolve_run(run) / "head.safetensors", device, d_feat)
-
-
-def attach_adapter(anima, path: str, device):
-    """A LoRA-family adapter as hooks on a built DiT (``set_multiplier`` switches it).
-
-    Call after ``stream_fp32_``: each hook captures its module's forward when it is
-    applied, so the reverse order would keep the bf16 linears under the adapter.
-    ``inference.py`` merges a plain LoRA before the stream change instead; same function."""
-    from networks.lora_anima.factory import create_network_from_weights
-
-    path = str(resolve_under_home(path))
-    network, _ = create_network_from_weights(
-        1.0, path, None, None, anima, for_inference=True
-    )
-    network.apply_to([], anima, apply_text_encoder=False, apply_unet=True)
-    print(f"adapter {path}: {network.load_weights(path)}", flush=True)
-    network.to(device=device, dtype=torch.bfloat16).requires_grad_(False)
-    return network
-
-
-# --------------------------------------------------------------------------- data
-
-
-def caption_path(ci) -> Path:
-    artist = Path(ci.npz_path).parent.name
-    return Path(
-        resolve_under_home(f"post_image_dataset/resized/{artist}/{ci.stem}.txt")
-    )
-
-
-def pick_text(cache_root: Path, exclude: set[str]) -> list:
-    """Per text artist, the image whose quoted caption text is longest."""
-    import re
-
-    out = []
-    for a in TEXT_ARTISTS:
-        best, best_len = None, 0
-        for ci in discover_cached_pairs(str(cache_root / a)):
-            if ci.npz_path in exclude:
-                continue
-            p = caption_path(ci)
-            if not p.exists():
-                continue
-            cap = p.read_text(encoding="utf-8")
-            if "japanese text" not in cap.lower():
-                continue
-            n = sum(len(s) for s in re.findall(r'"([^"]*)"', cap))
-            if n > best_len:
-                best, best_len = ci, n
-        if best is not None:
-            out.append(best)
-    return out
-
-
-def real_pixels(item) -> torch.Tensor:
-    """The image an item's latent was encoded from, (3, H, W) uint8: a cached pair's
-    resized image, or a build_pages.py page (stored pixels, else its source resized
-    as the builder did)."""
-    if isinstance(item, Path):
-        with safe_open(str(item), "pt") as fh:
-            if "pixels" in fh.keys():
-                return fh.get_tensor("pixels")
-            meta = fh.metadata()
-        w, h = (int(v) for v in meta["size"].split("x"))
-        im = Image.open(meta["source"]).convert("RGB").resize((w, h), Image.LANCZOS)
-        return torch.from_numpy(np.array(im)).permute(2, 0, 1)
-    if item.image_path:  # x2_flex.py's rows name their ×1 image
-        im = Image.open(item.image_path).convert("RGB")
-        return torch.from_numpy(np.array(im)).permute(2, 0, 1)
-    src = caption_path(item)
-    hits = [
-        q
-        for q in src.parent.glob(f"{glob_escape(src.stem)}.*")
-        if q.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
-    ]
-    assert hits, f"no resized image for {item.npz_path}"
-    return torch.from_numpy(np.array(Image.open(hits[0]).convert("RGB"))).permute(
-        2, 0, 1
-    )
-
-
-def page_token_count(path: Path) -> int:
-    """Tokens of a build_pages.py page, from its stored ``size`` (WxH pixels)."""
-    with safe_open(str(path), "pt") as fh:
-        w, h = (int(v) for v in fh.metadata()["size"].split("x"))
-    return (w // PATCH) * (h // PATCH)
-
-
-def token_count(ci) -> int:
-    w, h = (int(v) for v in ci.npz_path.rsplit("_", 2)[-2].split("x"))
-    return (w // PATCH) * (h // PATCH)
-
-
-# --------------------------------------------------------------------------- sheets
-
-
-def sheet(cols, path: Path, crop: int = 384, at: tuple[int, int] | None = None):
-    pils = [to_pil(t) for _, t in cols]
-    w, h = pils[0].size
-    cx, cy = at if at is not None else ((w - crop) // 2, (h - crop) // 2)
-    crops = [
-        p.crop((cx, cy, cx + crop, cy + crop)).resize(
-            (2 * crop, 2 * crop), Image.NEAREST
-        )
-        for p in pils
-    ]
-    cw = max(w, 2 * crop)
-    canvas = Image.new("RGB", (cw * len(cols), 24 + h + 2 * crop), "white")
-    d = ImageDraw.Draw(canvas)
-    for i, ((name, _), p, c) in enumerate(zip(cols, pils, crops)):
-        d.text((i * cw + 6, 4), name, fill="black")
-        canvas.paste(p, (i * cw, 24))
-        d.rectangle(
-            (i * cw + cx, 24 + cy, i * cw + cx + crop, 24 + cy + crop), outline="red"
-        )
-        canvas.paste(c, (i * cw, 24 + h))
-    canvas.save(path)
-
-
-# --------------------------------------------------------------------------- main
 
 
 def main():
@@ -429,9 +269,8 @@ def main():
         proot = Path(resolve_under_home(args.pages))
         page_train = sorted((proot / "train").glob("*.safetensors"))
         page_eval = sorted((proot / "eval").glob("*.safetensors"))
-    page_tokens = [page_token_count(pth) for pth in page_train + page_eval]
     seq_bands = cluster_token_bands(
-        [token_count(ci) for ci in train + test + text] + page_tokens
+        [item_tokens(it) for it in train + test + text + page_train + page_eval]
     )
     _, sigmas = get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
     sigma_last = float(sigmas[-2]) if args.sigma is None else args.sigma
@@ -506,7 +345,7 @@ def main():
         stream_fp32_(anima)
     network = attach_adapter(anima, args.adapter, device) if args.adapter else None
     if compile_blocks:
-        compile_blocks_isolated(anima, seq_bands)
+        compile_dit(anima, seq_bands)
     tap: dict[str, torch.Tensor] = {}
     anima.final_layer.linear.register_forward_pre_hook(
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())
@@ -950,15 +789,15 @@ def main():
         if key == "manga":
             cols = [("original", o), ("VAE decode", tgt), ("head", pred)]
             name = f"{pre}manga_{n:02d}_{item.stem}.png"
-            sheet(cols, run_dir / name, at=densest_window(tgt, 384))
+            zoom_sheet(cols, run_dir / name, at=densest_window(tgt, 384))
         elif key == "text":
             cols = [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)]
             name = f"{pre}text_{n:02d}_{item.stem}.png"
-            sheet(cols, run_dir / name, at=densest_window(tgt, 384))
+            zoom_sheet(cols, run_dir / name, at=densest_window(tgt, 384))
         elif n < args.n_sheets:
             cols = [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)]
             name = f"{pre}sheet_{n:02d}_{item.stem}.png"
-            sheet(cols, run_dir / name)
+            zoom_sheet(cols, run_dir / name)
         else:
             continue
         artifacts.append(name)

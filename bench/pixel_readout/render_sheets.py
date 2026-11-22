@@ -11,14 +11,13 @@ scripts), then the P1 linear (from the P2 run's ``head.safetensors`` start, i.e.
 Usage::
 
     make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/render_sheets.py \
-        --head_run bench/pixel_readout/results/<run> --cached sushispin/123 \
+        --head_run bench/pixel_readout/results/<run> --cached <artist>/<stem> \
         --images a.jpg b.jpg --caption 'monochrome, greyscale, comic' --label sheets_mmdd_hhmm"
 """
 
 from __future__ import annotations
 
 import argparse
-import math
 import os
 from pathlib import Path
 
@@ -36,14 +35,9 @@ from bench._anima import (
     build_anima,
 )
 from bench._common import make_run_dir, start_heartbeat, write_result
-from bench.pixel_readout.convnext_head import (
-    P1_RUN,
-    load_head,
-    densest_window,
-    lat_patches,
-    sheet,
-)
-from bench.pixel_readout.linear_probe import PATCH, from_patches, psnr
+from bench.pixel_readout._shared import P1_RUN, fit_size, load_head
+from library.anima.pixel_head import PATCH, from_patches, lat_patches
+from library.anima.pixel_head_train import densest_window, psnr, zoom_sheet
 from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.env import resolve_under_home
 from library.inference.sampling import get_timesteps_sigmas
@@ -54,15 +48,6 @@ from library.io.cache import (
     load_cached_text_features,
 )
 from library.models import qwen_vae
-
-TARGET_TOKENS = 4100
-
-
-def fit_size(w: int, h: int) -> tuple[int, int]:
-    s = math.sqrt(TARGET_TOKENS * PATCH * PATCH / (w * h))
-    return max(PATCH, round(w * s / PATCH) * PATCH), max(
-        PATCH, round(h * s / PATCH) * PATCH
-    )
 
 
 def main():
@@ -78,6 +63,12 @@ def main():
     p.add_argument("--text_encoder", default=DEFAULT_TEXT_ENCODER)
     p.add_argument("--infer_steps", type=int, default=50)
     p.add_argument("--flow_shift", type=float, default=3.0)
+    p.add_argument(
+        "--stream",
+        choices=["fp32", "bf16"],
+        default="fp32",
+        help="DiT residual stream; fp32 is what heads train on since replay_1119_1225",
+    )
     args = p.parse_args()
     start_heartbeat(label="sheets")
     device = torch.device(args.device)
@@ -89,6 +80,10 @@ def main():
     ).to(device)
     args.compile = False  # a handful of single forwards
     anima = build_anima(args, adapter=None, train_mode=False).anima
+    if args.stream == "fp32":
+        from library.anima.stream import stream_fp32_
+
+        stream_fp32_(anima)
     tap: dict[str, torch.Tensor] = {}
     anima.final_layer.linear.register_forward_pre_hook(
         lambda _m, inp: tap.__setitem__("x", inp[0].detach())
@@ -184,7 +179,7 @@ def main():
         cols = [("VAE decode", tgt), ("P1 linear", lin), ("P2 ConvNeXt head", pred)]
         if orig is not None:
             cols = [("original", orig.to(device)), cols[0], cols[2]]
-        sheet(
+        zoom_sheet(
             cols,
             run_dir / fn,
             at=densest_window(tgt, 384),

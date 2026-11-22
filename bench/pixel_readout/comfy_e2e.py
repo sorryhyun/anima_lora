@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import statistics
 import sys
 import time
@@ -112,10 +113,11 @@ def main_():
     import folder_paths
     import torch
 
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     from bench._anima import DEFAULT_NEG
     from bench._common import make_run_dir, start_heartbeat, write_result
-    from bench.pixel_readout.linear_probe import psnr, to_pil
-    from bench.pixel_readout.p3_generated import PROMPTS
+    from bench.pixel_readout._prompts import PROMPTS
+    from library.anima.pixel_head_train import psnr, to_pil
 
     start_heartbeat(label="comfy_e2e")
     folder_paths.add_model_folder_path("loras", str(resolve_under_home("models/loras")))

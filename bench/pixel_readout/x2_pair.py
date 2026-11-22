@@ -22,7 +22,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from bench.pixel_readout.convnext_head import resolve_run
+from bench.pixel_readout._shared import resolve_run
 
 HEADER = 24  # the label strip of pair_sheet / p3_generated sheets
 

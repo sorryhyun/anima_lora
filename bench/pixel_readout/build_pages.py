@@ -5,7 +5,7 @@ Pools: Manga109-s images (spreads) and hitocrawl JA pages. Held out: the 4 Manga
 and 6 hitocrawl artists of ``manga_1119_1052``; their pages go to ``eval/`` (the same page as
 in that run: Manga109 p.14, hitocrawl page 8 of each artist's first work), everything drawn
 for training to ``train/``. Pages are resized to ~4100 tokens at native aspect (the
-``render_sheets.py`` rule) and VAE-encoded; one ``<source>__<name>.safetensors`` per page
+``_shared.fit_size`` rule) and VAE-encoded; one ``<source>__<name>.safetensors`` per page
 holding ``latent`` (C, h, w) bf16, plus ``pixels`` (3, H, W) uint8 for eval pages. Captions are not stored: the training script encodes one
 fixed tag caption.
 
@@ -32,7 +32,7 @@ from safetensors.torch import save_file
 
 from bench._anima import add_model_args
 from bench._common import start_heartbeat
-from bench.pixel_readout.render_sheets import fit_size
+from bench.pixel_readout._shared import fit_size
 from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.env import resolve_under_home
 from library.models import qwen_vae
