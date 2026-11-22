@@ -50,7 +50,8 @@ settled recipe), `bench/pixel_readout/x2_head.py` (the earlier arms and the whol
   1. ×1: 12,000 rollouts at LR 5e-5 (`x1ll_1122_1000`, done;
      `reports/x1_recipe_2026_11_22.md`): the base. Its own GAN finish (`plan.md`) is the ×1
      release and is not an input here.
-  2. ×2, B only: `scripts/pixel_head/train_x2.py` with `init` = the base's path, written out (an
+  2. ×2, B only: `scripts/pixel_head/train_x2.py` with `init` = the base's path,
+     `output/pixel_head/x1ll_1122_1000/head.safetensors`, written out (an
      empty `init` loads the catalog's head, the release), and
      `pegan_ratio` 0 (arm B: the real 2× image, base points σ 0.0577 – 0.1364, LPIPS 0.1,
      dc 1.0), longer than `x2b4k_1121_0950`'s 4,000 rollouts.

@@ -30,7 +30,8 @@ ComfyUI node (the user: "p4는 완료된걸로 갱신하고 커밋하자"). Next
 State (2026-11-22): the ×1 base is `x1ll_1122_1000` (12,000 rollouts at LR 5e-5; test 34.25 dB /
 LPIPS 0.0725 at σ 0.0577 against the Hub head `realr_1119_2200`'s 33.75 / 0.0807;
 `reports/x1_recipe_2026_11_22.md`), the init of ×2, RGBA and of a GAN finish that is to be the ×1
-release (the user's proposal; `plan.md`). The finish is not run.
+release (the user's proposal; `plan.md`). The base is fixed by the user:
+`output/pixel_head/x1ll_1122_1000/head.safetensors` (local). The finish is not run.
 
 P5, ×2 output (2026-11-20): a ×2 file shipped as a test file; LPIPS, a tone term and the SR
 line's DMD / GAN critic did not bring the ×2 stage up to the chain; the user chose arm B (the

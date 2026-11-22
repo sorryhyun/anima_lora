@@ -17,11 +17,13 @@ the ×1 release, the P5 topics and what is open. What ran is in `reports/` (inde
 
 - The user (2026-11-22): "x2 하듯이 마지막에 gan 마무리 하는걸 배포본으로, 그리고 x1ll 은 일종의 base
   느낌으로, x2나 추후 rgba 용도 등으로 사용하면 어때?"
+- `x1ll_1122_1000` is done, training and reads, and is the base (the user, 2026-11-22: "ㅇㅋ 이거 베이스로
+  확정하자"): `output/pixel_head/x1ll_1122_1000/head.safetensors` (local).
 - Two ×1 files follow from that:
 
   | role | head | used for | state |
   |---|---|---|---|
-  | base | `x1ll_1122_1000` | the init of the GAN finish, of ×2 and of RGBA | trained; local only |
+  | base | `x1ll_1122_1000` | the init of the GAN finish, of ×2 and of RGBA | done, fixed as the base; local only |
   | release | the base + a GAN finish | Hub `anima_pixel_head.safetensors`, the catalog, the node | not run |
 
 - Until the user picks a finish, the Hub ×1 file stays `realr_1119_2200` and the Hub ×2 file
@@ -117,7 +119,7 @@ Step 2, three runs, configs or argv recorded here before they are queued:
 
 | run | parent | change |
 |---|---|---|
-| `x1fctl_<mmdd_hhmm>` | `x1ll_1122_1000` | `--init` → `x1ll_1122_1000`, `--rollouts` 12000 → 2000, `--eval_every` 1000 → 500 |
+| `x1fctl_<mmdd_hhmm>` | `x1ll_1122_1000` | `--init` → `output/pixel_head/x1ll_1122_1000`, `--rollouts` 12000 → 2000, `--eval_every` 1000 → 500 |
 | `x1fgan_<mmdd_hhmm>` | `x1fctl` | `--pegan_ratio` 0 → 2, nothing else changed |
 | `x1fganw_<mmdd_hhmm>` | `x1fgan` | `--seed` 0 → 1 |
 
@@ -226,8 +228,8 @@ memory is the motive there (the fp32 VAE decode does not fit beside the DiT). No
   stage (`bench/pixel_readout/x2_overfit.py` is the ×2 version; minutes). It was planned before
   the ×1 head is fixed. If another form wins, the base is retrained and the finish redone, so it
   is cheaper before the finish than after.
-- The base exists only under `bench/pixel_readout/results/` (local), a folder whose concluded
-  runs were deleted once (2026-11-19): keep `*-x1ll_1122_1000/`.
+- The base is local only, `output/pixel_head/x1ll_1122_1000/`. The bench's `--init` and `--head_run` take that
+  folder's path: the bare run name resolves to the results folder, which no longer holds the head.
 - Screentone: small dots smoothed into soft shading, a systematic difference from the VAE (the
   user's read on `mixr_1119_1455`, good enough to release). Read again on the finish.
 - Tone: the head is darker than the VAE on textured regions (the user's read; `tone_probe.py`,
