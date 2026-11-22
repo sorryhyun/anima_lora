@@ -2,8 +2,7 @@
 
 `lpctl_1121_1900` / `lpr03_1121_1900` / `lpr10_1121_1900` and their renders `lpab_1121_1900`: step
 2 after `lpips_grad_2026_11_21.md`. The user's blind read: ratio 0.3 ahead of the control 11 – 5,
-ratio 1.0 behind it 5 – 11, one training seed. Design: `plan.md`, "Pixel losses through the head,
-into the DiT".
+ratio 1.0 behind it 5 – 11, one training seed. Design: the last section of this file.
 
 ## Facts
 
@@ -80,3 +79,43 @@ into the DiT".
 - By the plan's rule ratio 1.0 is the "worse" side and is not carried on. Ratio 0.3 is neither a
   shown gain nor level: a seed twin (control + ratio 0.3 at seed 43) is what would settle it; two
   clusters put the sign-flip floor at 0.25.
+
+## Design as written in `plan.md` (moved 2026-11-22)
+
+Step 2, the LoRA arm on ama mitsuki (the user, 2026-11-21: "그래 차라리 그게 낫겠다. ama mitsuki 로
+해보자").
+
+Facts (the design, set before the runs):
+
+- Code: `library/training/pixel_lpips.py` (`--pixel_lpips_ratio` / `--pixel_lpips_weight` /
+  `--pixel_lpips_measure`, σ gate 0.7, window 24 + 2 × 4 tokens), test `tests/test_pixel_lpips.py`.
+  Per sample at σ ≤ 0.7: LPIPS-VGG of the bf16 VAE decode of x_t − σ·v on one random window against
+  the same decode of x0; the term's gradient into v is scaled per sample to `ratio` × the FM
+  gradient's norm.
+- Arms, configs in `configs/` (linked into `configs/gui-methods/custom/`), seed 42, ama mitsuki
+  (106 images, 424 updates), `configs/methods/lora.toml` as it stands plus `paired_step_rng` and
+  `gradient_checkpointing`: `lpctl_1121_1900` (the term measured, not added), `lpr03_1121_1900`
+  (ratio 0.3), `lpr10_1121_1900` (ratio 1.0).
+- Smokes: at the default preset the first VAE decode ran out of memory with 14.34 GB allocated
+  (job 20261121-185603); with gradient checkpointing 16 updates ran at ~0.86 s per micro-step, the
+  term on 26 / 32 batches, λ 0.045 at ratio 1.0 (job 20261121-185722).
+- Read: (1) the paired training logs, `pixel_lpips/lpips` at the logged steps of the last two
+  epochs; (2) `bench/pixel_readout/lora_ab.py --label lpab_1121_1900`: the lora_recipe prompts
+  p0 – p3 × render seeds 42 / 43 at the `make test` recipe, pair sheets control | arm, blind sets
+  with the sides shuffled; the user's read decides. ‖dW‖ reported, not matched.
+- Bars: spread unknown, one training seed.
+- Result (`reports/lpips_lora_2026_11_21.md`): paired training-log LPIPS against the control,
+  ratio 0.3 −0.0003 … −0.0007, ratio 1.0 −0.0026 … −0.0043 (control 0.153); ‖dW‖ within 0.7 %;
+  render seeds 42 – 45, blind sets `s45_LPIPS03_ama` / `s45_LPIPS10_ama` pushed to
+  `anima-blind-pairs` on the user's word. The user's blind read (2026-11-21), control – arm:
+  ratio 0.3 5 – 11, ratio 1.0 11 – 5 (16 pairs each, one training seed; p1 7 – 1 to the control
+  and p3 1 – 7 to the arm over both sets). Ratio 1.0 is not carried on; ratio 0.3 waits on a seed
+  twin (control + ratio 0.3 at seed 43), proposed, not queued.
+
+Interpretation (the reasoning for the arms):
+
+- The ratio has no source: PixelGen's λ 0.1 is on a pixel x-prediction and does not translate, so
+  0.3 and 1.0 bracket it. The per-sample ratio rule is Claude's choice over a fixed λ, because the
+  term's gradient scales with σ and the FM gradient's norm moves with σ too.
+- A visible gain on the user's read → a second training seed, then prompts outside the working set.
+  Level or worse at both ratios → the term is parked; the ratio and the σ gate are the knobs left.

@@ -2,6 +2,8 @@
 
 One file per run or probe; every run's settings, numbers and reads live here. Code map: `bench/pixel_readout/README.md`.
 
+- [x1_recipe_2026_11_22.md](x1_recipe_2026_11_22.md) — the ×1 batch `1121_2230` (seed twin, wide σ, page share 0.1, LR 5e-5, 12,000 rollouts) and `x1ll_1122_1000` (both of the last two): test at σ 0.0577 against the original `realr` 33.75 / 0.0807, `x1long` 34.13 / 0.0741, `x1ll` 34.25 / 0.0725; base on the user's proposal.
+- [p4_wrapup_2026_11_19.md](p4_wrapup_2026_11_19.md) — P4 wrap-up: release of `mixr_1119_1455`, promotion into `library/`, the ComfyUI node 0.1.0; shipped.
 - [phases_p1_p4_2026_11_19.md](phases_p1_p4_2026_11_19.md) — P1 – P4 in one place: each phase's headline numbers and the user's verdicts, and the settled training recipe (moved out of `plan.md`); release head `mixr_1119_1455`.
 - [p1_readout_2026_11_18.md](p1_readout_2026_11_18.md) — P1 `readout_1118_2219`: a per-token ridge linear from the pre-head features reads test 26.28 against token-mean bilinear 22.07.
 - [p2_skip_2026_11_19.md](p2_skip_2026_11_19.md) — the P2 head with a P1 linear skip stayed at P1's level (test 26.50); the target was reachable (VAE(x̂0) 37.00) and the head fit 16 images under every init; without the skip the same run reaches test 32.93 / text 27.45.

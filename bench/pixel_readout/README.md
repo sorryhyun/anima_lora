@@ -3,8 +3,7 @@
 Code for `project/pixel_decoder/`: a pixel head on the frozen Anima DiT's pre-head features (the
 input of `final_layer.linear`) in place of the VAE decoder (FastFrames, arXiv:2611.23226 §3.2,
 App. C). Run records, numbers and reads: `project/pixel_decoder/reports/` (index in its
-`README.md`). Plan: `project/pixel_decoder/plan.md`; current recipe:
-`project/pixel_decoder/reports/phases_p1_p4_2026_11_19.md`.
+`README.md`). Plan and current recipe: `project/pixel_decoder/plan.md`.
 
 The model code (`PixelHead`, `PixelTap`, `load_pixel_head`, `lat_patches`, `from_patches`,
 `PATCH`) lives in `library/anima/pixel_head.py` since 2026-11-19; `convnext_head.py` and
@@ -65,7 +64,7 @@ make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/convnext_h
 ## `convnext_head.py` flags that matter
 
 - Head shape: `--width 1024 --depth 3 --up 1 --no_skip --ls_init 1.0` (current recipe).
-- Training: `--rollouts`, `--opt_steps 16 --replay 64`, `--lr 2e-4`, `--target x0|xhat0`,
+- Training: `--rollouts 12000`, `--opt_steps 16 --replay 64`, `--lr 5e-5` (current recipe; the flag's default is 2e-4), `--target x0|xhat0`,
   `--pages <dir> --page_share p`, `--stream fp32|bf16`.
 - Where it reads: `--sigma s` (default: last σ of `--infer_steps`/`--flow_shift`, 0.0577),
   `--adapter <lora>` (hooks after `stream_fp32_`; `attach_adapter`), `--init <run or label>`.

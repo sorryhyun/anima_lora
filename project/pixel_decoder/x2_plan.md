@@ -41,12 +41,17 @@ settled recipe), `bench/pixel_readout/x2_head.py` (the earlier arms and the whol
 
 - The user (2026-11-22): "x2는 어차피 x1에서 init한 형태이니까, x1를 먼저 5e-5로 돌려보고 x1를
   확정한다음 x2도 longer and better recipe (b only -> gan 마무리) 로 하면 좋겠어."
+- The user (2026-11-22, later): "x2 하듯이 마지막에 gan 마무리 하는걸 배포본으로, 그리고 x1ll 은 일종의
+  base 느낌으로, x2나 추후 rgba 용도 등으로 사용하면 어때?" So the ×1 head this sequence starts from
+  is the base `x1ll_1122_1000`, and not the ×1 release.
 - No finetune head was picked for the Hub; `x2bgan2_1121_1340` stays the Hub file through this
   sequence.
 - Order:
-  1. ×1: 12,000 rollouts at LR 5e-5 (`plan.md`, "The long run at the lower LR"; `x1ll_1122_1000`).
-     The user's read fixes the ×1 head.
-  2. ×2, B only: `scripts/pixel_head/train_x2.py` with `init` = the fixed ×1 head and
+  1. ×1: 12,000 rollouts at LR 5e-5 (`x1ll_1122_1000`, done;
+     `reports/x1_recipe_2026_11_22.md`): the base. Its own GAN finish (`plan.md`) is the ×1
+     release and is not an input here.
+  2. ×2, B only: `scripts/pixel_head/train_x2.py` with `init` = the base's path, written out (an
+     empty `init` loads the catalog's head, the release), and
      `pegan_ratio` 0 (arm B: the real 2× image, base points σ 0.0577 – 0.1364, LPIPS 0.1,
      dc 1.0), longer than `x2b4k_1121_0950`'s 4,000 rollouts.
   3. ×2, GAN finish: the `x2gft` form on that head (`resume`, `pegan_ratio` 2, `pegan_start` 0,
@@ -55,7 +60,7 @@ settled recipe), `bench/pixel_readout/x2_head.py` (the earlier arms and the whol
      beside the shipped file. The user's read decides the Hub file.
 - Records the steps rest on: `x2b4k_1121_0950`'s ×2 LPIPS on test read 0.196 at rollout 0, 0.272
   at 1,000, 0.195 at 2,000 and 0.141 at 4,000 (still falling at the end of its cosine); `x1lowlr`
-  against `realr` and `x1long` against `realr` on ×1 (`plan.md`, Outcome); `x2gftl`'s stripes at
+  against `realr` and `x1long` against `realr` on ×1 (`reports/x1_recipe_2026_11_22.md`); `x2gftl`'s stripes at
   3,000 GAN rollouts against none at 1,000 (`reports/x2_tile_gft_2026_11_22.md`).
 - Not set yet: step 2's length and LR. No ×2 run has been made at another LR or past 4,000
   rollouts; the values are written into the run's config when step 1 is read.

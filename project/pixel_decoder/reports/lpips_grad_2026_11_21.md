@@ -1,8 +1,8 @@
 # LPIPS gradient into v: the pixel heads against the VAE decode (2026-11-21)
 
 `lgrad_1121_1845`: step 1 of `idea.md`, a forward + backward probe of whether a pixel head can be
-the differentiable decode of an LPIPS term on a LoRA. Design and the reading rule: `plan.md`,
-"Pixel losses through the head, into the DiT".
+the differentiable decode of an LPIPS term on a LoRA. Design and the reading rule: the last
+section of this file.
 
 ## Facts
 
@@ -76,3 +76,47 @@ the differentiable decode of an LPIPS term on a LoRA. Design and the reading rul
   does not supply, arriving as a noisy per-draw signal.
 - The same reading applies to cjk_rl arm D's "reader NLL through the head": its D0 cost probe
   should take the windowed VAE path, or a decoder whose only inputs are x_t and v.
+
+## Design as written in `plan.md` (moved 2026-11-22)
+
+Step 1, the gradient-agreement probe (the user, 2026-11-21: "let's go ahead with item 1 and if
+any, proceed to 2"; item 2 = a head over a wider σ range).
+
+Facts (the design, set before the run):
+
+- `bench/pixel_readout/lpips_grad_probe.py --label lgrad_1121_1845`: forward + backward, no step.
+  16 of P1's held-out test images, base DiT on the fp32 stream, teacher-forced at σ 0.0577 / 0.1 /
+  0.1364 (the heads' range) and 0.3 (outside it), two noise draws each, one 24-token window with a
+  4-token margin per image, target VAE(x0), both decodes clamped.
+- Arms: a = ∂LPIPS/∂v through the fp32 VAE decode of the window; a16 = the same through the bf16
+  VAE; b = a head's gradient as v receives it under the row-space projection,
+  (W Wᵀ)⁻¹ W ∂L/∂f; c = the head's raw ∂L/∂f against Wᵀ g_a. Heads: `mixr_1119_1455` (target
+  VAE(x̂0)) and `realr_1119_2200` (target the original image + LPIPS at the base points).
+- Read: cos(b, a) per head and σ, beside its two in-run references: cos(a16, a) and the floor
+  cos(b on one draw, a on the other); cos(a, a) across the draws is what a perfect decoder reads on
+  that floor. Also the norm ratio, the row-space share of c, PSNR of the head against VAE(x̂0), and
+  seconds and peak GB of each backward. Added after the first smoke, before the full run: σ 0.5
+  and 0.7, and a step check (each gradient's LPIPS decrease through the fp32 VAE at three step
+  sizes, with the head's gradient from the other draw as its null).
+- Bars: spread unknown, no earlier run on this quantity.
+- Cost: minutes.
+- Result (`reports/lpips_grad_2026_11_21.md`): `mixr` cos(b, a) 0.115 / 0.154 / 0.166 at σ 0.0577 /
+  0.1 / 0.1364, floor 0.060 / 0.078 / 0.081, cos(a16, a) 0.511 / 0.495 / 0.434; `realr` level with
+  it; row-space share of the head's gradient 0.032 – 0.038. By the reading rule below: not passed.
+  The wider-σ head (item 2) was not trained.
+- One 512² window backward: fp32 VAE 0.154 s / 4.33 GB, bf16 VAE 0.087 s / 2.46 GB, head 0.019 s /
+  0.70 GB.
+
+Interpretation (the reasoning for the arm):
+
+- Question: does a head send LPIPS into v the way the VAE decode does? Yes → the head is the
+  decode of the LoRA arm and the wider-σ head is trained with target VAE(x̂0). No → the wider head is
+  not trained for this purpose; the windowed VAE decode (its cost is in this run) or a latent-only
+  decoder carries the term.
+- cos(b, a) in v space is the first-order share of the VAE path's LPIPS decrease that a step along
+  the head's gradient buys, so it reads without a bar. Claude's reading rule, fixed before the
+  result: "yes" if `mixr`'s cos(b, a) at the three in-range σ sits nearer cos(a16, a) than the
+  floor; the numbers go to the user either way.
+- After the result: the decode of an LPIPS term on a LoRA is the windowed VAE (bf16), at any σ, or
+  a decoder whose only inputs are x_t and v. Next arm, proposed and not run: FM against FM +
+  λ·LPIPS through the bf16 VAE window on one LoRA, λ from the measured gradient-norm ratio.

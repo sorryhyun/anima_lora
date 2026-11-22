@@ -8,8 +8,8 @@ for, in order: pixel-space losses that fit beside the DiT (cjk_rl arm D, a GAN o
 turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS later.
 
 - [proposal.md](proposal.md) — the idea, what a head buys and costs, phases P1–P5.
-- [plan.md](plan.md) — the P4 wrap-up (release, promotion into `library/`, ComfyUI node), the
-  P5 topics and the open items. P1 – P4 and the settled recipe: `reports/phases_p1_p4_2026_11_19.md`.
+- [plan.md](plan.md) — the ×1 base recipe, the plan of its GAN finish (the release to be), the
+  P5 topics and the open items. P1 – P4: `reports/phases_p1_p4_2026_11_19.md`.
 - [x2_plan.md](x2_plan.md) — the ×2 output topic of P5: pointers to the reports of everything that ran, the current state, the sequence after the ×1 head is fixed (B only, then a short GAN finish), next arms, open items.
 - [reports/](reports/) — one report per run or probe, indexed in its `README.md`.
 - [deploy/](deploy/) — the Hub card and NOTICE of `sorryhyun/anima-pixel-decoder` (private);
@@ -26,6 +26,11 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
 
 State (2026-11-19): P1 – P4 complete, with the release, the promotion into `library/` and the
 ComfyUI node (the user: "p4는 완료된걸로 갱신하고 커밋하자"). Next: the P5 topics (`plan.md`).
+
+State (2026-11-22): the ×1 base is `x1ll_1122_1000` (12,000 rollouts at LR 5e-5; test 34.25 dB /
+LPIPS 0.0725 at σ 0.0577 against the Hub head `realr_1119_2200`'s 33.75 / 0.0807;
+`reports/x1_recipe_2026_11_22.md`), the init of ×2, RGBA and of a GAN finish that is to be the ×1
+release (the user's proposal; `plan.md`). The finish is not run.
 
 P5, ×2 output (2026-11-20): a ×2 file shipped as a test file; LPIPS, a tone term and the SR
 line's DMD / GAN critic did not bring the ×2 stage up to the chain; the user chose arm B (the
