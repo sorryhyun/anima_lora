@@ -145,12 +145,16 @@ Policy, for the user:
 
 Work:
 
-- 85 speech mains of 15+ characters held by the line-break agents (76 label and crop
-  differ, 9 with unclear columns; `output/ocr/linebreak/agent/speech15/held.tsv`, local) still
-  train as one line. Out of `OCR:` until reviewed, like the waiting rows: proposed, not decided.
+- 141 speech mains held by the line-break agents (15+ characters: 76 label and crop differ, 9
+  with unclear columns; 9–14: 49 and 7; `output/ocr/linebreak/agent/speech{15,9}/held.tsv`,
+  local) still train as one line. Out of `OCR:` until reviewed, like the waiting rows:
+  proposed, not decided.
+- 19 mains of 9–14 characters print a mark their label lacks
+  (`output/ocr/linebreak/agent/speech9/missing_marks.tsv`, local): not fixed.
 - 3 labels type quote marks as `゛`, which `normalize_target` folds onto the kana (the
   line-break agents' report): not fixed.
-- The 8,412 waiting mains come back row by row as they are reviewed.
+- The 8,412 waiting mains come back row by row as they are reviewed. The agents do not fill
+  them for now (the user, 2026-11-22: "b, c는 일단 학습에서 빠져있으니 괜찮을듯").
 - Val never had the line-break pass outside the speech manifest. Proposed, not decided.
 
 ## Reports
@@ -163,3 +167,5 @@ Work:
   of 11-22 and the count of missing line breaks.
 - [`mainsub_linebreak_agents_2026_11_22.md`](reports/mainsub_linebreak_agents_2026_11_22.md):
   the agents' breaks on 15+ character speech (1,259 applied, 85 held).
+- [`mainsub_linebreak_agents_9to14_2026_11_22.md`](reports/mainsub_linebreak_agents_9to14_2026_11_22.md):
+  the same on 9–14 characters (1,199 applied, 56 held).

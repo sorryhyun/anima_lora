@@ -88,7 +88,8 @@ Current policy (`OCR:` main / `OCR2:` sub): [`main-sub-approach.md`](main-sub-ap
 [`reports/mainsub_data_2026_11_21.md`](reports/mainsub_data_2026_11_21.md),
 [`reports/mainsub_1121_1806.md`](reports/mainsub_1121_1806.md),
 [`reports/mainsub_labels_2026_11_22.md`](reports/mainsub_labels_2026_11_22.md),
-[`reports/mainsub_linebreak_agents_2026_11_22.md`](reports/mainsub_linebreak_agents_2026_11_22.md). The P0–P3 roadmap is in git history.
+[`reports/mainsub_linebreak_agents_2026_11_22.md`](reports/mainsub_linebreak_agents_2026_11_22.md),
+[`reports/mainsub_linebreak_agents_9to14_2026_11_22.md`](reports/mainsub_linebreak_agents_9to14_2026_11_22.md). The P0–P3 roadmap is in git history.
 
 ## The gate — sincos 597
 
