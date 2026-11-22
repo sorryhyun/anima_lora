@@ -8,7 +8,8 @@ ones in `archive/` (local; an index in each `README.md`):
   promotion, node) `archive/p4_wrapup_2026_11_19.md` (local);
 - the release head `realr_1119_2200` `archive/real_target_2026_11_19.md` (local);
 - the ×1 batch `1121_2230` and `x1ll_1122_1000` `reports/x1_recipe_2026_11_22.md`;
-- pixel losses into v `reports/lpips_grad_2026_11_21.md`, `reports/lpips_lora_2026_11_21.md`;
+- pixel losses into v `reports/lpips_grad_2026_11_21.md`, `reports/lpips_lora_2026_11_21.md`
+  (the LoRA term is removed since 2026-11-23);
 - ×2: `x2_plan.md`.
 
 ## LPIPS → DINO
@@ -20,22 +21,28 @@ ones in `archive/` (local; an index in each `README.md`):
 - The perceptual term of the head's training becomes the DINOv3 ViT-S/16 tile term (`DinoFeat`)
   in LPIPS's place. Records: `lpips_alternatives.md`, `reports/x1_dino_2026_11_22.md`,
   `reports/x2_dino_2026_11_23.md`.
-- Where LPIPS is set today, none changed yet: `configs/pixel_head/base_x1.toml` and `x1.toml`
-  (0.05), `configs/pixel_head/x2.toml` (0.1), `scripts/pixel_head/train_alpha.py` (0.05 on the
-  alpha; no DINO term in that trainer), the LoRA term `library/training/pixel_lpips.py`.
+- The user (2026-11-23, on this plan): "플랜대로 lpips -> dinov3 로 바꾸고 lpips는 없애자"; LPIPS
+  leaves the reads too, and RGBA and the LoRA term are in scope.
+- Done 2026-11-23: `X1Trainer`, `X2Trainer` and `AlphaTrainer` carry the DINO term only, at a fixed
+  λ (the weight rule `dino_match_lpips` read LPIPS's gradient and went with it); `Lpips` is
+  deleted. Defaults and shipped configs: ×1 (`base_x1.toml`, `x1.toml`) λ 331.6, ×2 (`x2.toml`)
+  245.2, RGBA 331.6 (the ×1 weight, not measured on alpha). The reads are dB + the DINO distance
+  (`_x1.py`, `train_x2.py`, `p3_generated.py`, `comfy_e2e.py`). The LoRA term
+  (`library/training/pixel_lpips.py`, `--pixel_lpips_*`) is removed; `convnext_head.py`,
+  `x2_head.py`, `lpips_grad_probe.py` are archived (`bench/pixel_readout/README.md`); `lpips` is
+  out of the core dependencies.
 - Weights run so far: ×1 λ 331.6 (the rule, beside LPIPS 0.05), ×2 λ 245.2 (fixed, read on a
   trained head). On ×2 the rule's own value, read on the untrained second stage, was 4.5× too
   low.
 
 ### To do
 
-1. ×2 first: `x2.toml` to the DINO term at a fixed λ, then the full-length B run from the ×1
-   base and the GAN finetune from it (`x2_plan.md`).
-2. ×1: the base recipe with the DINO term at 12,000 rollouts, read against `x1ll_1122_1000`;
-   the GAN finish from it.
-3. The read columns keep LPIPS beside the DINO distance, so new runs stay comparable with the
-   old tables.
-4. RGBA and the LoRA term: the user's word on whether "전면" covers them; each needs code.
+1. ×2 first: the full-length B run from the ×1 base on `configs/pixel_head/x2.toml` (`init` at
+   `x1ll_1122_1000`), then the GAN finish from it (`x2_plan.md`).
+2. ×1: the base recipe on the DINO term at 12,000 rollouts, `configs/x1dll_1123_0821.toml`
+   (queued 2026-11-23 08:21 on the user's word, ahead of ×2), with the read of `x1ll_1122_1000` in
+   the new code behind it (`configs/x1llread_1123_0821.toml`); then the GAN finish from it.
+3. RGBA: R3 runs on the DINO term (`rgba_plan.md`).
 
 ## State
 
@@ -72,7 +79,8 @@ ones in `archive/` (local; an index in each `README.md`):
 ### Facts
 
 `scripts/pixel_head/base_x1.py --config configs/pixel_head/base_x1.toml` trains this recipe. The
-argv `x1ll_1122_1000` ran, on what is now `bench/pixel_readout/experiments/convnext_head.py`:
+argv `x1ll_1122_1000` ran, on `bench/pixel_readout/experiments/convnext_head.py` (archived
+2026-11-23, `_archive/bench/pixel_readout/`, local):
 
 ```bash
 make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/experiments/convnext_head.py --compile \
@@ -168,7 +176,7 @@ Step 2, the run:
 | `x1fgan_1122_1247` | `x1ll_1122_1000` | `--init` → `output/pixel_head/x1ll_1122_1000`, `--rollouts` 12000 → 2000, `--eval_every` 1000 → 500, `--pegan_ratio` 0 → 2, `--pegan_crop` 0 (whole image) |
 
 `scripts/pixel_head/train_x1.py --config configs/pixel_head/x1.toml` is this recipe. The run's
-argv, on what is now `bench/pixel_readout/experiments/convnext_head.py`:
+argv, on `bench/pixel_readout/experiments/convnext_head.py` (archived 2026-11-23, local):
 
 ```bash
 make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/experiments/convnext_head.py --compile --no_skip --ls_init 1.0 --up 1 --init output/pixel_head/x1ll_1122_1000 --points 0.0577-0.1364:real 0.5:adapter --target xhat0 --adapter output/ckpt/release/anima_turbo_4step_v4_longer.safetensors --lambda_lpips 0.05 --pages post_image_dataset/pixel_pages --page_share 0.33 --replay 64 --opt_steps 16 --lr 5e-5 --rollouts 2000 --pegan_ratio 2 --pegan_crop 0 --eval_points 0.03 0.25 --eval_every 500 --no_start_eval --n_sheets 4 --label x1fgan_1122_1247"
@@ -305,9 +313,10 @@ replaces LPIPS: "LPIPS → DINO" at the top of this file.
 
 The head as the decode for losses that train the DiT or a LoRA did not pass its gradient probe
 (`reports/lpips_grad_2026_11_21.md`); such a term decodes through the windowed bf16 VAE
-(`library/training/pixel_lpips.py`). On the LoRA, the user's blind read put ratio 0.3 ahead and
-ratio 1.0 behind (`reports/lpips_lora_2026_11_21.md`). Left: a seed twin of control + ratio 0.3
-at seed 43, proposed, not queued. Other uses named for it: cjk_rl arm D (its D0 cost probe
+(`library/training/pixel_lpips.py`, removed 2026-11-23 with LPIPS). On the LoRA, the user's
+blind read put ratio 0.3 ahead and ratio 1.0 behind (`reports/lpips_lora_2026_11_21.md`). The
+seed-43 twin proposed then cannot run on the current tree; a DINO term through the VAE window
+would be new code. Other uses named for it: cjk_rl arm D (its D0 cost probe
 rerun against the VAE-window path), a term for the turbo
 student. Idea: `idea.md`.
 

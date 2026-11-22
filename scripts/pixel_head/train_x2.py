@@ -3,7 +3,7 @@
 
 A frozen Anima DiT gives the features; the head (a released ×1 head plus a second 2×
 stage, or a ×2 file to continue from) is trained against the real 2× image with the
-recipe loss + LPIPS (or the DINO feature term) + the tone term, and from ``pegan_start``
+recipe loss + the DINO feature term + the tone term, and from ``pegan_start``
 the PE-Spatial GAN term.
 Algorithm: ``project/pixel_decoder/README.md``; runs: ``project/pixel_decoder/reports/``.
 
@@ -31,7 +31,7 @@ from pathlib import Path
 
 from library.env import default_checkpoints, resolve_under_home
 from library.lines.requests import Request
-from scripts.pixel_head._setup import load_models, open_sink
+from scripts.pixel_head._setup import DINO_REPO, load_models, open_sink
 
 _CKPTS = default_checkpoints()
 
@@ -55,21 +55,17 @@ class X2TrainRequest(Request):
     margin: int = 3
     lr: float = 2e-4
     warmup: int = 200
-    lambda_lpips: float = 0.1
+    # DINOv3 repo, ViT or ConvNeXt (gated on the Hub), of the DINO term and of the
+    # read's dino column
+    dino: str = DINO_REPO
+    lambda_dino: float = 245.2  # DINO feature term's weight
+    dino_tiles: int = 4  # 224-px tiles per update
     lambda_dc: float = 1.0
     dc_block: int = 32
     pegan_ratio: float = 2.0  # 0 = no GAN term
     pegan_start: int = 1000
     pegan_lambda_max: float = 1.0
     pegan_crop: int = 512
-    # DINOv3 repo, ViT or ConvNeXt (gated on the Hub), of the DINO term and of the
-    # read's dino column; "" = neither
-    dino: str = ""
-    lambda_dino: float = 0.0  # DINO feature term's weight
-    dino_tiles: int = 4  # 224-px tiles per update
-    # > 0: lambda_dino is set over the first 8 rollouts to the gradient norm of LPIPS
-    # at this weight
-    dino_match_lpips: float = 0.0
     seed: int = 0
     # the discriminator
     pegan_layers: str = "3,7,11"  # PE blocks tapped, 0-based
@@ -86,7 +82,7 @@ class X2TrainRequest(Request):
     vae: str = _CKPTS.vae
     stream: str = "fp32"  # fp32 | bf16
     attn_mode: str = "flash"
-    compile: bool = True  # DiT blocks, head, LPIPS, the DINO term, the disc's tower
+    compile: bool = True  # DiT blocks, head, the DINO term, the disc's tower
     device: str = "cuda"
 
 
@@ -104,7 +100,6 @@ def run(req: X2TrainRequest) -> Path:
     from library.anima.pixel_head_train import (
         DinoFeat,
         DiTRollout,
-        Lpips,
         PEDisc,
         X2TrainConfig,
         X2Trainer,
@@ -121,9 +116,6 @@ def run(req: X2TrainRequest) -> Path:
 
     cfg = X2TrainConfig(
         **{f.name: getattr(req, f.name) for f in dataclasses.fields(X2TrainConfig)}
-    )
-    assert req.dino or not (cfg.lambda_dino or cfg.dino_match_lpips), (
-        "lambda_dino / dino_match_lpips need --dino"
     )
     device = torch.device(req.device)
     torch.manual_seed(req.seed)
@@ -183,7 +175,6 @@ def run(req: X2TrainRequest) -> Path:
         f"head {sum(q.numel() for q in head.parameters()) / 1e6:.1f}M params from {src}",
         flush=True,
     )
-    lp = Lpips(device, compile=req.compile)
     disc = None
     if cfg.pegan_ratio > 0:
         disc = PEDisc(
@@ -194,8 +185,8 @@ def run(req: X2TrainRequest) -> Path:
             r_sigma=req.pegan_r_sigma,
             compile=req.compile,  # one crop size: a graph per batch size (1 and 2)
         )
-    dn = DinoFeat(device, req.dino, compile=req.compile) if req.dino else None
-    trainer = X2Trainer(head, cfg, lpips=lp, disc=disc, compile=req.compile, dino=dn)
+    dn = DinoFeat(device, req.dino, compile=req.compile)
+    trainer = X2Trainer(head, cfg, dino=dn, disc=disc, compile=req.compile)
 
     # --- held-out: whole-image features and the real 2× image, kept on the CPU ---
     held = []  # (item, set, f, x_t patches, real 2×)
@@ -236,17 +227,12 @@ def run(req: X2TrainRequest) -> Path:
                 "set": key,
                 "kind": item.kind,
                 "psnr": psnr(x2, ref),
-                "lpips": lp.image(x2, ref),
+                "dino": dn.image(x2, ref),
                 "luma": luma,
                 "dark": dark,
             }
-            if dn is not None:
-                row["dino"] = dn.image(x2, ref)
             if nulls:
-                null = null_of(x2, ref, j)
-                row["lpips_null"] = lp.image(null, ref)
-                if dn is not None:
-                    row["dino_null"] = dn.image(null, ref)
+                row["dino_null"] = dn.image(null_of(x2, ref, j), ref)
             rows.append(row)
         head.train()
         return rows
@@ -261,9 +247,8 @@ def run(req: X2TrainRequest) -> Path:
 
     def fmt(ev) -> str:
         return "  ".join(
-            f"{st} {ev[f'{st}_psnr']:.2f} dB lpips {ev[f'{st}_lpips']:.4f} "
-            + (f"dino {1e3 * ev[f'{st}_dino']:.3f}e-3 " if dn is not None else "")
-            + f"dark {ev[f'{st}_dark'] or 0:+.2f}"
+            f"{st} {ev[f'{st}_psnr']:.2f} dB dino {1e3 * ev[f'{st}_dino']:.3f}e-3 "
+            f"dark {ev[f'{st}_dark'] or 0:+.2f}"
             for st in sets
         )
 
@@ -354,12 +339,11 @@ def run(req: X2TrainRequest) -> Path:
         "rollouts": req.rollouts,
         "run": req.output_name,
     }
-    if trainer.lam_dino > 0:
+    if cfg.lambda_dino > 0:
         stamp |= {
             "dino": req.dino,
-            "lambda_dino": trainer.lam_dino,  # as trained with, after the weight rule
-            "dino_tiles": req.dino_tiles,
-            "dino_match_lpips": req.dino_match_lpips,
+            "lambda_dino": cfg.lambda_dino,
+            "dino_tiles": cfg.dino_tiles,
         }
     save_x2_head(head, head_path, stamp)
     result = {
@@ -368,8 +352,6 @@ def run(req: X2TrainRequest) -> Path:
         "patch": PATCH,
         "sec_per_rollout": sec_per_rollout,
         "peak_vram_gb": torch.cuda.max_memory_allocated() / 1e9,
-        "lambda_dino": trainer.lam_dino,
-        "dino_match": trainer.dino_log,
         "final": by_set(rows),
         "eval_history": history,
         "per_image": rows,

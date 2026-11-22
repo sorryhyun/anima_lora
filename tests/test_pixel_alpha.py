@@ -129,7 +129,7 @@ def test_training_loads_no_vae_or_te(cache, tmp_path, monkeypatch):
         opt_steps=2,
         replay=2,
         warmup=1,
-        lambda_lpips=0.0,
+        lambda_dino=0.0,
         eval_every=3,
         compile=False,
         device="cpu",

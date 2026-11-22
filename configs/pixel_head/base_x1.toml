@@ -4,8 +4,9 @@
 #
 # Keys are BaseX1Request field names (`--help` lists them); CLI flags win over this file,
 # and a key left out keeps the field default. Values below are the confirmed base recipe
-# (project/pixel_decoder/plan.md), the settings of x1ll_1122_1000: regression only, the
-# init of the GAN finish (x1.toml), of ×2 and of RGBA.
+# (project/pixel_decoder/plan.md), the settings of x1ll_1122_1000 with the DINOv3 ViT-S/16
+# term in the place of LPIPS ("LPIPS → DINO"; no 12,000-rollout run with it yet): regression
+# only, the init of the GAN finish (x1.toml), of ×2 and of RGBA.
 # For a run, copy this file to <handle>_mmdd_hhmm.toml and set output_name to that name.
 
 output_name = "base_x1"
@@ -22,8 +23,9 @@ opt_steps = 16                         # head updates per rollout
 replay = 64
 lr = 5e-5                              # one cosine cycle
 warmup = 200                           # opt steps
-lambda_lpips = 0.05                    # on the :real points
-lpips_crop = 512
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"   # DINOv3 ViT-S/16, gated on the Hub
+lambda_dino = 331.6                    # on the :real points; grad norm of the 0.05 LPIPS it replaced
+dino_tiles = 4                         # 224-px tiles per update
 
 eval_points = "0.03 0.25"              # read, not trained on
 eval_every = 1000

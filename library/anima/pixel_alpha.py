@@ -71,11 +71,11 @@ class AlphaHead(PixelHead):
 
 
 class AlphaTrainer(X1Trainer):
-    """``X1Trainer`` on a one-channel target: LPIPS reads it as three channels."""
+    """``X1Trainer`` on a one-channel target: the DINO term reads it as three channels."""
 
-    def _lpips_term(self, pred, tgt, rng, compiled: bool = True):
+    def _dino_term(self, pred, tgt, rng, compiled: bool = True):
         a, b = (x.repeat(3, 1, 1) for x in (pred, tgt))
-        return super()._lpips_term(a, b, rng, compiled)
+        return super()._dino_term(a, b, rng, compiled)
 
 
 def save_alpha_head(head: AlphaHead, path: str | Path, stamp: dict) -> None:

@@ -103,14 +103,14 @@ def test_trainer_gan_start_and_untouched_x1_layer():
         window=4,
         margin=1,
         warmup=1,
-        lambda_lpips=0.0,
+        lambda_dino=0.0,
         pegan_ratio=2.0,
         pegan_start=1,
         pegan_lambda_max=1.0,
         pegan_crop=64,
     )
     disc = _StubDisc()
-    tr = X2Trainer(head, cfg, lpips=None, disc=disc)
+    tr = X2Trainer(head, cfg, disc=disc)
     x1_out = head.base.out.weight.detach().clone()
     x2_out = head.out2.weight.detach().clone()
     rng = random.Random(0)

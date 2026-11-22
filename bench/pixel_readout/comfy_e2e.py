@@ -15,7 +15,7 @@ fp32,bf16`` adds ComfyUI's own bf16 forward. Head vs VAE PSNR on the same latent
 
 ``--scale 2``: the chain VAE Decode → ResShift SR Upscale (the ×2 student at the node's
 defaults, ``ComfyUI-Distilled-ResShift``) against Anima Pixel Decode with a ×2 head file (the node
-decodes at the file's scale); PSNR and VGG-LPIPS of the head against the chain. ``--lora`` / ``--pixel_head``
+decodes at the file's scale); PSNR and the DINO distance (``DinoFeat``) of the head against the chain. ``--lora`` / ``--pixel_head``
 take a path outside ComfyUI's folders (the turbo point of the ×2 heads is v4_longer).
 
     make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/comfy_e2e.py \
@@ -165,16 +165,17 @@ def main_():
         conds[name] = c
     vae_decode = nodes.VAEDecode()
     pixel_decode = mapping["AnimaPixelDecode"]()
-    lp = rsd = up = None
+    dn = rsd = up = None
     if args.scale == 2:
-        import lpips
+        from library.anima.pixel_head_train import DinoFeat
+        from scripts.pixel_head._setup import DINO_REPO
 
         rsd = mapping["ResShiftLoader"]().load(
             "x2", "rsd_student_18k.safetensors", "bf16"
         )
         rsd = rsd[0]
         up = mapping["ResShiftUpscale"]()
-        lp = lpips.LPIPS(net="vgg", verbose=False).to(device).eval()
+        dn = DinoFeat(device, DINO_REPO)
 
     def vae_path(out):
         """VAE Decode, then (×2) ResShift SR Upscale at the node's defaults."""
@@ -185,19 +186,6 @@ def main_():
 
     def head_path(out):
         return pixel_decode.decode(tapped, out, args.head)[0]  # scale: the file's
-
-    @torch.no_grad()
-    def lpips_img(a, b, tile: int = 768) -> float:
-        """Area-weighted mean over ``tile``-px tiles of (3, H, W) images in [-1, 1]."""
-        a, b = a.to(device), b.to(device)
-        h, w = a.shape[-2:]
-        tot = 0.0
-        for y in range(0, h, tile):
-            for x in range(0, w, tile):
-                ta = a[None, :, y : y + tile, x : x + tile]
-                tb = b[None, :, y : y + tile, x : x + tile]
-                tot += lp(ta, tb).mean().item() * ta.shape[-2] * ta.shape[-1]
-        return tot / (h * w)
 
     def latent(h, w):
         return {"samples": torch.zeros(1, 16, 1, h // 8, w // 8)}
@@ -254,8 +242,10 @@ def main_():
                 "total_head_s": dit_s + head_s,
                 "psnr_head_vs_vae": psnr(to_pm1(img_h), to_pm1(img_v)),
             }
-            if lp is not None:
-                row["lpips_head_vs_vae"] = lpips_img(to_pm1(img_h), to_pm1(img_v))
+            if dn is not None:
+                row["dino_head_vs_vae"] = dn.image(
+                    to_pm1(img_h).to(device), to_pm1(img_v).to(device)
+                )
             rows.append(row)
             if si == 0 and k < args.save_images:
                 to_pil(to_pm1(img_v)).save(run_dir / f"{name}_vae.png")
@@ -264,13 +254,17 @@ def main_():
                 f"[{stream}] {name} {h}x{w}: sample {plain_s:.3f}s (tapped {dit_s:.3f}s)  "
                 f"vae {vae_s * 1e3:.0f}ms  head {head_s * 1e3:.0f}ms  "
                 f"psnr {row['psnr_head_vs_vae']:.2f}"
-                + (f"  lpips {row['lpips_head_vs_vae']:.4f}" if lp is not None else ""),
+                + (
+                    f"  dino {1e3 * row['dino_head_vs_vae']:.3f}e-3"
+                    if dn is not None
+                    else ""
+                ),
                 flush=True,
             )
         keys = [
             k
             for k in rows[0]
-            if k.endswith(("_s", "_mb")) or k.startswith(("psnr", "lpips"))
+            if k.endswith(("_s", "_mb")) or k.startswith(("psnr", "dino"))
         ]
         summary = {
             k: {

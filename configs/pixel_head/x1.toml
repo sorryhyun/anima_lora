@@ -5,8 +5,9 @@
 # Keys are X1TrainRequest field names (`--help` lists them); CLI flags win over this file,
 # and a key left out keeps the field default. Values below are the GAN finish as first run
 # (x1fgan_1122_1247, project/pixel_decoder/plan.md): the base recipe on a new cosine from
-# the base, with the PE-Spatial GAN term on the :real samples. The user's read of that run
-# decides whether this is the release recipe.
+# the base, with the PE-Spatial GAN term on the :real samples, and the DINOv3 ViT-S/16 term
+# in the place of LPIPS (plan.md, "LPIPS → DINO"). The user's read of that run decides
+# whether this is the release recipe.
 # For a run, copy this file to <handle>_mmdd_hhmm.toml and set output_name to that name.
 
 output_name = "x1"
@@ -23,8 +24,9 @@ opt_steps = 16
 replay = 64
 lr = 5e-5
 warmup = 200
-lambda_lpips = 0.05
-lpips_crop = 512
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 331.6                    # on the :real points
+dino_tiles = 4
 
 pegan_ratio = 2.0                      # GAN gradient norm over the head / the regression terms'; 0 = off
 pegan_crop = 0                         # 0 = the whole image; the PE tower runs eager

@@ -26,7 +26,7 @@ the two nearly coincide; at turbo's σ_last 0.5 they do not.
 ``--x2``: ×2 heads (``head_x2.safetensors`` of an ``experiments/x2_head.py`` run, or a file path) read
 through the library tap's path (the CFG feature, ``PixelHeadX2``). The reference is the
 chain the head replaces, the released ResShift ×2 student on VAE(x_final); per image:
-×2 against it (dB, LPIPS, whole-image and dark-pixel luma), ×1 against VAE(x_final) (empty for a file with
+×2 against it (dB, DINO distance, whole-image and dark-pixel luma), ×1 against VAE(x_final) (empty for a file with
 no ×1 output), and
 the time of VAE decode + ResShift against the head's ×2 readout. Sheets: two columns
 ``VAE → ResShift ×2 | ×2 head | bicubic ×2 of VAE``, full image and a 768-px crop at
@@ -76,7 +76,7 @@ from library.anima.pixel_head import (
     load_pixel_head,
 )
 from library.anima.pixel_head_train import (
-    Lpips,
+    DinoFeat,
     attach_adapter,
     compile_dit,
     densest_window,
@@ -88,6 +88,7 @@ from library.anima.pixel_head_train import (
 from library.anima.vocab_pack import default_vocab_pack
 from library.anima.weights import _attach_vocab_pack_if_set
 from library.env import resolve_under_home
+from scripts.pixel_head._setup import DINO_REPO
 from library.inference.args import build_default_args
 from library.inference.generation import generate_body
 from library.inference.models import load_text_encoder
@@ -205,7 +206,7 @@ def main():
             Path(resolve_under_home(TEACHER_DIR)),
             device,
         )
-        lp = Lpips(device)
+        dn = DinoFeat(device, DINO_REPO)
 
         def timed(fn):
             torch.cuda.synchronize()
@@ -318,7 +319,7 @@ def main():
                             "seed": seed,
                             "size": [h, w],
                             "psnr_x2": psnr(x2_img, t2),
-                            "lpips_x2": lp.image(x2_img, t2),
+                            "dino_x2": dn.image(x2_img, t2),
                             "luma_x2": lum,
                             "dark_x2": dark,
                             "psnr_x1": psnr_x1,
@@ -331,7 +332,7 @@ def main():
                         rows.append(row)
                         print(
                             f"  {arm} {hname} {name} s{seed}: ×2 {row['psnr_x2']:.2f} "
-                            f"lpips {row['lpips_x2']:.4f} dark {dark if dark is None else round(dark, 1)}"
+                            f"dino {1e3 * row['dino_x2']:.3f}e-3 dark {dark if dark is None else round(dark, 1)}"
                             f"  ×1 {'-' if psnr_x1 is None else f'{psnr_x1:.2f}'}"
                             f"  bicubic {row['psnr_bicubic']:.2f}  "
                             f"ms vae {ms_vae:.0f} + rs {ms_teacher:.0f} vs head "
@@ -417,7 +418,7 @@ def main():
     keys = (
         (
             "psnr_x2",
-            "lpips_x2",
+            "dino_x2",
             "luma_x2",
             "dark_x2",
             "psnr_x1",

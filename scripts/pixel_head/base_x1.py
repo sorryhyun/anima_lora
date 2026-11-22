@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Train the ×1 base: the regression head every later stage starts from.
 
-Base decode points against the original image with LPIPS, the turbo point against the
+Base decode points against the original image with the DINO term, the turbo point against the
 VAE's decode of x̂0, manga pages in the mix, no GAN term. The GAN finish on the result
 (the release) is ``train_x1.py``; ×2 is ``train_x2.py`` with ``init`` at this head's
 file. Recipe and its records: ``project/pixel_decoder/plan.md``.

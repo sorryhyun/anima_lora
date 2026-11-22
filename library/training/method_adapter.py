@@ -183,12 +183,4 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
         from library.training.xattn_align import XattnAlignMethodAdapter
 
         adapters.append(XattnAlignMethodAdapter())
-    if (
-        float(getattr(args, "pixel_lpips_ratio", 0.0) or 0.0) > 0.0
-        or float(getattr(args, "pixel_lpips_weight", 0.0) or 0.0) > 0.0
-        or getattr(args, "pixel_lpips_measure", False)
-    ):
-        from library.training.pixel_lpips import PixelLpipsMethodAdapter
-
-        adapters.append(PixelLpipsMethodAdapter())
     return adapters

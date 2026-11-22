@@ -101,8 +101,10 @@ Crawling and filtering are the user's and are not planned here. R0 and R1 ran 20
 
 - A separate alpha file in `PixelHead`'s form with one output channel: the base's weights, the
   output layer replaced (512 → 8 × 8 × 1, 32,832 parameters).
-- Target a = 2α − 1. Loss `rec_loss` on it (L1, MSE, gradient) + 0.05 LPIPS on a as three
-  channels, 512 crop (the user, 2026-11-22). No GAN or composite term.
+- Target a = 2α − 1. Loss `rec_loss` on it (L1, MSE, gradient) + the DINO term on a as three
+  channels, λ 331.6 (the ×1 weight; not measured on alpha). No GAN or composite term. R1 and R2
+  ran with 0.05 LPIPS on a, 512 crop (the user, 2026-11-22); LPIPS left the line on 2026-11-23
+  (`plan.md`, "LPIPS → DINO").
 - Decode, with C the RGB decode in [0, 1]:
 
       α = clamp((a + 1) / 2, 0, 1)
@@ -216,8 +218,9 @@ Interpretation:
 
 Facts (as set):
 
-- R2's config with rollouts 1,000 → 12,000, nothing else changed (no refine stage); about
-  1 h 50 min at R2's 0.55 s a rollout, plus reads.
+- R2's config with rollouts 1,000 → 12,000 and the DINO term in the place of LPIPS (the
+  trainer has no LPIPS since 2026-11-23), nothing else changed (no refine stage); about 1 h 50 min
+  at R2's 0.55 s a rollout, plus reads. Against R2 two things change, not separated.
 - A head file every 3,000 rollouts (`train_alpha.py` writes only the last today: code to write).
 - Read per file, against R2 at 1,000:
   1. held-out L1 on white foreground and background-like foreground (`other`: 0.0432 / 0.0400),

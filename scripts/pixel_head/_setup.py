@@ -9,6 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+# the DINO term's network (DinoFeat), ViT-S/16; gated on the Hub
+DINO_REPO = "facebook/dinov3-vits16-pretrain-lvd1689m"
+
 
 def load_models(req, device, seq_bands: list, adapter: str = ""):
     """→ (VAE, frozen DiT, adapter network or None)."""

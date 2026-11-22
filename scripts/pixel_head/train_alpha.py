@@ -32,6 +32,7 @@ from pathlib import Path
 from library.env import default_checkpoints, resolve_under_home
 from library.lines.requests import Request
 from library.lines.requests import request_field as _f
+from scripts.pixel_head._setup import DINO_REPO
 
 _CKPTS = default_checkpoints()
 
@@ -53,13 +54,16 @@ class TrainAlphaRequest(Request):
     replay: int = _f(64, "samples kept for the updates")
     lr: float = _f(5e-5, "LR, one cosine cycle")
     warmup: int = _f(200, "opt steps")
-    lambda_lpips: float = _f(0.05, "LPIPS on the alpha as three channels; 0 = off")
-    lpips_crop: int = _f(512, "LPIPS window, px; 0 = the whole image")
+    dino: str = _f(DINO_REPO, "DINOv3 repo of the DINO term (gated on the Hub)")
+    lambda_dino: float = _f(
+        331.6, "DINO term on the alpha as three channels (the ×1 weight); 0 = off"
+    )
+    dino_tiles: int = _f(4, "224-px tiles per update")
     seed: int = _f(0, "output layer, sample order, σ, noise, replay draws")
     eval_every: int = _f(250, "rollouts")
     n_sheets: int = _f(8, "sheets at the end")
     log_every: int = _f(25, "rollouts")
-    compile: bool = _f(True, "compile the DiT, the head and LPIPS")
+    compile: bool = _f(True, "compile the DiT, the head and the DINO term")
     dit: str = _f(_CKPTS.dit, "frozen DiT")
     stream: str = _f("fp32", "DiT residual stream", choices=("fp32", "bf16"))
     attn_mode: str = _f("flash", "DiT attention")
@@ -72,7 +76,7 @@ def run(req: TrainAlphaRequest) -> Path:
     from library.anima.pixel_alpha import AlphaHead, AlphaTrainer, save_alpha_head
     from scripts.pixel_head import _alpha_cache as C
     from library.anima.pixel_head import load_pixel_head
-    from library.anima.pixel_head_train import DiTRollout, Lpips
+    from library.anima.pixel_head_train import DinoFeat, DiTRollout
     from library.anima.pixel_head_train_x1 import X1TrainConfig
     from library.datasets.buckets import cluster_token_bands
     from library.runtime.progress import run_scope
@@ -120,12 +124,14 @@ def run(req: TrainAlphaRequest) -> Path:
         replay=req.replay,
         lr=req.lr,
         warmup=req.warmup,
-        lambda_lpips=req.lambda_lpips,
-        lpips_crop=req.lpips_crop,
+        lambda_dino=req.lambda_dino,
+        dino_tiles=req.dino_tiles,
         seed=req.seed,
     )
-    lp = Lpips(device, compile=req.compile) if req.lambda_lpips > 0 else None
-    trainer = AlphaTrainer(head, cfg, lpips=lp, compile=req.compile)
+    dn = (
+        DinoFeat(device, req.dino, compile=req.compile) if req.lambda_dino > 0 else None
+    )
+    trainer = AlphaTrainer(head, cfg, dino=dn, compile=req.compile)
 
     rng, order = random.Random(req.seed + 1), []
     sigma_rng = random.Random(req.seed + 4)
@@ -139,7 +145,7 @@ def run(req: TrainAlphaRequest) -> Path:
     print(
         f"train rows {len(rows)} ({len({r.key for r in rows})} cutouts), read "
         f"{len(samples)}; whole head {n_params / 1e6:.1f}M; LR {req.lr:g}, "
-        f"{req.rollouts} rollouts x {req.opt_steps}, LPIPS {req.lambda_lpips:g}  "
+        f"{req.rollouts} rollouts x {req.opt_steps}, DINO {req.lambda_dino:g}  "
         f"(ready in {time.perf_counter() - t0:.0f}s)",
         flush=True,
     )
@@ -175,8 +181,8 @@ def run(req: TrainAlphaRequest) -> Path:
                 pace = (now - t_log) / (done - n_log)
                 t_log, n_log = now, done
                 meters = dict(ema)
-                if trainer.lpips_ema is not None:
-                    meters["lpips"] = trainer.lpips_ema
+                if trainer.dino_ema is not None:
+                    meters["dino"] = trainer.dino_ema
                 print(
                     f"  rollout {done}/{req.rollouts}  "
                     + "".join(f"{k} {v:.4f}  " for k, v in meters.items())
@@ -202,7 +208,7 @@ def run(req: TrainAlphaRequest) -> Path:
         "ls_init": "1.0",
         "sigma": f"{req.sigma_lo}-{req.sigma_hi}",
         "stream": req.stream,
-        "lambda_lpips": req.lambda_lpips,
+        "lambda_dino": req.lambda_dino,
         "lr": req.lr,
         "rollouts": req.rollouts,
         "init": req.init,

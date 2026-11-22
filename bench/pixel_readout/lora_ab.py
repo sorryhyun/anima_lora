@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Renders and pair sheets for a LoRA A/B (the pixel-LPIPS arms).
+"""Renders and pair sheets for a LoRA A/B (first run on the pixel-LPIPS arms).
 
 Each arm's LoRA renders the ``docs/anima/findings/lora_recipe.md`` prompts p0 – p3 (the
 artist tag filled in) at ``--seeds``, at the ``make test`` recipe: 28 steps Euler, CFG 4,

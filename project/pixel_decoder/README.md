@@ -44,10 +44,16 @@ There is no linear skip from f. Output layers run in fp32. A ×2 file has no ×1
 | target | base point: the original image; turbo point: VAE(x̂0) | the real 2× image of the same crop |
 | data | cached pairs, manga pages at a share of 0.33 | `x2flex`: masters downscaled to 2×, or exact master crops |
 | replay sample | the whole image | a window of 24 tokens + a margin of 3, left out of the loss on sides inside the image |
-| loss | rec; + 0.05 LPIPS on original-image targets | rec + 0.1 LPIPS + 1.0 dc |
+| loss | rec; + 331.6 DINO on original-image targets | rec + 245.2 DINO + 1.0 dc |
 
 - rec = 0.5 L1 + 5 MSE + 0.05 gradient L1.
 - dc = L1 on 32-px block means (the tone term).
+- DINO = the frozen DINOv3 ViT-S/16 distance (`DinoFeat`, after ViTok-v2): 4 random 224-px tiles
+  per update at the same places of output and target, patch tokens after blocks 3 / 6 / 9 / 12,
+  L2-normalised per token, MSE. Each weight puts the term's gradient norm over the head at that
+  of the LPIPS-VGG term it replaced (0.05 on ×1, 0.1 on ×2), read on a trained head
+  (`reports/x1_dino_2026_11_22.md`, `reports/x2_dino_2026_11_23.md`). The heads trained before
+  2026-11-23 carry the LPIPS term.
 - The scripts are in `scripts/pixel_head/`, their values in `configs/pixel_head/`.
 
 ### GAN term
@@ -200,15 +206,17 @@ The user's calls on how this line is run and recorded.
 - The PE tower is compiled on ×2 (one crop size) and eager on the ×1 term (the whole image, a
   shape per image).
 - The Hub ×2 file stays as it is until the user has read the new head's renders.
-- The start eval is off by default (`start_eval`; `--no_start_eval` on
-  `experiments/convnext_head.py`).
+- The start eval is off by default (`start_eval`).
+- The perceptual term is the DINOv3 ViT-S/16 term, in training and in the reads; LPIPS is out of
+  both, and of the LoRA terms (the user, 2026-11-23: "dino로 전면 교체하는걸로 하자", "lpips는
+  없애자"). Tables before that date carry LPIPS columns; new reads do not.
 - A paper's head is ported in the paper's form first. When a small trainable part stalls, the
   16-image overfit probe (`bench/pixel_readout/experiments/x2_overfit.py`, about 70 s an arm) and
   a forward-only ceiling probe come before any argument about LR or budget.
 
 ### Reads
 
-- ×2 is read by LPIPS and crops, not dB (bicubic wins dB). No number sees the tile or the
+- ×2 is read by the DINO distance and crops, not dB (bicubic wins dB). No number sees the tile or the
   stripes.
 - Texture is measured on native renders over many images.
 - Renders shown to the user are Anima renders through the head only, with no GT or parent-run

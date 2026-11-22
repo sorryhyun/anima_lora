@@ -5,7 +5,9 @@
 # Keys are X2TrainRequest field names (`--help` lists them); CLI flags win over this
 # file, and a key left out keeps the field default. Values below are the settled recipe
 # (project/pixel_decoder/reports/x2_full_run_deploy_2026_11_21.md): arm B (the real 2× image as the target, base decode
-# points only) with the PE-Spatial GAN term at gradient ratio 2 from rollout 1000.
+# points only) with the PE-Spatial GAN term at gradient ratio 2 from rollout 1000, and the
+# DINOv3 ViT-S/16 term in the place of LPIPS (project/pixel_decoder/plan.md, "LPIPS → DINO";
+# no full-length run with it yet).
 # For a run, copy this file to <handle>_mmdd_hhmm.toml and set output_name to that name.
 
 output_name = "x2"
@@ -23,7 +25,9 @@ window = 24                            # tokens; + 2 × margin of context
 margin = 3
 lr = 2e-4                              # one cosine cycle
 warmup = 200                           # opt steps
-lambda_lpips = 0.1
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 245.2                    # grad norm of the 0.1 LPIPS it replaced, on a trained head
+dino_tiles = 4                         # 224-px tiles per update
 lambda_dc = 1.0
 dc_block = 32
 

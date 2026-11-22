@@ -1,0 +1,55 @@
+# The x1 base recipe on the DINO term at full length: x1ll_1122_1000 with the perceptual term
+#   LPIPS-VGG 0.05 (512 crop) -> DINOv3 ViT-S/16 331.6 (4 tiles of 224 px), nothing else changed
+#   (mixr_1119_1455 init, base points against the original + turbo point against VAE(x̂0), pages
+#   0.33, LR 5e-5 one cosine over 12,000 rollouts, 16 updates from a 64 replay, seed 0).
+# Code: x1ll ran on bench/pixel_readout/experiments/convnext_head.py (archived 2026-11-23); this
+#   runs on scripts/pixel_head/base_x1.py. Its LPIPS control x1lp_1122_2240 is the same recipe in
+#   that script at 1,000 rollouts.
+# 331.6: the DINO term's gradient norm over the head equals that of 0.05 x LPIPS, over the first
+#   8 :real rollouts from mixr_1119_1455 (x1dv3s_1122_2240, reports/x1_dino_2026_11_22.md).
+#   Fixed for the whole run, so the ratio drifts as the term falls.
+# The user (2026-11-23): "그 x1 base 학습 dino로 12k 돌리자" (plan.md "LPIPS -> DINO", To do 2).
+# Question: is the 12,000-rollout DINO base the new x1 base? Better or level on the user's read
+#   -> it replaces x1ll_1122_1000 as the init of the GAN finish, x2 and RGBA, and the GAN finish
+#   runs from it. Worse -> x1ll stays the base.
+# Records it rests on:
+#   - reports/x1_recipe_2026_11_22.md: x1ll at σ 0.0577 against the original, 34.25 / 29.20 /
+#     26.42 dB (test 30 / text 8 / manga 10), 0.674 s per rollout.
+#   - reports/x1_dino_2026_11_22.md: at 1,000 rollouts the DINO arm 0.1 dB lower on every set,
+#     lower DINO distance on every image, higher high-pass amplitude and 8 / 16-px stamp on renders.
+# Read: this head against x1ll_1122_1000, (1) held-out at the read points, dB against the
+#   original and the DINO distance with its permuted-residual null; x1ll's columns from
+#   x1llread_1123_0821 (the same script, rollouts 0). (2) Generated, P3's 16 prompts x seeds 0, 1,
+#   base 28 steps CFG 4, bench/pixel_readout/p3_generated.py with both heads, sheet_texture.py
+#   (amplitude, stamps), pair sheets x1ll | this head, labelled; the user's read decides.
+# Bars: 0.06 dB on test, the realr_1119_2200 / x1twin_1121_2230 gap (3,000 rollouts, LR 2e-4);
+#   for the DINO distance: spread unknown.
+# Cost: 12,000 rollouts at about 0.7 s, about 2 h 20 min, plus about 25 minutes of reads.
+
+output_name = "x1dll_1123_0821"
+output_dir = "output/pixel_head"
+init = "bench/pixel_readout/results/20261119-1527-mixr_1119_1455/head.safetensors"
+points = "0.0577-0.1364:real 0.5:adapter"
+target = "xhat0"
+adapter = "output/ckpt/release/anima_turbo_4step_v4_longer.safetensors"
+pages = "post_image_dataset/pixel_pages"
+page_share = 0.33
+
+rollouts = 12000
+opt_steps = 16
+replay = 64
+lr = 5e-5
+warmup = 200
+
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 331.6
+dino_tiles = 4
+
+eval_points = "0.03 0.25"
+eval_every = 1000
+start_eval = false
+n_sheets = 4
+
+stream = "fp32"
+compile = true
+seed = 0
