@@ -82,7 +82,7 @@ At σ 0.0577 against the original image, dB / LPIPS (spread: the `realr` / `x1tw
 
 ## The GAN finish on the ×1 base
 
-Not queued, and the code for step 1 is not written.
+`x1fgan_1122_1247` is running (2026-11-22); no outcome yet.
 
 ### Facts
 
@@ -100,45 +100,71 @@ Records it rests on:
 - On ×1 a warm start at LR 5e-5 dips a quarter as deep as at 2e-4
   (`reports/x1_recipe_2026_11_22.md`).
 
-Step 1, code and smoke:
+The user's decisions (2026-11-22):
 
-- `convnext_head.py` has no GAN term. Add `--pegan_ratio` (default 0), `--pegan_crop` 512,
-  `--pegan_lr` 1e-4, on `PEDisc` and the weight rule of `library/anima/pixel_head_train.py`:
+- On the `x2gftw` / `x2gftl` sheets (labelled; `x2gft` and the shipped file were columns on two of
+  the five): "확실히 길게 학습하는게 좋네. 일단 x1은 gan ratio 2로, 2k로 해보자. finetune from base".
+- On the discriminator's input: "pe에 굳이 512로 줄여서 입력해야 하나? 현재도 vram 괜찮지 않아?";
+  then: "pe 는 eager로만 하자".
+
+Step 1, code and smoke, done:
+
+- `convnext_head.py --pegan_ratio / --pegan_crop / --pegan_lr / --pegan_lambda_max`, on `PEDisc`:
   - the term only on `:real` samples (real = the original image, pages included); turbo samples
     keep their regression alone;
-  - the weight set once per rollout, on a `:real` replay sample, against rec + 0.05 · LPIPS;
-  - a paired crop of min(512, side) pixels; the ratio and the source head stamped in the file.
-- Smoke, 100 rollouts from the base. It answers the preconditions that no record covers:
-  - peak GB: the ×1 loop keeps 64 whole images on the card where ×2 keeps windows;
-  - the weight stays under its cap of 1.0 (×2: 0.041 → 0.006);
-  - the discriminator's margin at rollout 50 (×2: 3.6). Its LR 1e-4 was measured beside a head
-    at 2e-4, here the head is at 5e-5;
-  - seconds per rollout.
+  - the weight set once per rollout, on a `:real` replay sample, against rec + 0.05 · LPIPS,
+    capped at 1.0;
+  - `--pegan_crop 0` = the whole image; the PE tower eager; the ratio and the source head stamped
+    in the file.
+- `smoke_x1fgan_1122_1239` (100 rollouts from the base, 512-px crop, PE compiled): 816 GAN
+  updates; at rollout 50 / 100 weight 0.021 / 0.0015, margin 0.99 / 2.60; peak 10.2 GB;
+  1.69 s per rollout with the first compiles in it. Test at σ 0.0577 against the original
+  33.52 / 0.0805 (base 34.25 / 0.0725), manga 25.80 / 0.0870 (base 26.42 / 0.0959).
+- PE cost, eager, generator term with its backward + one discriminator update, random inputs,
+  median of 20 (a scratch probe, job `20261122-124250-950286`):
 
-Step 2, three runs, configs or argv recorded here before they are queued:
+  | input | tokens | ms | extra peak GB |
+  |---|---|---|---|
+  | 512 × 1 | 1,024 | 45.0 | 0.47 |
+  | 512 × 4 | 4,096 | 111.6 | 2.32 |
+  | 768 × 1 | 2,304 | 69.7 | 0.87 |
+  | 1024 × 1 | 4,096 | 143.6 | 1.66 |
+
+Step 2, the run:
 
 | run | parent | change |
 |---|---|---|
-| `x1fctl_<mmdd_hhmm>` | `x1ll_1122_1000` | `--init` → `output/pixel_head/x1ll_1122_1000`, `--rollouts` 12000 → 2000, `--eval_every` 1000 → 500 |
-| `x1fgan_<mmdd_hhmm>` | `x1fctl` | `--pegan_ratio` 0 → 2, nothing else changed |
-| `x1fganw_<mmdd_hhmm>` | `x1fgan` | `--seed` 0 → 1 |
+| `x1fgan_1122_1247` | `x1ll_1122_1000` | `--init` → `output/pixel_head/x1ll_1122_1000`, `--rollouts` 12000 → 2000, `--eval_every` 1000 → 500, `--pegan_ratio` 0 → 2, `--pegan_crop` 0 (whole image) |
 
+```bash
+make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/convnext_head.py --compile --no_skip --ls_init 1.0 --up 1 --init output/pixel_head/x1ll_1122_1000 --points 0.0577-0.1364:real 0.5:adapter --target xhat0 --adapter output/ckpt/release/anima_turbo_4step_v4_longer.safetensors --lambda_lpips 0.05 --pages post_image_dataset/pixel_pages --page_share 0.33 --replay 64 --opt_steps 16 --lr 5e-5 --rollouts 2000 --pegan_ratio 2 --pegan_crop 0 --eval_points 0.03 0.25 --eval_every 500 --no_start_eval --n_sheets 4 --label x1fgan_1122_1247"
+```
+
+- The base is the reference: same seed, so the same held-out noise. A control of the same cycle
+  (`x1fctl`: this argv at `--pegan_ratio` 0) and a seed twin are not queued. `--seed` also moves
+  the held-out noise, to be fixed before a twin's numbers are read as a spread.
 - 2,000 rollouts because the points alternate: 1,000 of them are base rollouts, and about 16,000
-  of the 32,000 updates carry the term, the count of `x2gft`.
-- Changed together against `x2gft` and not separated: the head LR (5e-5), the crop's reach (512 px
-  at ×1 covers twice the image side it covers at ×2), pages in the mix, the turbo point in turn.
+  of the 32,000 updates carry the term, the count of `x2gft` (`x2gftl`: 48,000).
+- Changed together against `x2gft` and not separated: the head LR (5e-5 against 2e-4, the
+  discriminator at 1e-4 in both), the discriminator's input (the whole image, about 4,100 tokens
+  with interpolated position embeddings, against a 512-px crop on PE's native grid), pages in the
+  mix, the turbo point in turn.
+- Not covered by the smoke, read on this run's first 100 rollouts: peak GB, weight, margin and
+  seconds per rollout at the whole-image input.
+- Those, at rollout 50 / 100 (job `20261122-124723-3c2e3b`): peak 10.8 / 11.2 GB, weight 0.145 /
+  0.017, margin 0.62 / 0.24, 2.17 / 2.01 s per rollout.
 
 Step 3, the read:
 
 1. Blind pairs, one (prompt, seed) per file, on the line's working set (P3's 16 prompts × seeds
    0, 1 at base 28 steps CFG 4 and at turbo v4_longer 4 steps; the monochrome and fine-stroke
-   renders): control against finish (does the term add anything), and Hub `realr` against finish
+   renders): base against finish (does the term add anything), and Hub `realr` against finish
    (does it ship).
 2. Labelled crops for regular patterns (pinwheel, stripes, weave): the monochrome render's dot
    screen, the held-out manga pages, flat colour areas.
 3. Numbers beside them, with no bar: held-out dB and LPIPS at every point, head against VAE on
    the renders, high-pass amplitude and correlation as in the report's corrections, chroma on
-   greyscale pages. Spread: the `x1fgan` / `x1fganw` gap.
+   greyscale pages. Spread unknown (no twin).
 4. The ship read, on a set no arm has been read on, seeds 7 and 8, base and turbo:
    - `safe, 1girl, solo, knitted sweater, plaid skirt, autumn park, fallen leaves`
    - `safe, no humans, old bookstore, wooden shelves, books, window light`
@@ -160,18 +186,19 @@ Step 4, after the user picks a finish:
   `init` loads the catalog's head, which would then be the GAN file: every stage trained on the
   base names its path in `init`.
 
-Cost, estimated from the records: smoke about 5 minutes; control about 25; each GAN run 30 – 40;
-reads about 25. About two hours, queued on the user's word.
+Cost, estimated from the smoke and the PE probe: the run about 65 – 75 minutes with evals; reads
+about 25.
 
 ### Interpretation
 
 Question: does a short GAN finish on the converged base give texture that reads better than both
-the control and the Hub file, without a regular pattern and without hurting turbo?
+the base and the Hub file, without a regular pattern and without hurting turbo?
 
 - Yes → the finish is the release (step 4).
-- A regular pattern → ratio 1 at the same length. Not a longer run: on ×2 length is what brought
-  the stripes.
-- No pattern, level with the control → the term adds nothing at this form. The user picks the
+- A regular pattern → ratio 1 at the same length.
+- Better, and still short of texture → longer. On ×2 the user's read favours length, and Claude's
+  labelled read had stripes there, so a longer run is read for both.
+- No pattern, level with the base → the term adds nothing at this form. The user picks the
   base or `realr` for the Hub, and the form probe is next.
 - Better on base, worse on turbo → the shared trunk carries the term into the turbo point. The
   next arm puts the term on that point too, with VAE(x̂0) as its real.

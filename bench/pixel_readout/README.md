@@ -66,6 +66,8 @@ make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/convnext_h
 - Head shape: `--width 1024 --depth 3 --up 1 --no_skip --ls_init 1.0` (current recipe).
 - Training: `--rollouts 12000`, `--opt_steps 16 --replay 64`, `--lr 5e-5` (current recipe; the flag's default is 2e-4), `--target x0|xhat0`,
   `--pages <dir> --page_share p`, `--stream fp32|bf16`.
+- GAN finish: `--init <folder> --pegan_ratio 2 --pegan_crop 0` (the paired PE-Spatial term on the
+  `:real` samples; crop 0 = the whole image; the PE tower runs eager).
 - Where it reads: `--sigma s` (default: last σ of `--infer_steps`/`--flow_shift`, 0.0577),
   `--adapter <lora>` (hooks after `stream_fp32_`; `attach_adapter`), `--init <run or label>`.
 - `load_head` / `resolve_run` take a results path or a bare label (newest `results/*-<label>`).

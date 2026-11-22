@@ -63,6 +63,9 @@ settled recipe), `bench/pixel_readout/x2_head.py` (the earlier arms and the whol
   at 1,000, 0.195 at 2,000 and 0.141 at 4,000 (still falling at the end of its cosine); `x1lowlr`
   against `realr` and `x1long` against `realr` on ×1 (`reports/x1_recipe_2026_11_22.md`); `x2gftl`'s stripes at
   3,000 GAN rollouts against none at 1,000 (`reports/x2_tile_gft_2026_11_22.md`).
+- The user's read of `x2gftw` / `x2gftl` (2026-11-22): "확실히 길게 학습하는게 좋네"
+  (`reports/x2_tile_gft_2026_11_22.md`). Step 3's 1,000 rollouts were set before that read: its
+  length is open.
 - Not set yet: step 2's length and LR. No ×2 run has been made at another LR or past 4,000
   rollouts; the values are written into the run's config when step 1 is read.
 

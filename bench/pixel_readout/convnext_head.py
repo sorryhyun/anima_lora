@@ -70,6 +70,7 @@ from library.anima.pixel_head import (  # noqa: F401  (re-exported for the bench
     load_pixel_head,
 )
 from library.anima.pixel_head_train import (  # noqa: F401  (re-exported for the scripts here)
+    PEDisc,
     densest_window,
     rec_loss,
 )
@@ -364,6 +365,23 @@ def main():
         "head's parameters) on the first N :real rollouts, before any update",
     )
     p.add_argument(
+        "--pegan_ratio",
+        type=float,
+        default=0.0,
+        help="> 0: the paired PE-Spatial GAN term on the :real samples, weighted once per "
+        "rollout so its gradient norm over the head is this times that of the "
+        "reconstruction + --lambda_lpips terms (capped at --pegan_lambda_max)",
+    )
+    p.add_argument(
+        "--pegan_crop",
+        type=int,
+        default=512,
+        help="side of the paired square crop, a multiple of 16 (a smaller image: its "
+        "short side); 0 = the whole image. The PE tower runs eager at any size",
+    )
+    p.add_argument("--pegan_lr", type=float, default=1e-4, help="discriminator LR")
+    p.add_argument("--pegan_lambda_max", type=float, default=1.0)
+    p.add_argument(
         "--init", default=None, help="start the head from <run>/head.safetensors"
     )
     p.add_argument(
@@ -374,6 +392,7 @@ def main():
     )
     p.add_argument("--n_sheets", type=int, default=12)
     args = p.parse_args()
+    assert args.pegan_crop >= 0 and args.pegan_crop % 16 == 0, "--pegan_crop: × 16"
     start_heartbeat(label="convnext")
     device = torch.device(args.device)
     torch.manual_seed(args.seed)
@@ -452,6 +471,10 @@ def main():
                 points.append((name, float(s), tag))
     else:
         assert not args.eval_points, "--eval_points needs --points"
+    if args.pegan_ratio > 0:
+        assert any(t == "real" for *_, t in train_points), (
+            "--pegan_ratio needs a :real point"
+        )
     multi = bool(points[0][0])
     sig_rng = random.Random(args.seed + 4)
 
@@ -577,13 +600,13 @@ def main():
     lp_train = torch.compile(lp) if compile_blocks else lp
     lp_rng = random.Random(args.seed + 5)
 
-    def lpips_term(pred, tgt, fn=None):
+    def lpips_term(pred, tgt, fn=None, crop_rng=lp_rng):
         """LPIPS of one random --lpips_crop window (the whole image when smaller)."""
         a, b = pred[None], tgt[None]
         c = args.lpips_crop
         if c and min(a.shape[-2:]) > c:
-            y = lp_rng.randint(0, a.shape[-2] - c)
-            x = lp_rng.randint(0, a.shape[-1] - c)
+            y = crop_rng.randint(0, a.shape[-2] - c)
+            x = crop_rng.randint(0, a.shape[-1] - c)
             a, b = a[..., y : y + c, x : x + c], b[..., y : y + c, x : x + c]
         cl = torch.channels_last
         with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -624,6 +647,46 @@ def main():
                 )
             )
         return norms[0], norms[1]
+
+    disc = (
+        PEDisc(device, lr=args.pegan_lr)  # the PE tower runs eager
+        if args.pegan_ratio > 0
+        else None
+    )
+    # the term's own streams, so a run at ratio 0 draws the same rollouts, samples, crops
+    gan_rng = random.Random(args.seed + 9)  # the crop of an update
+    lam_rng = random.Random(args.seed + 10)  # the weight rule's sample and crops
+
+    def gan_term(pred, tgt, crop_rng):
+        """L_G on paired (3, H, W) images in [-1, 1], whole or one square crop."""
+        h, w = pred.shape[-2:]
+        if not args.pegan_crop:
+            return disc.gen_term(pred[None].float(), tgt[None].float())
+        c = min(args.pegan_crop, h, w)
+        y, x = crop_rng.randint(0, h - c), crop_rng.randint(0, w - c)
+        box = (..., slice(y, y + c), slice(x, x + c))
+        return disc.gen_term(pred[None].float()[box], tgt[None].float()[box])
+
+    def gan_weight(sample) -> float:
+        """λ = ratio · ‖∇ regression‖ / ‖∇ GAN‖ over the head, eager, one :real sample."""
+        f, lat, tgt, _ = sample
+        params = [q for q in head.parameters() if q.requires_grad]
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            pred = head(f, lat)
+        reg = rec_loss(pred, tgt.float())[0]
+        if args.lambda_lpips > 0:
+            reg = reg + args.lambda_lpips * lpips_term(
+                pred.float(), tgt.float(), fn=lp, crop_rng=lam_rng
+            )
+        norms = []
+        for term in (reg, gan_term(pred, tgt, lam_rng)):
+            gs = torch.autograd.grad(
+                term, params, retain_graph=term is reg, allow_unused=True
+            )
+            sq = sum((g.float() ** 2).sum() for g in gs if g is not None)
+            norms.append(math.sqrt(float(sq)))
+        lam = args.pegan_ratio * norms[0] / (norms[1] + 1e-12)
+        return min(lam, args.pegan_lambda_max)
 
     lin_params = list(head.linear.parameters())
     rest = [p for n, p in head.named_parameters() if not n.startswith("linear.")]
@@ -751,6 +814,9 @@ def main():
     assert not (args.replay and args.accum > 1), "--replay and --accum do not combine"
     replay: deque = deque(maxlen=max(1, args.replay))
     replay_rng = random.Random(args.seed + 3)
+    lam_gan, n_gan_steps = 0.0, 0
+    # the last rollout's weight and the last update's meters
+    gan_log: dict[str, float] = {}
     if args.init and not args.no_start_eval:  # the loaded head on this run's points
         ev = evaluate()
         history.append({"rollout": 0, "step": 0, **ev})
@@ -770,7 +836,7 @@ def main():
         lo, hi, adapter_on, tname = train_points[r % len(train_points)]
         sg = lo if hi == lo else sig_rng.uniform(lo, hi)
         f, lat, tgts = rollout(item, r, targets=(tname,), point=("", sg, adapter_on))
-        perc = tname == "real" and args.lambda_lpips > 0
+        is_real = tname == "real"
         if tname == "real" and len(ratios) < args.grad_ratio:
             ratios.append(grad_ratio(f, lat, tgts[tname]))
             if len(ratios) == args.grad_ratio:
@@ -783,28 +849,42 @@ def main():
                 )
         if args.replay:
             # bf16 features lose nothing: the head's first linear runs under bf16 autocast
-            replay.append((f.to(torch.bfloat16), lat, tgts[tname].half(), perc))
+            replay.append((f.to(torch.bfloat16), lat, tgts[tname].half(), is_real))
         else:
-            window.append((f, lat, tgts[tname], perc))
+            window.append((f, lat, tgts[tname], is_real))
+        if disc is not None:
+            reals = [smp for smp in (replay if args.replay else window) if smp[3]]
+            if reals:
+                lam_gan = gan_weight(lam_rng.choice(reals))
+                gan_log["lam"] = lam_gan
         for _ in range(args.opt_steps):
             set_lr(step)
             opt.zero_grad(set_to_none=True)
             # window: newest rollout last, so the logged loss / mse are this rollout's;
             # replay: the logged loss is the last drawn sample's
             batch = [replay_rng.choice(replay)] if args.replay else window
-            for f, lat, tgt, perc in batch:
+            gan_steps = 0
+            for f, lat, tgt, is_real in batch:
                 with torch.autocast("cuda", dtype=torch.bfloat16):
                     pred = head_train(f, lat)
                 loss, mse = rec_loss(pred, tgt.float())
-                if perc:
+                if is_real and args.lambda_lpips > 0:
                     lp_v = lpips_term(pred.float(), tgt.float())
                     loss = loss + args.lambda_lpips * lp_v
                     lv_ = lp_v.item()
                     lp_ema = lv_ if lp_ema is None else 0.98 * lp_ema + 0.02 * lv_
+                if is_real and disc is not None:
+                    g_loss = gan_term(pred, tgt, gan_rng)
+                    loss = loss + lam_gan * g_loss
+                    gan_log["g_loss"] = g_loss.item()
+                    gan_steps += 1
                 (loss / len(batch)).backward()
             torch.nn.utils.clip_grad_norm_(head.parameters(), 1.0)
             opt.step()
             step += 1
+            if gan_steps:  # one discriminator update, on the last paired crop, detached
+                gan_log.update(disc.step())
+                n_gan_steps += 1
         lv, mv = loss.item(), mse.item()
         loss_ema = lv if loss_ema is None else 0.98 * loss_ema + 0.02 * lv
         mse_ema = mv if mse_ema is None else 0.98 * mse_ema + 0.02 * mv
@@ -814,6 +894,13 @@ def main():
                 f"  rollout {r + 1}/{args.rollouts}  loss {loss_ema:.4f}  "
                 f"psnr~{10 * math.log10(4 / mse_ema):.2f}  "
                 + (f"lpips {lp_ema:.4f}  " if lp_ema is not None else "")
+                + (
+                    "".join(f"{k} {v:.4g}  " for k, v in gan_log.items())
+                    + f"gan steps {n_gan_steps}  "
+                    f"peak {torch.cuda.max_memory_allocated() / 1e9:.1f}GB  "
+                    if disc is not None
+                    else ""
+                )
                 + f"{el / (r + 1):.2f}s/rollout  eta {(args.rollouts - r - 1) * el / (r + 1) / 60:.0f}m",
                 flush=True,
             )
@@ -895,6 +982,16 @@ def main():
             "replay": str(args.replay),
             "adapter": args.adapter or "",
             "init": args.init or "",
+            **(
+                {
+                    "pegan_ratio": str(args.pegan_ratio),
+                    "pegan_crop": str(args.pegan_crop),
+                    "pegan_lr": str(args.pegan_lr),
+                    "rollouts": str(args.rollouts),
+                }
+                if disc is not None
+                else {}
+            ),
         },
     )
     artifacts.append("head.safetensors")
@@ -939,6 +1036,15 @@ def main():
         "head_params_M": n_params / 1e6,
         "opt_steps_total": step,
         "sec_per_rollout": (time.perf_counter() - t0) / args.rollouts,
+        **(
+            {
+                "pegan_steps": n_gan_steps,
+                **{f"pegan_last_{k}": v for k, v in gan_log.items()},
+                "peak_gb": torch.cuda.max_memory_allocated() / 1e9,
+            }
+            if disc is not None
+            else {}
+        ),
         **set_metrics,
         **(
             {"n_page_train": len(page_train), "n_page_rollouts": n_page_rollouts}
