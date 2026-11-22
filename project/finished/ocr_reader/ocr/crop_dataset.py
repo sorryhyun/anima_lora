@@ -21,6 +21,7 @@ torch ``Dataset`` of (BGR crop, target string) with train-time augmentation.
 from __future__ import annotations
 
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -264,7 +265,67 @@ def load_sfxp(
 OCR2_TASK = "OCR2:"
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 MAINSUB_JSONL = m109.REPO / "output/ocr/mainsub"
-KANJI = __import__("re").compile(r"[一-鿿々〆ヶ]")
+LINEBREAK_JSONL = m109.REPO / "output/ocr/linebreak"
+DOT_FREE = re.compile(r"[\s.．・･…‥]")
+
+
+def break_proposals(d: Path) -> dict[str, dict]:
+    """``linebreak_auto.py apply``'s rows that missed the gate and are still unbroken in
+    their manifest, keyed ``<book>_<page:03d>_<id>``: the row, with the label now as
+    ``cur``. Dot-only labels are not among them (``linebreak_auto.py dots``)."""
+    import json
+
+    cur = {}
+    for name in ("sfxp_speech", "mainsub_text"):
+        p = d / f"manifest_{name}.parquet"
+        if p.exists():
+            df = pd.read_parquet(p)
+            df = df[df.source == name]
+            for b, pg, i, t in zip(df.book, df.page, df.id, df.text):
+                cur[f"{b}_{int(pg):03d}_{i}"] = t
+    out = {}
+    for fn in ("linebreak_suspicious.jsonl", "linebreak_suspicious_mainsub_text.jsonl"):
+        path = LINEBREAK_JSONL / fn
+        if not path.exists():
+            continue
+        for line in open(path, encoding="utf-8"):
+            x = json.loads(line)
+            k = f"{x['book']}_{int(x['page']):03d}_{x['id']}"
+            if k in cur and "\n" not in cur[k] and DOT_FREE.sub("", x["raw"]):
+                out[k] = dict(x, cur=cur[k])
+    return out
+
+
+def waiting_break(x: dict, proposals: dict[str, dict]) -> str | None:
+    """The :func:`break_proposals` key of a ``m109_mainsub.py`` row whose main is that
+    one ``<text>`` box: multi-column text labelled as one line, waiting for review."""
+    sp = x.get("sp", [])
+    if len(sp) != 1 or x.get("trim"):
+        return None
+    k = f"{x['book']}_{int(x['page']):03d}_{sp[0]}"
+    p = proposals.get(k)
+    if p and DOT_FREE.sub("", x["main"]) == DOT_FREE.sub("", p["cur"]):
+        return k
+    return None
+
+
+def filled_breaks() -> dict[str, str]:
+    """``assets/m109_breaks.tsv`` (source, id, main): mains with the line breaks agents
+    read off the crop, keyed ``<source>:<id>``; the characters are the proposal's."""
+    path = ASSETS / "m109_breaks.tsv"
+    if not path.exists():
+        return {}
+    t = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)
+    return {f"{r.source}:{r.id}": r.main.replace("\\n", "\n") for r in t.itertuples()}
+
+
+def with_breaks(x: dict, filled: dict[str, str]) -> str:
+    """A ``m109_mainsub.py`` row's main with its :func:`filled_breaks`; as proposed when
+    it has none or the proposal's characters have changed since."""
+    t = filled.get(f"{x['source']}:{x['id']}")
+    if t and "".join(t.split()) == "".join(x["main"].split()):
+        return t
+    return x["main"]
 
 
 def load_mainsub(
@@ -283,15 +344,18 @@ def load_mainsub(
       (``assets/m109_mainsub.tsv``) as reviewed, a dropped one out. An unreviewed ``trim``
       row (its main a box only partly inside) is out, and so is an unreviewed empty main
       (mainsub_1121_1806 read text on all 59 val ones: a box cut under half, a sign).
+      An unreviewed main with line breaks waiting (:func:`waiting_break`) is out of
+      ``OCR:`` in train, not of ``OCR2:`` (the user, 2026-11-22). An unreviewed main
+      takes its breaks from ``assets/m109_breaks.tsv`` (:func:`with_breaks`).
     * KO / ZH (``manifest_sfxp_kozh``, train only): ``OCR:`` = the label; ``OCR2:`` =
-      ``assets/sub_labels.tsv``'s sub, else ``assets/kozh_sfx.tsv``'s SFX text, else ``""``.
-    * ``OCR2:`` only where the sub is complete: reviewed, or a proposal on a crop with no
-      partly visible text, or ``""`` on a crop whose main holds no kanji (no ruby
-      possible). A kanji main with no ruby found is left out of ``OCR2:``.
+      ``assets/sub_labels.tsv``'s sub, else ``assets/kozh_sfx.tsv``'s SFX text.
+    * ``OCR2:`` only where there is a sub to read: a reviewed one, or a proposal on a crop
+      with no partly visible text. An empty sub is no row, whatever its source or review
+      state: it does not say the crop has none (``OCR2:`` negatives wait to be set as such).
 
-    Negatives (target ``""``) are at most ``neg_share`` of each prompt's rows; ``metric``
-    is ``main`` / ``main_kozh`` / ``main_neg`` / ``sub`` / ``sub_neg``. ``limit`` caps every
-    ``metric`` group."""
+    ``OCR:`` negatives (target ``""``) are at most ``neg_share`` of its rows; ``metric``
+    is ``main`` / ``main_kozh`` / ``main_neg`` / ``sub``. ``limit`` caps every ``metric``
+    group."""
     import json
 
     d = m109.derived_root()
@@ -319,7 +383,10 @@ def load_mainsub(
     geo = {p: (w, h, o) for p, w, h, o in zip(det.path, det.w, det.h, det.orient)}
     name = "m109_mainsub.jsonl" if split == "train" else f"m109_mainsub_{split}.jsonl"
     recs = []
-    n_trim = n_drop = n_rev = n_empty = 0
+    # train only: val keeps the rows earlier runs were read on
+    proposals = break_proposals(d) if split == "train" else {}
+    filled = filled_breaks()
+    n_trim = n_drop = n_rev = n_empty = n_wait = 0
     for line in open(MAINSUB_JSONL / name, encoding="utf-8"):
         x = json.loads(line)
         if x["path"] not in geo:
@@ -341,8 +408,8 @@ def load_mainsub(
             n_rev += 1
             main, sub, done = v[1], v[2], True
         else:
-            main, sub = x["main"], x["subp"]
-            done = not x["part"] and (bool(sub) or not KANJI.search(main))
+            main, sub = with_breaks(x, filled), x["subp"]
+            done = not x["part"]
         base = dict(
             book=x["book"],
             page=x["page"],
@@ -352,9 +419,18 @@ def load_mainsub(
             h=h,
             path=x["path"],
         )
-        recs.append(
-            dict(base, text=main, task=OCR_TASK, kind="main", source="m109_" + x["cat"])
-        )
+        if v is None and waiting_break(x, proposals):
+            n_wait += 1
+        else:
+            recs.append(
+                dict(
+                    base,
+                    text=main,
+                    task=OCR_TASK,
+                    kind="main",
+                    source="m109_" + x["cat"],
+                )
+            )
         if done:
             recs.append(
                 dict(
@@ -390,13 +466,16 @@ def load_mainsub(
             )
     df = pd.DataFrame(recs)
     df = cap_targets(df, f"mainsub {split}")
-    empty = df.target.str.len() == 0
+    no_sub = (df.task == OCR2_TASK) & (df.target.str.len() == 0)
+    df = df[~no_sub].copy()
     df["metric"] = np.where(
         df.task == OCR_TASK,
         np.where(
-            empty, "main_neg", np.where(df.kind == "main_kozh", "main_kozh", "main")
+            df.target.str.len() == 0,
+            "main_neg",
+            np.where(df.kind == "main_kozh", "main_kozh", "main"),
         ),
-        np.where(empty, "sub_neg", "sub"),
+        "sub",
     )
     cap = neg_share / (1 - neg_share)
     parts = []
@@ -408,8 +487,9 @@ def load_mainsub(
     out = pd.concat(parts, ignore_index=True)
     print(
         f"[data] mainsub {split}: reviewed {n_rev}, dropped {n_drop}, unreviewed trim "
-        f"out {n_trim}, unreviewed empty main out {n_empty}; "
-        f"{out.groupby(['task', 'metric']).size().to_dict()}",
+        f"out {n_trim}, unreviewed empty main out {n_empty}, unreviewed "
+        f"waiting break main out {n_wait}, empty sub out "
+        f"{int(no_sub.sum())}; {out.groupby(['task', 'metric']).size().to_dict()}",
         flush=True,
     )
     if limit:

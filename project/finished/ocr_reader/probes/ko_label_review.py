@@ -45,14 +45,18 @@ hito rows also show the twin crop (the other edition's lettering of the same reg
 its v4 read, and the read's mean token logprob (``prelabel_v4lp.jsonl``); they sort lowest
 logprob first by default.
 
-Every row is listed; the page filters on the longest spaceless Hangul run (the gelnote
+A row whose main label is over the training cap (``crop_dataset.MAX_TARGET_CHARS``, which
+drops it) is not listed or counted (``mark_over_cap``); it stays in the page's data, so
+a state it holds still exports. ``doujin_sfx``, a gate, is not capped. Every other row is
+listed; the page filters on the longest spaceless Hangul run (the gelnote
 teacher's dropped spacing passes the whitespace-blind agreement, ``pseudo_label.py``) and
 sorts by it, by "no line break, longest first", or by ``suspicion`` (``suspicion``: the
 label's line count against the crop's shape, kana / hanja, long spaceless runs). With
 ``--flags`` (``ko_read.py`` → ``ko_label_fix.py``) every kozh and hito row also shows a
 reader's read and confidence, and the "disagrees" sort lists the rows whose label the read
 does not match (whitespace-blind), lowest confidence first. Re-read with each new run so
-that sort follows the latest reader.
+that sort follows the latest reader. The ``…`` sort lists the rows whose box holds Hangul
+and ``…`` (as edited, so a row respelled to ``...`` leaves it), most ``…`` first.
 
 ``doujin_sfx``: the doujin gate's SFX rows (``assets/sfx_labels_sincos_597.tsv``,
 ``kind_hand == sfx``, ``unchecked`` included) on the frozen 12 % crops
@@ -79,6 +83,14 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
 import manga109 as m109  # noqa: E402
 from build_sfx_prefix import ellipsis_fold  # noqa: E402
+from crop_dataset import (  # noqa: E402
+    MAX_TARGET_CHARS,
+    break_proposals,
+    filled_breaks,
+    normalize_target,
+    waiting_break,
+    with_breaks,
+)
 
 REPO = Path(__file__).resolve().parents[4]
 GELNOTE = Path("/media/sorryhyun/new/dataset/gelnote_crops")
@@ -92,7 +104,6 @@ RUN = re.compile(r"[가-힣]+")
 KANA = re.compile(r"[\u3040-\u30ff]")
 HANJA = re.compile(r"[\u4e00-\u9fff]")
 DOTS = re.compile(r"[.．・･]{2,}")
-DOT_FREE = re.compile(r"[\s.．・･…‥]")
 MIXED = re.compile(r"[.．・･]…|…[.．・･]")
 SPLIT = re.compile(r"[.．・･…]\n[.．・･…]")
 
@@ -157,6 +168,7 @@ header .pager { margin:0; }
     <option value="edge">edge text (label beyond __READER__'s read)</option>
     <option value="dis">__READER__ disagrees, lowest confidence first</option>
     <option value="run">longest run first</option>
+    <option value="ell">한글 + …: most … first</option>
     <option value="lb">linebreak suspicious: proposed breaks, largest read distance first (mainsub)</option>
     <option value="furi">furigana: rows with a ruby proposal (mainsub)</option>
     <option value="furisus">furigana suspicious: most doubtful ruby first (mainsub)</option>
@@ -242,8 +254,10 @@ function changed(k, x) {
   }
   if (n) save();
 })();
+// over the training cap (the dataset drops them): not listed, still exported
+const listed = s => DATA[s].filter(x => !x.over);
 const srcSel = $("src"), minIn = $("minrun"), sortSel = $("sort"), hasSel = $("has");
-for (const s of Object.keys(DATA)) srcSel.add(new Option(`${s} (${DATA[s].length})`, s));
+for (const s of Object.keys(DATA)) srcSel.add(new Option(`${s} (${listed(s).length})`, s));
 let page = 0;
 minIn.value = MIN_DEFAULT[srcSel.value];
 sortSel.value = SORT_DEFAULT[srcSel.value];
@@ -265,10 +279,15 @@ function esc(s) { return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":
 function marked(t, n) {
   return esc(t).replace(/[가-힣]+/g, m => (n > 0 && m.length >= n) ? `<mark>${m}</mark>` : m);
 }
+// what the row's main box holds now (a drop holds nothing)
+function boxNow(key, x) {
+  const v = store[key];
+  return v && v.status === "drop" ? "" : (v && v.text != null ? v.text : x.text);
+}
 function rows() {
   if (order) return order;
   const s = srcSel.value, n = +minIn.value || 0;
-  let r = DATA[s].filter(x => x.run >= n);
+  let r = listed(s).filter(x => x.run >= n);
   const k = sortSel.value;
   if (k === "sfx") r = r.filter(x => marks[s + ":" + x.id]);
   else if (k === "rsfx") r = r.filter(x => x.rsfx).sort((a, b) => a.conf - b.conf);
@@ -279,6 +298,10 @@ function rows() {
                              .sort((a, b) => a.conf - b.conf);
   else if (k === "nolf") r = r.slice().sort((a, b) => (a.lf - b.lf) || (b.len - a.len));
   else if (k === "run") r = r.slice().sort((a, b) => b.run - a.run || a.id.localeCompare(b.id));
+  else if (k === "ell") r = r.map(x => [x, boxNow(s + ":" + x.id, x)])
+    .filter(([, t]) => /[가-힣]/.test(t) && t.includes("…"))
+    .map(([x, t]) => [x, t.split("…").length - 1])
+    .sort(([a, m], [b, n]) => n - m || a.id.localeCompare(b.id)).map(([x]) => x);
   else if (k === "lb") r = r.filter(x => x.lbs != null).sort((a, b) => b.lbs - a.lbs || a.id.localeCompare(b.id));
   else if (k === "furi") r = r.filter(x => x.rb).sort((a, b) => a.id.localeCompare(b.id));
   else if (k === "furisus") r = r.filter(x => x.rb).sort((a, b) => b.rsus - a.rsus || a.id.localeCompare(b.id));
@@ -287,8 +310,7 @@ function rows() {
   // has: what the row's boxes hold now (a drop holds nothing)
   const hv = hasSel.value;
   if (hv === "part") r = r.filter(x => x.part);
-  else if (hv) r = r.filter(x => { const v = store[s + ":" + x.id];
-    const m = !!(v && v.status === "drop" ? "" : (v && v.text != null ? v.text : x.text)).trim();
+  else if (hv) r = r.filter(x => { const m = !!boxNow(s + ":" + x.id, x).trim();
     const b = !!subOf(s + ":" + x.id, x).trim();
     return hv === "main" ? m && !b : hv === "sub" ? !m && b : m && b; });
   if (doneLast.checked) r = r.filter(x => !store[s + ":" + x.id]).concat(r.filter(x => store[s + ":" + x.id]));
@@ -296,7 +318,7 @@ function rows() {
 }
 function stats() {
   const s = srcSel.value; let ok = 0, ed = 0, dr = 0, sx = 0;
-  for (const x of DATA[s]) { if (marks[s + ":" + x.id]) sx++; const v = store[s + ":" + x.id]; if (!v) continue;
+  for (const x of listed(s)) { if (marks[s + ":" + x.id]) sx++; const v = store[s + ":" + x.id]; if (!v) continue;
     if (v.status === "ok") ok++; else if (v.status === "drop") dr++; else ed++; }
   $("stats").textContent = `${rows().length} listed · ok ${ok} · edited ${ed} · drop ${dr} · sfx ${sx}`;
 }
@@ -616,48 +638,22 @@ def furigana_rows(
 
 
 def linebreak_proposals(d: Path) -> dict[str, dict]:
-    """``linebreak_auto.py apply``'s rows that missed the gate (``linebreak_suspicious.jsonl``
-    from the speech manifest, ``linebreak_suspicious_mainsub_text.jsonl`` from the boxes
-    outside it), keyed ``<book>_<page:03d>_<id>``: the proposed breaks (``round_dots`` ∘
-    ``ellipsis_fold``), the label now, the read distance (+100 when a dot run stays odd)
-    and a note with the column reads. A label that has a line break by now (applied or
-    edited) is left out; so are dot-only labels (``linebreak_auto.py dots``)."""
-    cur = {}
-    for name, srcs in (
-        ("sfxp_speech", ("sfxp_speech",)),
-        ("mainsub_text", ("mainsub_text",)),
-    ):
-        p = d / f"manifest_{name}.parquet"
-        if p.exists():
-            df = pd.read_parquet(p)
-            df = df[df.source.isin(srcs)]
-            cur.update(
-                {
-                    f"{b}_{int(pg):03d}_{i}": t
-                    for b, pg, i, t in zip(df.book, df.page, df.id, df.text)
-                }
-            )
+    """``crop_dataset.break_proposals`` as the page shows them: the proposed breaks
+    (``round_dots`` ∘ ``ellipsis_fold``), the label now, the read distance (+100 when a
+    dot run stays odd) and a note with the column reads."""
     out = {}
-    for fn in ("linebreak_suspicious.jsonl", "linebreak_suspicious_mainsub_text.jsonl"):
-        path = REPO / "output/ocr/linebreak" / fn
-        if not path.exists():
-            continue
-        for line in open(path, encoding="utf-8"):
-            x = json.loads(line)
-            k = f"{x['book']}_{int(x['page']):03d}_{x['id']}"
-            if k not in cur or "\n" in cur[k] or not DOT_FREE.sub("", x["raw"]):
-                continue
-            text = round_dots(ellipsis_fold(x["out"]))
-            odd = odd_dots(text)
-            reads = " ⏎ ".join(x["lines"])
-            out[k] = dict(
-                text=text,
-                cur=cur[k],
-                lbs=round(x["dist"] + (100.0 if odd else 0.0), 3),
-                note=f"line breaks proposed ({x['n_segs']} segments"
-                + (f", dots {odd}" if odd else "")
-                + f", read distance {x['dist']:.2f}) · label: {cur[k]} · column reads: {reads}",
-            )
+    for k, x in break_proposals(d).items():
+        text = round_dots(ellipsis_fold(x["out"]))
+        odd = odd_dots(text)
+        reads = " ⏎ ".join(x["lines"])
+        out[k] = dict(
+            text=text,
+            cur=x["cur"],
+            lbs=round(x["dist"] + (100.0 if odd else 0.0), 3),
+            note=f"line breaks proposed ({x['n_segs']} segments"
+            + (f", dots {odd}" if odd else "")
+            + f", read distance {x['dist']:.2f}) · label: {x['cur']} · column reads: {reads}",
+        )
     return out
 
 
@@ -742,6 +738,7 @@ def mainsub_rows(
     rel = lambda p: os.path.relpath(p, base)  # noqa: E731
     rb = {r["id"]: r for r in ruby or []}
     lb = linebreak_proposals(d)
+    filled = filled_breaks()
     by: dict[str, list[dict]] = {}
     for line in open(path, encoding="utf-8"):
         x = json.loads(line)
@@ -770,11 +767,15 @@ def mainsub_rows(
                 note += f" · label now: {lab}".replace("\n", " ⏎ ")
             sub, extra = x["sub"], {"rb": 0, "rsus": 0.0}
             keys = [f"{x['book']}_{int(x['page']):03d}_{t}" for t in x.get("sp", [])]
-            main = x["main"]
+            main = with_breaks(x, filled)
+            if main != x["main"]:
+                note = "line breaks filled by an agent (trained as shown) · " + note
             # the main is one <text> box whose automatic breaks missed the gate: the
             # box holds the proposal (ok takes it), the meta line the label and reads
-            lp = lb.get(keys[0]) if len(keys) == 1 and not x.get("trim") else None
-            if lp and DOT_FREE.sub("", main) == DOT_FREE.sub("", lp["cur"]):
+            # (the loader keeps these mains out of training until reviewed)
+            if k := waiting_break(x, lb):
+                lp = lb[k]
+                extra["raw"] = main  # what trains until the row is reviewed
                 main, extra["lbs"] = lp["text"], lp["lbs"]
                 note = lp["note"] + " · " + note
                 n_lb += 1
@@ -897,6 +898,24 @@ def applied_state() -> dict:
     return out
 
 
+def mark_over_cap(data: dict[str, list[dict]], applied: dict) -> None:
+    """``over`` on the rows whose main, as training takes it (the applied review, else
+    the label before a line-break proposal), ``crop_dataset.cap_targets`` drops."""
+    for src, rows in data.items():
+        n = 0
+        for r in rows:
+            t = r.pop("raw", r["text"])
+            if src == "doujin_sfx" or r.get("ro"):
+                continue
+            if v := applied["ms"].get(f"{src}:{r['id']}"):
+                t = v[1]
+            if len(normalize_target(t)) > MAX_TARGET_CHARS:
+                r["over"] = 1
+                n += 1
+        if n:
+            print(f"[review] {src}: {n} rows over the cap, not listed", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1003,10 +1022,12 @@ def main():
     data.update(mainsub_rows(d, a.mainsub, fur))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
+    applied = applied_state()
+    mark_over_cap(data, applied)
     a.out.mkdir(parents=True, exist_ok=True)
     html = (
         PAGE.replace("__READER__", reader)
-        .replace("__APPLIED__", json.dumps(applied_state(), ensure_ascii=False))
+        .replace("__APPLIED__", json.dumps(applied, ensure_ascii=False))
         .replace("__M109__", json.dumps(d.parent.as_uri() + "/"))
         .replace("__DOUJIN_SORT__", "dis" if a.doujin_reads else "sus")
         .replace("__DATA__", json.dumps(data, ensure_ascii=False))

@@ -1,242 +1,165 @@
-# ocr_reader — main / sub approach (`OCR:` / `OCR2:`)
+# ocr_reader — the main / sub policy (`OCR:` / `OCR2:`)
 
-The plan that follows v7's two prompts (`OCR:` speech / `SFX:` sound effects,
-[`docs/proposal/ocr_sfx_prefix.md`](../../../docs/proposal/ocr_sfx_prefix.md)). Opened 2026-11-21
-on the user's call. Labels are under review. Training does not read them yet.
+What is main, what is sub and which labels train. It follows v7's two prompts (`OCR:` speech /
+`SFX:` sound effects, [`docs/proposal/ocr_sfx_prefix.md`](../../../docs/proposal/ocr_sfx_prefix.md)).
+Opened 2026-11-21 on the user's call. Finished work is in the reports listed at the end.
 
-## Prompts and label rules
+## Facts
 
-### Facts (the user's calls, 2026-11-21)
+The rules are the user's calls of 2026-11-21 and 22, except where a line names the code that
+approximates them.
+
+### The split
 
 - `OCR:` reads the main text, `OCR2:` the sub text of the same crop. The pair replaces the
-  speech / SFX split. The kind of a line (speech or SFX) comes from the read text
-  (`line_kind`), not from the prompt.
-- main = the largest text in the crop. sub = everything else visible in the crop, one item
-  per line, in reading order. Furigana is sub.
-- Ignoring visible text is the harm. Text cut by the crop edge goes into sub as far as it
-  shows.
-- The label follows the 4 px training crop as shown. The 12 % crops (`manifest.parquet`,
-  the page's `m109_sfx` reference rows) are not part of this plan.
-- main / sub is read on the boxes AnimeText gives. The COO polygons it misses
-  (`manifest_sfxp_missed`, the `--sfxp_missed` rows) are out: they were there for the
-  `SFX:` prompt.
-- `OCR2:` rows only where the label is complete. A crop with no kanji cannot carry ruby,
-  so its main-only label is complete and it gives an `OCR2:` negative.
+  speech / SFX split: either can be speech or SFX, and the kind of a line comes from the read
+  text (`line_kind`), not from the prompt.
+- main = the largest text in the crop.
+- sub = everything else visible in the crop, one item per line, in reading order: furigana,
+  smaller speech or SFX, hand-lettered asides, smaller lettering that the annotation joins
+  into the same `<text>` box, text cut by the crop edge.
+- Ignoring visible text is the harm.
 
-Examples:
+### What a label may hold
+
+- The crop decides. The label follows the 4 px training crop as shown, not the page and not
+  the annotation.
+- Cut text is typed as far as it shows. What the crop does not show is left empty
+  ("크롭에서 안보이면 비우는게 맞을듯"): no text or dots that only the page shows.
+- Crops are the boxes AnimeText gives (`mainsub_det`). Out: the COO polygons it misses
+  (`manifest_sfxp_missed`, which were there for the `SFX:` prompt), the `<text>`-box crops
+  (`manifest_sfxp_speech`) and the 12 % crops (`manifest.parquet`, the page's `m109_sfx`
+  reference rows). The `<text>` texts still label the speech inside the detector crops.
+- A main's line breaks are the printed lines: one per column of vertical text (right to
+  left), one per row of horizontal text.
+- Korean keeps `...` and `…` apart. Japanese speech takes `ellipsis_fold`.
+- Japanese lettering left under a Korean label stays Japanese.
+
+### Examples
+
+Reviewed training crops (`assets/m109_mainsub.tsv`, local):
+
+| crop | shows | main | sub |
+|---|---|---|---|
+| `UchuKigekiM774_020_24` | a title, two balloons cut by the edge | `第4幕 宇宙さそりの逆襲 前編` | the cut speech as far as it shows (`もうよ` / `なよ` / `体に毒` …) |
+| `LoveHina_vol01_051_29` | `いてっ`; the next balloon's `…` is on the page only | `いてっ` | empty |
+
+Crops from before the detector crops became the only source (they show the split, they do
+not train):
 
 | crop | main | sub |
 |---|---|---|
 | `Nekodama_13_013_25` | the large `!` | the small speech |
 | `PLANET7_3_003_15` | `0!!` | `ゼロ ズバン! !!` |
-| `BakuretsuKungFuGirl_038_0000a4fc` (`<text>` crop) | the speech | the ruby over 冷凍 and the smaller hand-lettered `ふざけてんの？` |
-| `GakuenNoise_048_0001a044` (`<text>` crop) | `死にさらせっっ!!` (the label) | `ス` (an SFX cut by the edge, as it shows) |
+| `BakuretsuKungFuGirl_038_0000a4fc` | the speech | the ruby over 冷凍 and the smaller hand-lettered `ふざけてんの？` |
+| `GakuenNoise_048_0001a044` | `死にさらせっっ!!` (the label) | `ス` (an SFX cut by the edge, as it shows) |
 
-The Manga109 `<text>` annotation of `BakuretsuKungFuGirl_038_0000a4fc` joins `ふざけてんの？`
-into the speech label. AnimeText gives the two as separate boxes: `BakuretsuKungFuGirl_038_07`
-holds the main block (the annotation box 73 % inside), `ふざけてんの？` has a box of its own.
+### An empty label
 
-## Training crops and the proposals
+- An empty sub means "not known", never "this crop has none". It gives no `OCR2:` row,
+  whatever its source or review state. `OCR2:` negatives exist only once the user sets them
+  up.
+- An empty main trains as `OCR:` `""` only when the row was reviewed as such (a crop with
+  only sub text). An unreviewed empty main is out: the first run read text on all 59 val ones.
 
-### Facts
+### What trains
 
-- main / sub is read on the boxes AnimeText gives (the user's call, 2026-11-21, after the
-  missed polygons went: "let's try it"). The `<text>`-box crops (`manifest_sfxp_speech`)
-  are out of the review; their texts (line breaks, review edits) still label the speech
-  inside the detector crops.
-- Detector coverage of the 39,029 train COO polygons (`sfxp_types_train.parquet`, written by
-  `build_sfx_prefix.py --clean`): missed 9,353, fragment 1,741, the rest in or near a box.
-- `build_sfx_prefix.py --det_all` → `manifest_sfxp_det_all.parquet`: every `--clean` box
-  holding text, each with a crop. The 95,193 `neg_speech` boxes `--neg_keep 0.15` had left
-  unwritten were cut (train + val, 16 s). `load_sfxp` does not read this manifest.
+`crop_dataset.load_mainsub`, per crop:
 
-`probes/m109_mainsub.py` scores each COO polygon and `<text>` box on the page by the share of
-its convex hull inside the crop:
+| state | `OCR:` | `OCR2:` |
+|---|---|---|
+| reviewed `drop` | out | out |
+| reviewed | the main as reviewed | the sub as reviewed, if not empty |
+| unreviewed, main empty | out | out |
+| unreviewed `trim` (main only partly inside) | out | out |
+| unreviewed, line breaks waiting on the page (train only) | out | as the two rows below |
+| unreviewed, partly visible text in the crop | the proposed main | out |
+| unreviewed, other | the proposed main | the proposed sub, if not empty |
+| KO / ZH (train only) | the label | `sub_labels.tsv`, else `kozh_sfx.tsv`, if not empty |
 
-- 0.8 or more: in the crop. main = the item with the largest glyph (`sqrt(hull area /
-  glyphs)`), joined with same-kind items of at least 0.7× that glyph and with repeats of
-  the same text. sub = the other items.
-- 0.05 to 0.8: partly visible, shown on the review page. A crop with nothing whole inside
-  takes a speech box that is at least half inside as its main (`trim`), cut to what shows
-  (`trim_lines`): the `<text>` box's columns come from the ink projection
-  (`linebreak_auto.segment`); a column stays when half of it is inside, a glyph when its
-  centre is (glyphs spread over the column's ink). Applied only when the ink is one column
-  or the label's `\n` lines match the columns; an unbroken multi-column label stays whole.
-  180 of the 576 `trim` rows are cut (201 after the line-break pass below). In a 16-row sample, 12 read as the crop shows, 3
-  drop one glyph too many, 1 is wrong (MisutenaideDaisy_053_21).
-  DollGun_015_14 (one column, the detector cut below `だ`): `な…なんだ　今…` → `な…なんだ`.
-- Speech texts take `ellipsis_fold` (the speech labels' dot spelling) on every `<text>`
-  box, including the 60,810 outside `manifest_sfxp_speech` that carry the raw annotation. A text
-  with Hangul is left as is: Korean keeps `...` and `…` apart.
-- The furigana source (`probes/furigana_find.py`, ruby read ×3 at 12 px pad, the agents'
-  fixes where they reviewed the row) heads the sub proposal, through the `<text>` ids in
-  the crop. A `trim` row takes only the ruby groups whose centre is in its crop
-  (`trim_ruby`).
-- The 60,810 `<text>` boxes outside `manifest_sfxp_speech` (2026-11-21,
-  `probes/mainsub_text.py` → `manifest_mainsub_text.parquet`, crops under
-  `crops_sfxp/mainsub_text/`) went through the speech labels' passes: `linebreak_auto.py
-  inkread --set mainsub_text` (stock reader, 113,461 column crops, 663 s) and `apply --set
-  mainsub_text` (gate passed 32,182; 6,398 to `linebreak_suspicious_mainsub_text.jsonl`, not
-  on the page; 35,122 of 60,810 now broken); then `furigana_find.py find --manifest
-  mainsub_text --name ruby_mt` and `read` (32,081 groups on 16,836 crops, 508 s; aligned
-  over a kanji 5,029 before the breaks, 26,553 after; read as kana 23,287). The page and
-  `m109_mainsub.py` take `ruby_m109_read_u3p12.jsonl` = `ruby_all` + `ruby_mt` + the
-  horizontal reads below.
-- Horizontal text (`furigana_find.py find --orient horizontal`): a crop counts as horizontal
-  when its longest x ink run (gaps ≤ 3 px closed) is 1.5× its longest y run
-  (`ink_horizontal`); the box shape does not tell (most crops tagged `horizontal` hold
-  vertical columns in a wide balloon) and neither do the gap widths (tried first: a single
-  column has no gap across). The crop is turned 90° clockwise for the finder and the boxes
-  turned back. 2,186 crops judged horizontal; 299 with groups, 527 groups, 290 read as kana;
-  49 replace a vertical record of the same box. In a 12-crop sheet 10 were horizontal text;
-  ruby on the top row is often missed (it touches the crop edge and `ink_mask` drops it).
-- `m109_mainsub.py --ruby … --ruby_fix output/ocr/furigana/agent` writes `subp`: per
-  `<text>` box in the crop the agents' sub where they reviewed it, else the reads, a trim
-  crop the ruby inside it, then the annotated sub items. The training loader reads `subp`;
-  the page assembles its own (with the furigana rows' notes and sub state).
+An unreviewed main takes the line breaks agents read off its crop, where it has them
+(`assets/m109_breaks.tsv`, `with_breaks`); the characters stay the proposal's.
 
-Train split, `mainsub_det` (`output/ocr/mainsub/m109_mainsub.jsonl`, local):
+Any target over 150 normalized characters is dropped, main and sub each on its own.
+`OCR:` negatives are at most 20 % (`--neg_share`). Val metrics are `main` / `main_neg` / `sub`
+(best by `main_exact`).
 
-| crops | 122,853: pos 20,978, pos_mixed 354, neg_speech 101,521 |
-|---|---|
-| sub proposed | 26,794 (26,468 from ruby; 11,744 before the `mainsub_text` pass) |
-| partly visible text | 3,469 |
-| main to trim | 576 |
-| main and sub both empty | neg_speech 982 before `trim` |
+### How the proposal approximates the split
 
-One `<text>` box and no SFX in the crop: 98,854 crops. IoU of the detector box with that
-box's 4 px cut: median 0.845; 5 / 25 / 75 / 90th percentile 0.683 / 0.786 / 0.884 / 0.911;
-≥ 0.9 15.6 %, < 0.5 1.6 %.
+`probes/m109_mainsub.py`, from the annotations. A reviewed row overrides it.
 
-Furigana finder, as measured when it was built: 74 % of the ruby groups over kanji read as
-kana, about 80 % of those right. Agent review of the 2,000 most doubtful furigana rows:
-edit 1,773, ok 82, none 74, unsure 71. On 14 `ruby_mt` rows read against the crop: 7
-right, 3 partial (groups missed: 秘薬, 復活, 藩主), 4 poor (misreads ヴェラしゃ / おば,
-junk `゙` / `ら`). Line breaks on 10 `mainsub_text` rows: 10 right.
+- An annotated item is in the crop at 0.8 of its hull or more, partly visible from 0.05.
+- main = the in-crop item with the largest glyph (`sqrt(hull area / glyphs)`), joined with
+  same-kind items of at least 0.7× that glyph and with repeats of the same text at any size.
+  Several are written one per line, right to left, then top to bottom.
+- sub = the ruby reads first (the agents' fix where they reviewed the box), then the other
+  in-crop items. Partly visible text is only a hint on the page.
+- With nothing whole inside, a speech box at least half inside becomes the main, cut to the
+  columns and glyphs that show (`trim`).
+- It cannot see unannotated text (signs, titles, asides outside a box) or smaller lettering
+  inside one `<text>` box. The reviewer adds those.
 
-The user's 12 `trim` edits of 11-21 against the rebuilt proposals: main as edited on 4;
-ruby close on 1 (`さ きすけさま` for `き き すけさま`). Misses: horizontal text has no
-furigana pass (`furigana_find` skips `orient == horizontal`, `１年前`), the finder found 1
-of the 4 groups on AkkeraKanjinchou_050_16, two partly inside boxes in one crop
-(MisutenaideDaisy_097_40).
+### Review
 
-Not covered by the annotations: unannotated text (signs, titles, asides outside a box) and
-smaller lettering inside one `<text>` box.
-
-### Interpretation
-
-- The detector boxes sit close to the `<text>` boxes but are not copies of them (median IoU
-  0.845 at the same margin), so the earlier "AnimeText learned Manga109" read is not settled
-  by box geometry alone.
-- Where the two disagree on what is one block (`BakuretsuKungFuGirl_038_07`), the detector
-  box follows the lettering and the annotation does not; those crops are the `trim` rows.
-- The annotations prefill a sub on few crops apart from ruby. Most other subs come from text
-  only partly visible, which the reviewer types.
-
-## Review loop
+- `ok` or an edit confirms both boxes as they stand, the proposed sub included.
+- Emptying the main box makes a sub-only row.
+- The `has` filter lists rows by what the boxes hold (main only, sub only, both, partly
+  visible text). The default `suspicion` sort puts `trim`, then partly visible text, first.
+- A row holding one `<text>` box with ruby starts from its furigana row's sub edits.
+- The export holds what differs from the applied state. Rebuild the page after each apply.
+- Apply writes `mainsub_*` rows to `assets/m109_mainsub.tsv` (source, id, status, main, sub)
+  and other sources' subs to `assets/sub_labels.tsv`. The manifests are not touched by
+  `mainsub_*` rows.
 
 ```
-ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/ocr/build_sfx_prefix.py --det_all
-ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/probes/m109_mainsub.py \
-    --out output/ocr/mainsub/m109_mainsub.jsonl --ruby output/ocr/furigana/ruby_m109_read_u3p12.jsonl
+python project/finished/ocr_reader/probes/apply_ko_review.py <export.tsv>
 python project/finished/ocr_reader/probes/ko_label_review.py --out ~/ko_label_review \
     --flags <ko_reads>_flags.parquet --doujin_reads <sfx>_cap4_sfx.jsonl \
-    --ruby output/ocr/furigana/ruby_m109_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
+    --ruby output/ocr/furigana/ruby_all_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
     --mainsub output/ocr/mainsub/m109_mainsub.jsonl
-python project/finished/ocr_reader/probes/apply_ko_review.py <export.tsv>
 ```
 
-- The page's `has` filter lists rows by what their boxes hold: main only, sub only, main +
-  sub, partly visible text. Emptying the main box makes a sub-only row. The default
-  `suspicion` sort puts `trim` rows, then partly visible text, first.
-- A row holding one `<text>` box with ruby takes its furigana row's sub edits as its
-  starting sub.
-- The export holds only what differs from the applied state (the page reads the assets at
-  build time), so rebuild the page after each apply.
-- Apply writes the `mainsub_*` rows to `assets/m109_mainsub.tsv` (source, id, status, main,
-  sub) and the other sources' subs to `assets/sub_labels.tsv` (KO / ZH, furigana). The
-  manifests are not touched by `mainsub_*` rows.
+Both need `ANIMA_MANGA109S_ROOT`. Rebuilding the proposals:
 
-## Training
-
-### Facts
-
-`finetune_vl16_lora.py --mainsub` → `crop_dataset.load_mainsub` (2026-11-21):
-
-- Manga109: the detector crops with `m109_mainsub[_val].jsonl` (`main`, `subp`); a row in
-  `assets/m109_mainsub.tsv` as reviewed, `drop` out; an unreviewed `trim` row out (561
-  train).
-- KO / ZH (`manifest_sfxp_kozh`, train only): `OCR:` = the label; `OCR2:` =
-  `sub_labels.tsv`, else `kozh_sfx.tsv`, else `""`.
-- `OCR2:` rows only where the sub counts as complete: reviewed; or no partly visible text
-  and a sub proposal; or `""` where the main holds no kanji. A kanji main with no ruby
-  found is left out of `OCR2:`.
-- Negatives ≤ 20 % per prompt (`--neg_share`). Val metrics `main` / `main_neg` / `sub` /
-  `sub_neg` (val has no KO / ZH); best by `main_exact`.
-
-Train rows: `OCR:` main 121,878, main_kozh 24,145, main_neg 406; `OCR2:` sub 26,490, sub_neg
-6,622 (total 179,541). Val (`--val_limit 500`): main 500, main_neg 59, sub 500, sub_neg 292.
-
-### First run: `mainsub_1121_1806` (2026-11-21)
-
-`--mainsub --steps 1000 --val_limit 500 --tower_rank 64 --lm_full --grad_ckpt
---ckpt_lm_only --compile` from the stock base (the `sfxpc_1121_0117` recipe, 1,000 steps;
-842 s, 18.9 crops/s, 12.2 GB). Purpose: does the main / sub data train.
-
-| val metric | n | `mainsub_1121_1806` | `sfxpc_1121_0117` under `OCR:` (`probes/eval_mainsub.py`) |
-|---|---|---|---|
-| main exact / sim | 500 | 86.4 % / 0.976 | 73.8 % / 0.806 |
-| main_neg (`""`) | 59 | 0.0 % | 20.3 % |
-| sub exact / sim | 500 | 49.2 % / 0.816 | 0.2 % / 0.068 |
-| sub_neg (`""`) | 292 | 98.3 % | 52.4 % |
-
-On main, 85 rows only the new run reads right, 22 only the old one. Many of the old
-reader's misses are `""` on short speech in a detector crop (`そう`, `え…`).
-The old reader trained on `<text>` crops, so the det crops are new to it. The new run's
-misses are mostly lengthening and dash spellings (`ーーー` / `―`).
-
-All 59 main_neg rows show text (a box under half inside, a sign such as `寿司処 つかさ`):
-the run reads it, the `""` label is wrong. Since then `load_mainsub` leaves an unreviewed
-empty main out.
-
-Of 10 sub misses read, 4 have a wrong label where the prediction is right (`とうきろ` for
-東京 → pred `とうきょう`, `たいと` → `たいど`): the sub labels are unreviewed ruby reads.
-
-The v7 gates, the main / sub run under `OCR:` against `sfxpc_1121_0117` (`SFX:` on SFX rows,
-`OCR:` on speech; the doujin gate re-read on the labels as of 11-21 18:25):
-
-| gate | `mainsub_1121_1806` | `sfxpc_1121_0117` |
-|---|---|---|
-| doujin SFX exact (heart-blind) / sim, 593 rows | 58 (205) / 0.686 | 306 (427) / 0.898 |
-| Manga109 test SFX exact / sim, 2,558 | 63.7 % / 0.818 | 82.7 % / 0.919 |
-| Manga109 test speech exact / sim, 2,559 | 87.3 % / 0.981 | 89.1 % / 0.984 |
-| K3 KO exact / kana leak, 48 | 22 / 6 | 24 / 0 |
-| K3 ZH exact / kana leak, 48 | 27 / 5 | 28 / 0 |
-
-The doujin misses the old reader gets right are glyph misreads of stylized SFX (`びく` →
-`ぐく`, `キュン` → `もン`, `ブルン` → `ブハン`), not empty reads (2 empty).
-
-Budget and mix differ: 1,000 steps × 16 crops from the stock base against 14,502 steps (2
-epochs); SFX lettering 22,819 of 179,541 rows (13 %, the `pos` det crops' main) against
-42,503 of 115,124 (37 %, `SFX:` rows incl. the missed polygons); KO / ZH 24,145 (13 %)
-against 27,390 (24 %).
-
-### Interpretation
-
-- The gates cannot say whether main / sub costs SFX or KO: the run saw about 2 k SFX
-  crops and 2 k KO / ZH crops, the old one about 85 k and 55 k. A matched arm (the
-  `--sfx_prefix` recipe at 1,000 steps, or main / sub at the old budget) separates data
-  from budget.
-- The data trains: main reads the det crops at 86 % after 1,000 steps, `OCR2:` answers `""`
-  where no ruby can be (98 %) and reads ruby where it is (sim 0.82).
-- Sub exact is capped by label noise, not measured against a clean set; it says little
-  until the val subs are reviewed.
+```
+python project/finished/ocr_reader/ocr/build_sfx_prefix.py --det_all
+python project/finished/ocr_reader/probes/m109_mainsub.py \
+    --out output/ocr/mainsub/m109_mainsub.jsonl \
+    --ruby output/ocr/furigana/ruby_m109_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent
+```
 
 ## Open
 
-- The `OCR2:` completeness rule in the loader is a first cut: most `OCR2:` positives are
-  unreviewed ruby reads (about half right in the 14-row read above).
+Policy, for the user:
+
+- "Largest" when a dense block meets a few large glyphs. `GarakutayaManta_006_34`: the
+  proposal's main was `ひ～` (the larger glyphs), the user's review has the English paragraph
+  as main and `ひ～` as sub. That main is over the cap, so only the sub trains.
+- How "no sub" is marked, for the `OCR2:` negatives.
+- When a sub counts as complete. The loader's rule is a first cut: most `OCR2:` positives
+  are unreviewed ruby reads (about half right in a 14-row read, the data report).
 - `drop` boxes (an SFX cut partway, 2,678 train) and `neg_other` boxes (no annotation inside,
   22,718 train) stay out; under main / sub a cut SFX could be sub.
-- The gate under main / sub: the v7 gates (COO SFX / speech, doujin SFX, K3) read per kind;
-  how a main / sub read is scored is not set.
+- How a main / sub read is scored. The v7 gates read per kind (COO SFX / speech, doujin SFX,
+  K3); the val subs are unreviewed ruby reads.
+
+Work:
+
+- 85 speech mains of 15+ characters held by the line-break agents (76 label and crop
+  differ, 9 with unclear columns; `output/ocr/linebreak/agent/speech15/held.tsv`, local) still
+  train as one line. Out of `OCR:` until reviewed, like the waiting rows: proposed, not decided.
+- 3 labels type quote marks as `゛`, which `normalize_target` folds onto the kana (the
+  line-break agents' report): not fixed.
+- The 8,412 waiting mains come back row by row as they are reviewed.
+- Val never had the line-break pass outside the speech manifest. Proposed, not decided.
+
+## Reports
+
+- [`mainsub_data_2026_11_21.md`](reports/mainsub_data_2026_11_21.md): the detector crops, the
+  proposals, the line-break and furigana passes, the agent reviews.
+- [`mainsub_1121_1806.md`](reports/mainsub_1121_1806.md): the first run (val main 86.4 %, sub
+  49.2 %) and its v7 gates.
+- [`mainsub_labels_2026_11_22.md`](reports/mainsub_labels_2026_11_22.md): the loader changes
+  of 11-22 and the count of missing line breaks.
+- [`mainsub_linebreak_agents_2026_11_22.md`](reports/mainsub_linebreak_agents_2026_11_22.md):
+  the agents' breaks on 15+ character speech (1,259 applied, 85 held).
