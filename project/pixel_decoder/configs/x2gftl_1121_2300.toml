@@ -1,0 +1,22 @@
+# x2gft_1121_2225 with rollouts 1000 -> 3000, nothing else changed (GAN finetune at ratio 2 on
+# the converged B 4k head; one cosine cycle at LR 2e-4 over the longer run).
+# Question: does the finetune form stay tile-free over three times the GAN exposure, and do the
+#   lines and the fine strokes gain from it? Tile-free and sharper on the user's read -> the
+#   longer form is the ship candidate. Tiles or a stronger weave -> the form is length-limited
+#   and x2gft's 1,000 rollouts stand. Level -> length is not the lever.
+# Records it rests on:
+#   - x2gft_1121_2225 (as in x2gftw_1121_2300.toml).
+#   - x2bgan2_1121_1340: tiles after 3,000 rollouts of the term from rollout 1000 of a 4,000
+#     run started on the preview head (reports/x2_full_run_deploy_2026_11_21.md).
+# Read: the evals at 500 … 3000 beside x2gft's at 1000; the same places and renders as the twin,
+#   labelled. The user's read decides.
+# Bars: the x2gft / x2gftw gap.
+# Cost: 3,000 rollouts at 1.35 s, about 70 minutes.
+
+output_name = "x2gftl_1121_2300"
+resume = "bench/pixel_readout/results/20261121-1047-x2b4k_1121_0950/head_x2.safetensors"
+rollouts = 3000
+eval_every = 500
+pegan_ratio = 2.0
+pegan_start = 0
+seed = 0

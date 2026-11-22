@@ -61,8 +61,8 @@ line of work with its own proposal; order not set. The first steps are Claude's 
 
 ### ×2 / ×4 output
 
-Its own plan: `x2_plan.md` (finished arms as pointers into `reports/`, the settled recipe and its
-full run, the deployment plan, next arms). In short: the head
+Its own plan: `x2_plan.md` (pointers into `reports/` for everything that ran, the state, the
+sequence ahead, next arms). In short: the head
 writes 32×32 px per token through a second 2× stage; arm A (`x2a_1119_1802`, regression onto the
 released ResShift ×2 student's output) came out soft, 1.7 – 3.0 dB under the teacher run on the
 release head's ×1 output; LPIPS and a tone term (`x2lt_1119_2013`) and the SR line's DMD / GAN
@@ -178,6 +178,190 @@ Interpretation (the reasoning for the arms):
   term's gradient scales with σ and the FM gradient's norm moves with σ too.
 - A visible gain on the user's read → a second training seed, then prompts outside the working set.
   Level or worse at both ratios → the term is parked; the ratio and the σ gate are the knobs left.
+
+### The ×1 recipe: spread, length, LR, σ range, page share (batch `1121_2230`)
+
+The user (2026-11-21): "x1같은경우는 이미 어느정도 학습할만큼 했다고 볼수가 있나? robust 할만하다면
+하고싶긴 한데 현재 배포본이 '완성' 레벨인지 궁금하긴 하네. … 오늘 새벽에 학습 돌리는걸 x1이랑 x2로
+예약해두고 싶어서"; on the four arms proposed: "ㅇㅋ 그러자"; then, on the pages: "망가는 아니마
+도메인하고 좀 멀어서 비중을 낮춰야 하지 않을까 싶어" (the fifth arm).
+
+Facts (the design, set before the runs):
+
+- Parent: the release head's run `realr_1119_2200` (`convnext_head.py`, init `mixr_1119_1455`,
+  points `0.0577-0.1364:real 0.5:adapter`, λ_lpips 0.05, pages 0.33, LR 2e-4, 3,000 rollouts,
+  seed 0; 36 minutes). Train set 2,981 images and 3,000 pages.
+- Arms, each the parent's argv with one change, queued in this order:
+
+  | run | change |
+  |---|---|
+  | `x1twin_1121_2230` | `--seed` 0 → 1 |
+  | `x1wide_1121_2230` | base range 0.0577 – 0.1364 → 0.03 – 0.25 |
+  | `x1page_1121_2230` | `--page_share` 0.33 → 0.1 |
+  | `x1lowlr_1121_2230` | `--lr` 2e-4 → 5e-5 |
+  | `x1long_1121_2230` | `--rollouts` 3000 → 12000 (`--eval_every` 1000) |
+
+- Changed in all five against the parent's command: `--eval_points` (new, read-only σ), so each
+  head is read at σ 0.03, 0.0577, 0.097, 0.1364 (0.14 on `x1wide`), 0.25 and the turbo point.
+  Smoke of the flag: `smoke_x1night_1121_2230` (20 rollouts), first in the queue.
+- σ 0.03 … 0.25 is the last step of shift-3 Euler at 100 … 10 steps (0.029 / 0.25).
+- The values 5e-5, 12,000, 0.1 and the range have no source in the records: the page share was
+  run at 0 (`mangaup_1119_1152`) and 0.33 only; `reports/real_target_2026_11_19.md` names a lower
+  peak LR for warm starts without a value.
+- Records they rest on (`reports/real_target_2026_11_19.md`): `realr` against the original at
+  σ 0.0577, test / text / manga: 33.75 / 0.081, 28.61 / 0.067, 26.02 / 0.102 (dB / LPIPS);
+  VAE(x̂0) there 35.10 / 0.056, 30.27 / 0.038, 26.95 / 0.062; 1,000 → 3,000 rollouts +0.2 dB;
+  the eval history under its start until past rollout 1,500 (LPIPS 0.104 → 0.205 → 0.115).
+- Read: (1) held-out, teacher-forced, test 30 / text 8 / manga 10 at every eval point, each arm
+  against `realr` and `x1twin`; (2) generated images, P3's 16 prompts × seeds 0, 1, every head on
+  the same renders against the VAE decode: `x1b28_1121_2230` (base 28 steps, CFG 4),
+  `x1turbo_1121_2230` (v4_longer, 4 steps), and on `realr` / `x1twin` / `x1wide` only
+  `x1s10_1121_2230` (10 steps, σ 0.25) and `x1s100_1121_2230` (100 steps, σ 0.029); (3) sheets
+  for the user's read, which decides.
+- Bars: the `realr` / `x1twin` gap at the shared points (σ 0.0577, 0.097, 0.1364, turbo). At
+  σ 0.03 and 0.25 only `x1twin` holds the parent recipe: spread unknown there.
+- Cost: 4 × 36 minutes + about 2.3 hours + the four reads, about 5.5 hours.
+- Smoke `smoke_x1night_1121_2230` (20 rollouts, rc 0, 8 minutes; held-out features 288 in
+  164 s): the flag reads the two extra points. Its rollout-0 eval is `mixr_1119_1455` as loaded
+  (target VAE(x̂0)), head against VAE(x̂0), test 30 / manga 10: σ 0.03 36.43 / 30.21, 0.0577
+  38.05 / 31.30, 0.097 38.47 / 31.63, 0.1364 38.46 / 31.55, 0.25 36.77 / 30.43.
+
+Interpretation (the reasoning for the arms):
+
+- `x1long`: does more of the same recipe raise the head? A gain past the twin gap → the release
+  recipe was short and the next head is a long run; level → the recipe is at its plateau and what
+  is left (screentone, the 1.35 dB to the VAE path at low σ) needs another lever.
+- `x1lowlr`: half of the parent's run went to recovering from the warm start; level with or above
+  the parent at a quarter of the LR → warm starts take the lower LR, and a long run pairs with it.
+- `x1wide`: what does the release recipe read outside its range (`x1twin` at σ 0.03 and 0.25),
+  and what does covering the range cost inside it? Off-range gain with the in-range rows inside
+  the twin gap → the next head trains on the wide range.
+- `x1page`: the pages are real manga pages under one fixed caption, far from what Anima renders.
+  Colour and generated-mono rows level or up with the manga rows down → the share drops; the
+  generated mono renders, not the held-out pages, are the read that matters for it.
+- The arms are single-variable on purpose; a head that combines the winners is a later run.
+
+#### Outcome (2026-11-22)
+
+Facts:
+
+- All ten jobs rc 0. Results (local): `bench/pixel_readout/results/*-x1{twin,wide,page,lowlr,long}_1121_2230/`,
+  `*-x1{b28,turbo,s10,s100}_1121_2230/`; sheets and renders
+  `bench/pixel_readout/results/20261122-0610-night_read/`, `20261121-2300-x1night_renders/`.
+  0.66 – 0.75 s per rollout; `x1long` 135 minutes.
+- Held-out, teacher-forced, the head against the original image at σ 0.0577, dB / LPIPS:
+
+  | run | test 30 | text 8 | manga 10 |
+  |---|---|---|---|
+  | `mixr_1119_1455` (the init, rollout 0) | 33.94 / 0.1036 | 28.88 / 0.0739 | 26.21 / 0.1168 |
+  | `realr_1119_2200` (parent, release) | 33.75 / 0.0807 | 28.61 / 0.0671 | 26.02 / 0.1020 |
+  | `x1twin` | 33.78 / 0.0794 | 28.65 / 0.0661 | 26.04 / 0.1016 |
+  | `x1wide` | 33.54 / 0.0837 | 28.42 / 0.0716 | 25.88 / 0.1056 |
+  | `x1page` | 33.91 / 0.0758 | 28.62 / 0.0633 | 25.98 / 0.1011 |
+  | `x1lowlr` | 33.97 / 0.0769 | 28.87 / 0.0634 | 26.22 / 0.1022 |
+  | `x1long` | 34.13 / 0.0741 | 29.06 / 0.0596 | 26.32 / 0.0962 |
+  | VAE(x̂0) | 35.11 / 0.0560 | 30.29 / 0.0375 | 26.95 / 0.0618 |
+
+- The `realr` / `x1twin` gap, the largest over the four shared points: test 0.06 dB / 0.0013,
+  text 0.05 dB / 0.0010, manga 0.03 dB / 0.0012.
+- Off the trained range (`x1twin` holds the parent recipe; one run, spread unknown), test 30,
+  the head against the original, dB / LPIPS, with VAE(x̂0) beside it:
+
+  | σ (Euler steps) | `x1twin` | `x1wide` | `x1long` | VAE(x̂0) |
+  |---|---|---|---|---|
+  | 0.03 (100) | 33.88 / 0.0777 | 34.00 / 0.0799 | 34.29 / 0.0717 | 37.04 / 0.0412 |
+  | 0.0577 (50) | 33.78 / 0.0794 | 33.54 / 0.0837 | 34.13 / 0.0741 | 35.11 / 0.0560 |
+  | 0.1364 (20) | 31.18 / 0.1038 | 31.08 / 0.1063 | 31.31 / 0.0997 | 31.33 / 0.0916 |
+  | 0.25 (10) | 27.92 / 0.1531 | 28.12 / 0.1469 | 27.94 / 0.1461 | 27.88 / 0.1378 |
+
+  Against VAE(x̂0), test: `x1twin` 35.62 / 37.24 / 37.56 / 36.79 dB at σ 0.03 / 0.0577 / 0.1364 /
+  0.25; `x1wide` 35.88 / 36.75 / 36.90 / 36.23.
+- `x1long`'s eval history at σ 0.0577, test dB / LPIPS: 33.94 / 0.104 at rollout 0, 32.03 / 0.176
+  at 1,000, 32.82 / 0.143 at 3,000, 33.46 / 0.102 at 6,000, 33.88 / 0.083 at 9,000, 34.12 / 0.075
+  at 11,000, 34.13 / 0.074 at 12,000. `x1lowlr`: 33.49 / 0.149 at 500, 33.51 / 0.102 at 1,000,
+  33.97 / 0.077 at 3,000.
+- Generated images, 16 prompts × seeds 0 and 1, every head on the same latents, PSNR of the head
+  against the VAE decode (dB); colour 26 / mono 6 split for the first two:
+
+  | read | `realr` | `x1twin` | `x1wide` | `x1page` | `x1lowlr` | `x1long` |
+  |---|---|---|---|---|---|---|
+  | base 28 steps, CFG 4 | 31.84 | 31.87 | 31.47 | 32.00 | 32.25 | 32.53 |
+  | … colour / mono | 33.38 / 25.14 | 33.39 / 25.31 | 32.99 / 24.93 | 33.64 / 24.92 | 33.74 / 25.79 | 34.12 / 25.62 |
+  | turbo v4_longer, 4 steps | 33.53 | 33.55 | 33.27 | 33.74 | 33.81 | 34.24 |
+  | … colour / mono | 34.54 / 29.15 | 34.56 / 29.20 | 34.27 / 28.92 | 34.82 / 29.05 | 34.82 / 29.41 | 35.25 / 29.85 |
+  | base 10 steps (σ 0.25) | 30.22 | 30.25 | 29.75 | — | — | — |
+  | base 100 steps (σ 0.029) | 30.21 | 30.36 | 30.32 | — | — | — |
+
+  The twin gap on these: 0.04, 0.03, 0.03 and 0.15 dB; on the six mono images at 28 steps 0.17 dB.
+- Renders (`night_renders.py`, base 28 steps, CFG 4, one latent per prompt and seed): the card's
+  monochrome prompt (seed 42) and the fine-stroke prompt of `x2_plan.md` (seeds 42, 43) through
+  `mixr`, `realr` and the five arms. Sheets `x1_stroke_s42.png`, `x1_stroke_s43.png`,
+  `x1_mono_shorts.png`.
+- Claude's read of those sheets, labelled: on both fine-stroke seeds every ×1 head, `mixr` and
+  `x1long` included, gives the strokes merged into a soft dark area where the VAE gives separate
+  strokes; no arm stands apart from the others at 4× zoom. On the monochrome crop the heads give a
+  fainter dot screen than the VAE; `mixr` the faintest.
+- No read by the user yet.
+
+Interpretation:
+
+- `x1long`: past the twin gap on every row (test +0.39 dB / −0.0066 LPIPS against 0.06 / 0.0013).
+  The release recipe was short. At LR 2e-4 the long run's dB stayed under the init's until
+  about rollout 9,500 (its LPIPS passed the init's by 6,000), so the length bought less than it
+  could.
+- `x1lowlr`: above the parent on every row at the same length, with a dip a quarter as deep. Warm
+  starts take the lower LR. The pair to run next is the two together (12,000 rollouts at 5e-5):
+  neither arm reads whether the gains add.
+- `x1wide`: inside the range it loses more than the twin gap; off the range it gains 0.1 – 0.2 dB
+  against the original and reads lower against the VAE decode on the 10-step renders. The
+  release recipe already degrades smoothly off its range (no cliff at 10 or 100 steps), so the
+  wide range is not taken up.
+- `x1page`: the held-out manga rows moved by about the twin gap (−0.04 dB against 0.03, LPIPS
+  level), the colour rows rose (test +0.16 dB, −0.005 LPIPS; generated colour +0.26 dB), and the
+  generated mono renders read 0.22 dB under the parent against a twin gap of 0.17 dB on those
+  six images. Dropping the share gives a little on colour and costs at most the edge of the
+  spread on mono; whether mono lines look the same is the user's read of `x1b28`'s manga sheets.
+- The fine strokes did not move with any arm, the VAE(x̂0)-target head `mixr` included, so the
+  blur is not the real-image target's and not the run length's. What is left is the head's form:
+  every nonlinear layer runs at the 16-px token spacing and one linear layer writes the 16 × 16
+  patch. The check before any long run is whether this form can fit such strokes at all: a
+  16-window overfit on fine-stroke crops with the VAE decode as target, the ×1 form beside one with a
+  pixel-shuffle stage (`bench/pixel_readout/x2_overfit.py` is the ×2 version of this probe).
+
+#### The long run at the lower LR, `x1ll_1122_0855` (postponed by the user)
+
+The user (2026-11-22): "x2는 어차피 x1에서 init한 형태이니까, x1를 먼저 5e-5로 돌려보고 x1를
+확정한다음 x2도 longer and better recipe (b only -> gan 마무리) 로 하면 좋겠어."
+
+Queued at 08:53 and cancelled a few minutes in, with its three read jobs, on the user's word
+("longer은 나중에 돌릴거라 일단은 취소해줘"); no result. The design stands for the later run,
+which takes a new name.
+
+Facts (the design, set before the run):
+
+- `x1long_1121_2230`'s argv with `--lr` 2e-4 → 5e-5, nothing else changed (12,000 rollouts, init
+  `mixr_1119_1455`, pages 0.33, seed 0, the same eval points). It is equally `x1lowlr_1121_2230`
+  with 3,000 → 12,000 rollouts, and is read against both.
+- Records it rests on: the Outcome table above (`x1long` 34.13 / 0.0741, `x1lowlr` 33.97 / 0.0769,
+  `realr` 33.75 / 0.0807 on test at σ 0.0577); `x1lowlr`'s history (33.51 / 0.102 at rollout
+  1,000, where `x1long` read 32.03 / 0.176).
+- Read: the held-out evals at every point beside `x1long` and `x1lowlr`; the generated-image
+  reads `x1llb28_1122_0855` and `x1llturbo_1122_0855` (`realr`, `x1lowlr`, `x1long`, this head on
+  the same latents); the monochrome and fine-stroke renders through this head. The user's read
+  of the sheets decides the ×1 head.
+- Bars: the `realr` / `x1twin` gap (test 0.06 dB / 0.0013 LPIPS, 3,000-rollout runs). No twin of
+  a 12,000-rollout run: spread unknown at that length.
+- Not in this run: the page share stays 0.33 (`x1page` read level on mono, a little up on
+  colour; the user has not decided it).
+- Cost: 12,000 rollouts at 0.66 – 0.75 s, about 2 h 15 min, and about 25 minutes of reads.
+
+Interpretation (what each answer leads to):
+
+- Above `x1long` past the twin gap → the gains add; this head is the candidate for the release
+  and for the ×2 sequence's init (`x2_plan.md`, "The sequence after the ×1 head is fixed").
+- Level with `x1long` → length is the lever and the LR does not matter at that length; either
+  head is the candidate, on the user's read.
+- Below `x1long` → the lower LR runs out of schedule on a long cosine; `x1long` stands.
 
 ### A head at every step
 

@@ -10,7 +10,7 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
 - [proposal.md](proposal.md) — the idea, what a head buys and costs, phases P1–P5.
 - [plan.md](plan.md) — the P4 wrap-up (release, promotion into `library/`, ComfyUI node), the
   P5 topics and the open items. P1 – P4 and the settled recipe: `reports/phases_p1_p4_2026_11_19.md`.
-- [x2_plan.md](x2_plan.md) — the ×2 output topic of P5: the finished arms (A, 1 + 2, preview, 3) as a table, pointers to the reports of arm B and the runs after it, the settled recipe's full run and the training code into the library, the deployment plan, next arms.
+- [x2_plan.md](x2_plan.md) — the ×2 output topic of P5: pointers to the reports of everything that ran, the current state, the sequence after the ×1 head is fixed (B only, then a short GAN finish), next arms, open items.
 - [reports/](reports/) — one report per run or probe, indexed in its `README.md`.
 - [deploy/](deploy/) — the Hub card and NOTICE of `sorryhyun/anima-pixel-decoder` (private);
   the card's sample images are local (`bench/pixel_readout/results/card_samples_1119/`) and on the Hub.

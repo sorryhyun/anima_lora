@@ -58,7 +58,7 @@ The ×2 file (`x2bgan2_1121_1340`) was trained against real 2× images at the ba
 (shift-3 Euler 20 … 50 steps, σ 0.058 … 0.136), with LPIPS, a tone term and a PE-Spatial GAN
 term from rollout 1000 of 4,000; on the turbo it decodes with a warning. Against the real 2×
 image on held-out images: 29.82 / 25.52 dB, LPIPS 0.158 / 0.145 (test 12 / text 5). Records:
-`project/pixel_decoder/x2_plan.md`.
+`project/pixel_decoder/reports/x2_full_run_deploy_2026_11_21.md`.
 
 ## ComfyUI
 

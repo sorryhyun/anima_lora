@@ -86,16 +86,18 @@ from library.models import qwen_vae
 
 RESULTS = "bench/pixel_readout/results"
 P1_RUN = f"{RESULTS}/20261118-2221-readout_1118_2219"
-TEXT_ARTISTS = (  # most "Japanese text" captions in post_image_dataset/resized
-    "sincos",
-    "suujiniku",
-    "ie_(raarami)",
-    "tottotonero",
-    "kase_daiki",
-    "ama_mitsuki",
-    "sumiyao_(amam)",
-    "kat_(bu-kunn)",
-)
+def _local_split(key: str) -> tuple[str, ...]:
+    """An artist list of the local split file (``output/pixel_head/x1_split.json``, kept
+    out of the repo); () when it is absent."""
+    import json
+
+    from library.env import resolve_under_home
+
+    path = resolve_under_home("output/pixel_head/x1_split.json")
+    return tuple(json.loads(path.read_text())[key]) if path.exists() else ()
+
+
+TEXT_ARTISTS = _local_split("text_artists")  # most "Japanese text" captions in post_image_dataset/resized
 
 
 # --------------------------------------------------------------------------- head
@@ -334,6 +336,14 @@ def main():
         "--sigma",
     )
     p.add_argument(
+        "--eval_points",
+        nargs="+",
+        default=None,
+        metavar="SIGMA[:adapter]",
+        help="with --points: more σ the head is read at and not trained on (a point "
+        "--points already reads is skipped)",
+    )
+    p.add_argument(
         "--lambda_lpips",
         type=float,
         default=0.0,
@@ -426,6 +436,16 @@ def main():
                 name = f"{'lora' if tag else 'base'}_s{sg:.4g}"
                 points.append((name, sg, tag))
         assert len({n for n, _, _ in points}) == len(points), "duplicate --points"
+        for spec in args.eval_points or []:
+            s, *tags = spec.split(":")
+            assert set(tags) <= {"adapter"}, f"--eval_points {spec}: SIGMA[:adapter]"
+            tag = "adapter" in tags
+            assert not tag or args.adapter, f"--eval_points {spec} needs --adapter"
+            name = f"{'lora' if tag else 'base'}_s{float(s):.4g}"
+            if name not in {n for n, _, _ in points}:
+                points.append((name, float(s), tag))
+    else:
+        assert not args.eval_points, "--eval_points needs --points"
     multi = bool(points[0][0])
     sig_rng = random.Random(args.seed + 4)
 
