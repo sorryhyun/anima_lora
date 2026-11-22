@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The ×2 training set for arm B: real 2× targets at a ×1 tier of 1024 / 896 / 768 (x2_plan.md). CPU.
+"""The ×2 training set for arm B: real 2× targets at a ×1 tier of 1024 / 896 / 768. CPU.
 
 Per resized image with a master (crop margins applied):
 

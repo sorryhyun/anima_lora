@@ -4,7 +4,7 @@ Shared with ×1 (``library/anima/pixel_head_train_x1.py``) and the bench:
 :class:`DiTRollout`, :func:`attach_adapter`, :func:`compile_dit`, :func:`rec_loss`,
 :class:`Lpips`, :class:`PEDisc`, :func:`cosine_lr` and the read helpers.
 
-``scripts/pixel_head/train_x2.py`` composes the ×2 recipe. The recipe (``project/pixel_decoder/x2_plan.md``): a frozen Anima DiT is run once per
+``scripts/pixel_head/train_x2.py`` composes the ×2 recipe. The recipe (``project/pixel_decoder/README.md``): a frozen Anima DiT is run once per
 rollout on a noised cached latent at a decode point σ; the head reads the feature before
 ``final_layer.linear`` and x_t's latent patches and writes the 2× image, trained against
 the real 2× image the latent's own image was made from (the ``x2flex`` set). One random
@@ -477,7 +477,7 @@ class PEDisc:
 
 @dataclass
 class X2TrainConfig:
-    """The loop's knobs; defaults are the settled recipe (``x2_plan.md``)."""
+    """The loop's knobs; defaults are the shipped ×2 file's (``x2bgan2_1121_1340``)."""
 
     rollouts: int = 4000
     opt_steps: int = 16  # head updates per rollout, each on one replay window

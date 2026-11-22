@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real 2× targets from the masters: supply and alignment (x2_plan.md, arm B). CPU only.
+"""Real 2× targets from the masters: supply and alignment, arm B. CPU only.
 
 A resized training image is the master cover-scaled to its bucket and anchor-cropped
 (``anime_tools.stages.resize.resize_to_bucket``; anchor and margins are stamped in the

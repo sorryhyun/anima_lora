@@ -253,7 +253,7 @@ line of work with its own proposal; order not set. The first steps are Claude's 
 
 ### ×2 / ×4 output
 
-Its own plan: `x2_plan.md`. Next there: B only from the ×1 base (12k at LR 5e-5), then a GAN finetune (2k).
+Its own plan: `x2_plan.md`. In training, the eval waiting: `reports/x2_b12k_gft2k_2026_11_22.md`.
 
 ### RGBA
 

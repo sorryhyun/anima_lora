@@ -4,7 +4,7 @@
 A frozen Anima DiT gives the features; the head (a released ×1 head plus a second 2×
 stage, or a ×2 file to continue from) is trained against the real 2× image with the
 recipe loss + LPIPS + the tone term, and from ``pegan_start`` the PE-Spatial GAN term.
-Recipe and its records: ``project/pixel_decoder/x2_plan.md``.
+Algorithm: ``project/pixel_decoder/README.md``; runs: ``project/pixel_decoder/reports/``.
 
 Every flag is an :class:`X2TrainRequest` field; ``--config <file.toml>`` takes a flat TOML
 of field names (field default → ``--config`` → CLI). Shipped defaults:

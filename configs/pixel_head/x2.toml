@@ -4,7 +4,7 @@
 #
 # Keys are X2TrainRequest field names (`--help` lists them); CLI flags win over this
 # file, and a key left out keeps the field default. Values below are the settled recipe
-# (project/pixel_decoder/x2_plan.md): arm B (the real 2× image as the target, base decode
+# (project/pixel_decoder/reports/x2_full_run_deploy_2026_11_21.md): arm B (the real 2× image as the target, base decode
 # points only) with the PE-Spatial GAN term at gradient ratio 2 from rollout 1000.
 # For a run, copy this file to <handle>_mmdd_hhmm.toml and set output_name to that name.
 

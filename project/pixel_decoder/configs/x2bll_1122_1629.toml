@@ -1,0 +1,24 @@
+# x2 plan step 1 of 2, B only from the x1 base: x2b4k_1121_0950 with the init preview -> x1ll_1122_1000
+#   (and so a new second stage), rollouts 4000 -> 12000, lr 2e-4 -> 5e-5. The three change
+#   together and are not separated. The other training keys are configs/pixel_head/x2.toml's;
+#   the loop is scripts/pixel_head/train_x2.py (no-GAN path read level with the bench loop:
+#   x2move_1121_1350).
+# The user (2026-11-22): "x1 base 에서 init해서 x2 b only 로 12k with low lr (the same with x1 low
+#   lr) 그다음 gan finetune 2k"; on the submit: "계획대로만 해".
+# Question: a converged low-LR B head for step 2, x2llgft_1122_1629, which is queued right behind
+#   this run. This run's numbers are reported and do not gate it.
+# Records it rests on:
+#   - x2b4k_1121_0950 (64,000 updates at 2e-4): test / text 30.45 / 25.92 dB, LPIPS 0.141 / 0.137.
+#   - x1ll_1122_1000: 12,000 rollouts at 5e-5 on x1 (reports/x1_recipe_2026_11_22.md).
+# Read: the evals beside x2b4k's row. The render read is step 2's.
+# Bars: spread unknown.
+# Cost: 12,000 rollouts at 0.84 - 1.02 s, 2.8 - 3.4 h + evals.
+
+output_name = "x2bll_1122_1629"
+init = "output/pixel_head/x1ll_1122_1000/head.safetensors"
+rollouts = 12000
+lr = 5e-5
+eval_every = 1000
+pegan_ratio = 0.0
+pegan_start = 0
+seed = 0

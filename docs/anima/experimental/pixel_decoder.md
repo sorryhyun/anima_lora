@@ -290,7 +290,7 @@ Arm A came out soft: lines thicker than the chain's, dark pixels lifted, and the
 about 1 dB. Fit probes showed that the stage can express the target on 2 windows but does not
 learn it as a mapping on 16 under the recipe loss. The running arm adds VGG-LPIPS and the SR
 line's tone term (`dc_loss`, L1 on 32-px block means) on the ×2 output. If its lines stay soft,
-a GAN term is next. Plan and arms: `project/pixel_decoder/x2_plan.md`.
+a GAN term is next. Algorithm and findings: `project/pixel_decoder/README.md`; runs: `project/pixel_decoder/reports/`.
 
 ## Limits
 
