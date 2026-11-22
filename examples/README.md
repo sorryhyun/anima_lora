@@ -19,9 +19,9 @@ config, training, captioning}`; the namespace → export → canonical-home map 
 in `anima_lora/__init__.py`. Repo-relative model/config paths resolve against
 the repo home, not the CWD; set `ANIMA_HOME` for a relocated checkout.
 
-The high-level flows (`01`–`03`, `08`, `09`) import from `anima_lora`; `10`
-drives diffusers; the building blocks (`04`–`07`) import the `library.*`
-primitives directly. None needs a `sys.path` bootstrap.
+The high-level flows (`01`–`03`, `08`, `09`, `11`) import from `anima_lora`; `10`
+drives diffusers; `12` (MOSS-Image) and the building blocks (`04`–`06`) import the
+`library.*` primitives directly. None needs a `sys.path` bootstrap.
 
 **High-level flows** — the supported entry points:
 
@@ -32,6 +32,8 @@ primitives directly. None needs a `sys.path` bootstrap.
 | [`03_generate_with_correction.py`](03_generate_with_correction.py) | Training-free sampler correction (SMC-CFG / Spectrum) via the `GenerationRequest.extra_argv` escape hatch for long-tail method flags | DiT + VAE + text encoder |
 | [`08_easycontrol_train_and_infer.py`](08_easycontrol_train_and_infer.py) | **Image-conditioned** end-to-end: `--method easycontrol` training (same merge-chain + `AnimaTrainer().train()` as `02`) and image-conditioned inference via the typed `easycontrol_weight` / `easycontrol_image` request fields | config: nothing; `--train`: paired cache in `easycontrol-dataset/`; `--infer`: adapter + ref image |
 | [`09_cjk_vocab_pack.py`](09_cjk_vocab_pack.py) | **Prompt in JA / KO / ZH** through the [CJK vocab pack](https://huggingface.co/sorryhyun/anima-vocab-pack-cjk) (not a LoRA) on the front door: `GenerationRequest(vocab_pack=…)` — `generate()` installs the pack-routing tokenizer and `load_dit_model` hooks the rows onto `llm_adapter.embed` (state dict untouched). Default follows base.toml `vocab_pack` (`make download-vocab-pack`); `no_vocab_pack=True` forces the stock tokenizer. `--dry_run` reports the routed id stream with no weights | DiT + VAE + text encoder + the downloaded pack; `--dry_run`: text-encoder tokenizer only |
+| [`11_pixel_decoder.py`](11_pixel_decoder.py) | Decode with the **pixel head** instead of the VAE: `GenerationRequest(decoder="pixel_head", pixel_scale=…)` → `generate(args, settings, shared)` → `pixel_decode(args, shared["model"])` → `save_decoded`. `--scale 2` takes the ×2 head, `--turbo_lora` the 4-step point, `--sampler er_sde [--cns]` the ER-SDE sampler, `--compare_vae` also VAE-decodes the same latent | DiT + text encoder (head fetched on first use); VAE only for `--compare_vae` |
+| [`12_moss_lora.py`](12_moss_lora.py) | **MOSS-Image** (a separate line, not on `anima_lora`): `CacheRequest` / `TrainRequest` / `GenerateRequest` from `library.moss.requests`, layered on `configs/moss/{cache,lora}.toml`; no flag prints them as argv, `--submit` queues cache → train → generate on the daemon, `--run <stage>` runs one stage in-process | print: nothing; otherwise `make download-model ARGS=moss-base` + images with `.txt` captions |
 | [`10_cjk_vocab_pack_diffusers.py`](10_cjk_vocab_pack_diffusers.py) | The same pack on the **diffusers** Anima `ModularPipeline` (≥ 0.39, `circlestone-labs/Anima-Base-v1.0-Diffusers`): swap the `text_encoder` block for a subclass whose T5 ids come from `HybridT5Encoder`, widen `pipe.text_conditioner.embed` once — nothing else from this repo's engine. `--dry_run` checks both patch points on CPU | diffusers pipeline weights (auto-fetched, ~5.6 GB); `--dry_run`: text side only |
 
 **Building blocks** — the raw primitives for writing your own `scripts/` tool:
@@ -81,12 +83,15 @@ python examples/04_load_models.py --prompt "a lighthouse at dusk"
 python examples/05_vae_and_dataset.py                       # iterate the cache
 python examples/05_vae_and_dataset.py --image some/photo.png  # VAE round-trip
 python examples/06_frozen_dit_training_build.py             # build a trainable adapter
+python examples/11_pixel_decoder.py --compare_vae          # pixel head vs VAE on one latent
+python examples/12_moss_lora.py                             # MOSS requests as argv
+python examples/12_moss_lora.py --submit --src post_image_dataset/resized/my_set
 ```
 
 ## Notes for embedders
 
 - **`anima_lora` is the stable API; `library.*` / `networks.*` / `scripts.*` are internal.**
-  The underlying trees are importable (`04`–`07` use `library.*`), but may move
+  The underlying trees are importable (`04`–`06` and `12` use `library.*`), but may move
   or change signature without a deprecation cycle — pin a tag (`ANIMA_VERSION`)
   if you depend on them.
 - **Inference is request-driven.** `01`/`03` build a typed
