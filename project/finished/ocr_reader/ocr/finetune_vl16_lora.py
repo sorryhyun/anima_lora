@@ -241,6 +241,75 @@ def target_loss(model, enc, K: int | None = None) -> torch.Tensor:
     return torch.nn.functional.cross_entropy(logits[keep].float(), tgt[keep])
 
 
+def train_loss(model, enc, K: int) -> torch.Tensor:
+    """``target_loss`` for this reader with no host sync: every index, position and mask
+    is worked out on the CPU batch and copied up non-blocking. The stock forward reads
+    each off the card (``get_rope_index``, the placeholder check, the causal mask's
+    ``all()``, boolean indexing and its backward), and each read drains the queue, so
+    the GPU idles while the host dispatches what follows."""
+    from transformers.masking_utils import create_causal_mask
+    from transformers.vision_utils import (
+        get_vision_cu_seqlens,
+        get_vision_interpolation_indices_and_weights,
+        get_vision_position_ids,
+    )
+
+    m = model.get_base_model().model
+    text_cfg, vis_cfg = m.language_model.config, m.visual.vision_model.config
+    vis_emb = m.visual.vision_model.embeddings
+    up = lambda t: t.pin_memory().to("cuda", non_blocking=True)  # noqa: E731
+
+    ids, grid = enc["input_ids"], enc["image_grid_thw"]
+    pos, _ = m.get_rope_index(
+        ids,
+        image_grid_thw=grid,
+        attention_mask=enc["attention_mask"],
+        mm_token_type_ids=enc["mm_token_type_ids"],
+    )
+    interp, weights = get_vision_interpolation_indices_and_weights(
+        grid,
+        num_grid_per_side=vis_emb.num_grid_per_side,
+        mode=vis_emb.interpolation_mode,
+        align_corners=vis_emb.interpolation_align_corners,
+        spatial_merge_size=1,
+    )
+    cu = get_vision_cu_seqlens(grid)
+    if vis_cfg._attn_implementation.startswith("flash"):
+        cu = up(cu)  # flash_attn takes the bounds on the card
+    at = (ids == m.config.image_token_id).flatten().nonzero().squeeze(1)
+    n_img = int(grid.prod(-1).sum()) // vis_cfg.spatial_merge_size**2
+    assert len(at) == n_img, f"{len(at)} image tokens, {n_img} image features"
+    mask = create_causal_mask(
+        config=text_cfg,
+        inputs_embeds=torch.empty(*ids.shape, 0),  # shape and device only
+        attention_mask=enc["attention_mask"],
+        past_key_values=None,
+    )
+    tgt = enc["labels"][:, -(K - 1) :]
+    row, col = (tgt != -100).nonzero(as_tuple=True)
+
+    embeds = m.language_model.embed_tokens(up(ids))
+    image = m.get_image_features(
+        enc["pixel_values"].to("cuda", non_blocking=True),
+        grid,
+        return_dict=True,
+        image_interp_indices=up(interp),
+        image_interp_weights=up(weights),
+        image_position_ids=up(get_vision_position_ids(grid, 1)),
+        image_cu_seqlens=cu,
+    ).pooler_output
+    image = torch.cat(image, dim=0).to(embeds.dtype)
+    embeds = embeds.flatten(0, 1).index_copy(0, up(at), image).view_as(embeds)
+    out = model(
+        inputs_embeds=embeds,
+        position_ids=up(pos),
+        attention_mask=None if mask is None else up(mask),
+        logits_to_keep=K,
+    )
+    picked = out.logits[:, :-1][up(row), up(col)]
+    return torch.nn.functional.cross_entropy(picked.float(), up(tgt[row, col]))
+
+
 @torch.no_grad()
 def predict(model, proc, prompt, min_edge, ds: cd.CropDataset, bs, workers):
     model.eval()
@@ -830,9 +899,8 @@ def main():
                     "B": int(enc["input_ids"].shape[0]),
                     "K": K,
                 }
-            enc = enc.to("cuda", non_blocking=True)
             n = enc["input_ids"].shape[0]
-            raw = target_loss(model, enc, K)
+            raw = train_loss(model, enc, K)
             # a short (token-budget) batch weighs by its crops, as if part of a --bs batch
             loss = raw * (min(n, a.bs) / a.bs) / a.grad_accum
             loss.backward()

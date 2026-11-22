@@ -10,9 +10,12 @@ marks go inside the callable so a checkpoint recompute re-marks.
   marked strictly to ``tower_range``; ``cu_seqlens`` (images + 1) to ``[2, bs + 1]``. The
   stock SDPA path splits per image with ``lengths.tolist()``, which breaks the graph, so
   the attention core runs as the custom op ``ocr_vl16::tower_attn`` (per-image SDPA,
-  opaque to dynamo; its backward recomputes each image's attention). ``max_seqlen`` (a
-  Python int, one graph per value under ``dynamic=False``) is dropped: the op does not
-  use it.
+  opaque to dynamo; its backward recomputes each image's attention). The op reads
+  ``cu_seqlens`` with ``tolist()``, so the trainer passes it on the CPU: on the card each
+  of the 54 reads (27 layers, forward and backward) waits for the queued kernels.
+  ``max_seqlen`` (a Python int, one graph per value under ``dynamic=False``) is dropped:
+  the op does not use it; so are the precomputed ``interp_*`` tensors, which the encoder
+  forwards to every layer and only the embeddings read.
 * LM: the sequence axis S is soft-marked (``maybe_mark_dynamic``, no range). The layer
   runs SDPA with a padding mask, and Inductor's ``sdpa_constraint`` guards the
   backward's logsumexp stride on ``S % 8``, which a strict range contradicts (the same
@@ -144,7 +147,8 @@ def compile_layers(
         def forward(hidden_states, cu_seqlens, position_embeddings, **kwargs):
             if not torch.is_grad_enabled():
                 return eager(hidden_states, cu_seqlens, position_embeddings, **kwargs)
-            kwargs.pop("max_seqlen", None)
+            for k in ("max_seqlen", "interp_indices", "interp_weights"):
+                kwargs.pop(k, None)
             t = hidden_states.shape[0]
             if lo <= t <= hi:
                 torch._dynamo.mark_dynamic(hidden_states, 0, min=lo, max=hi)
