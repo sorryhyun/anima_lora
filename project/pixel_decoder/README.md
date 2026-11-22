@@ -168,3 +168,52 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
 - `seed` also moves the held-out noise, so two seeds' evals differ in more than training.
 - The inductor cache does not key on token bands: compile through `compile_dit`, which isolates
   it per signature.
+- The ×1 base is local only, at `output/pixel_head/x1ll_1122_1000/head.safetensors`: `--init` /
+  `--head_run` take the folder path, the bare run name does not resolve to a head.
+- A GAN arm at a 1024 crop on ×2 needs window 32 and `manifest_w32.json`.
+- The head's turbo point was trained on the local `models/loras/anima_turbo_4step.safetensors`
+  (the turbo Hub's `old/` file).
+
+## Rules
+
+The user's calls on how this line is run and recorded.
+
+### Records
+
+- `README.md` is the algorithm and the facts found, with no history. `x2_plan.md` and
+  `rgba_plan.md` hold what is waiting or ahead; a finished item leaves the plan, and an Open item
+  names a concrete step.
+- One report per phase or arm. `reports/` keeps the records still in use; a finished one moves to
+  `archive/` (gitignored, cited with "(local)").
+- The region where dense thin lines merge is called "fine strokes", not named by body part or
+  prompt.
+
+### Runs
+
+- A new GAN arm takes the PE term on a 1024² crop with the PE tower eager, not 512 and not a
+  compiled tower.
+- The Hub ×2 file stays as it is until the user has read the new head's renders.
+- The start eval is off by default (`start_eval`; `--no_start_eval` on
+  `experiments/convnext_head.py`).
+- A paper's head is ported in the paper's form first. When a small trainable part stalls, the
+  16-image overfit probe (`bench/pixel_readout/experiments/x2_overfit.py`, about 70 s an arm) and
+  a forward-only ceiling probe come before any argument about LR or budget.
+
+### Reads
+
+- ×2 is read by LPIPS and crops, not dB (bicubic wins dB). No number sees the tile or the
+  stripes.
+- Texture is measured on native renders over many images.
+- Renders shown to the user are Anima renders through the head only, with no GT or parent-run
+  columns.
+
+### RGBA
+
+- Backgrounds are white and the light colours of the dataset's simple backgrounds.
+- The whole head trains; no arm trains a part of it. A submit report names the arm list.
+- The cache holds the DiT's inputs only (VAE latent, TE, alpha); the frozen DiT runs in the
+  training loop.
+- `library/anima/` keeps the head and the decode; cache, data and eval code live in
+  `scripts/pixel_head/_alpha_*.py`.
+- A read leads with the transparent / opaque split, translucency second (`rgba_plan.md`
+  Priority).

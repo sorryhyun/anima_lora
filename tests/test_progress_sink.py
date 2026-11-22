@@ -238,6 +238,35 @@ def test_run_status_finds_daemon_job_streams(tmp_path):
     assert "logs" in str(ei.value) and "jobs" in str(ei.value)
 
 
+def test_run_status_falls_back_to_the_job_record(tmp_path, capsys):
+    """A bench job writes no progress stream; its run name still answers, with
+    the daemon-jobs line (state, rc, job dir) instead of a bare miss."""
+    logs, jobs = tmp_path / "logs", tmp_path / "jobs"
+    logs.mkdir()
+
+    def job(job_id, *argv):
+        (jobs / job_id).mkdir(parents=True)
+        rec = {"id": job_id, "kind": "command", "argv": list(argv), "state": "done"}
+        (jobs / job_id / "job.json").write_text(json.dumps(rec | {"returncode": 0}))
+
+    job("20261121-094910-3d8f94", "x2_head.py", "--label", "x2b4k_1121_0950")
+    job("20261121-095445-c6dba4", "x2_head.py", "--init", "x2b4k_1121_0950")
+
+    argv = ["--logs-dir", str(logs), "--jobs-dir", str(jobs)]
+    assert rs.main(["x2b4k_1121_0950", *argv]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith("no progress stream for 'x2b4k_1121_0950'")
+    assert len(out) == 2  # the job that only passes --init <name> is not that run
+    assert "20261121-094910-3d8f94" in out[1] and "rc=0" in out[1]
+    assert out[1].endswith(str(jobs / "20261121-094910-3d8f94"))
+
+    # a job id resolves the same way
+    assert rs.main(["20261121-095445-c6dba4", *argv]) == 0
+    assert "20261121-095445-c6dba4" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        rs.main(["nope", *argv])
+
+
 def test_run_status_names_a_running_job_before_its_stream(tmp_path, monkeypatch):
     """A train job writes run_start only after its model loads; until then a bare
     run-status showed the previous (dead) run instead of the job on the GPU."""

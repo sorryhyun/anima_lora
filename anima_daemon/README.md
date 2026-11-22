@@ -59,19 +59,37 @@ stdout, and `python -m anima_daemon status [id]` for daemon health or one full
 record with its result envelope.
 
 `daemon-jobs` prints one greppable line per job — when · id · state · `rc=` ·
-duration · derived `target` (soup name, train `output_name`, a bench script's
-`--label`) · first error line — **oldest first**, capped at the newest 15, with a
-trailing `N of M jobs`. `--state queued,running,paused` shows live jobs (`0 of
-M` = nothing running). `daemon-log` reads the log off disk, so unlike
-`daemon-attach` (a live stream) it works for a finished job.
+duration · run name · first error line — **oldest first**, capped at the newest
+15, with a trailing `N of M jobs`; `--full` is the whole history. `--state
+queued,running,paused` shows live jobs (`0 of M` = nothing running). `daemon-log`
+reads the log off disk, so unlike `daemon-attach` (a live stream) it works for a
+finished job.
+
+The run name is the first of: a naming flag in the job's argv (`--name`,
+`--path_pattern`, `--output_name`, a bench script's `--label`, `--run` unless it
+holds a path), the stem of its `--config` file (`…/x2llgf1024_1122_1919.toml` →
+`x2llgf1024_1122_1919`, followed by the script), the `-m` module or script path.
+A config under `configs/` is a shipped recipe many jobs share, so there the name
+is what the job writes (the stem of `--output`, the last folder of `--out_dir` /
+`--out`), else the config's last two path parts (`swap_text/train`). A train job uses its
+`output_name` (followed by the method), else the method.
+
+A name that many jobs share (a script path, `smoke`, `moss/lora`) returns its
+newest 5 matches and the count; `--full` returns them all.
+
+`--run <name>` (`make daemon-jobs RUN=<name>`) searches the whole history for
+the jobs whose run name is exactly `<name>` — a later job that passes
+`--init <name>` does not match — and ends each line with the job directory.
+It exits 1 when no job matches.
 
 ```bash
 python tasks.py daemon-jobs                    # newest 15, newest LAST
 python tasks.py daemon-jobs --running          # only running/paused jobs
-python tasks.py daemon-jobs --failed --all     # every error/stopped job
+python tasks.py daemon-jobs --failed --full    # every error/stopped job
 python tasks.py daemon-jobs --state done       # exact state(s), comma-separated
 python tasks.py daemon-jobs --limit 40         # raise/lower the cap
-python tasks.py daemon-jobs --all              # no cap (full history)
+python tasks.py daemon-jobs --full             # no cap (full history)
+python tasks.py daemon-jobs --run x2llgf1024_1122_1919   # one run's jobs + job dirs
 python tasks.py daemon-log -n 0                # newest job, whole log
 ```
 

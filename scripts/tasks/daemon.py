@@ -13,6 +13,7 @@ plus the submit/observe front door:
     daemon-run        submit an arbitrary command job (attach-by-default)
     daemon-wait       block until JOB=<id> is terminal; print record + result
     daemon-jobs       the job history as greppable lines, oldest first
+                      (newest 15; --full = all of it; RUN=<name> = one run's jobs)
     daemon-log        a job's captured stdout, read off disk
 
 ``daemon`` starts the daemon **console-detached** (see ``proc.spawn_detached``),
@@ -81,9 +82,13 @@ def cmd_daemon(extra):
     )
 
 
-# Default job cap for a bare `daemon-jobs` (most recent slice). `--all` lifts it,
-# `--limit N` sets it; a trailing `N of M jobs` line reports truncation.
+# Default job cap for a bare `daemon-jobs` (most recent slice). `--limit N` sets
+# it and `--full` lifts it; a trailing `N of M jobs` line reports truncation.
 _STATUS_DEFAULT_LIMIT = 15
+# Cap for a `--run <name>` lookup. A run's own name matches a job or two; a name
+# that matches more is shared (a script path, `smoke`, a shipped config), and the
+# caller gets the newest few and the count instead of hundreds of lines.
+_RUN_DEFAULT_LIMIT = 5
 
 _STATUS_FAILED_STATES = frozenset({STATE_ERROR, STATE_STOPPED})
 
@@ -91,24 +96,26 @@ _STATUS_FAILED_STATES = frozenset({STATE_ERROR, STATE_STOPPED})
 def _parse_status_flags(extra):
     """Parse the ``daemon-jobs`` filter flags out of ``extra``.
 
-    ``--all`` (no cap) · ``--limit N`` · ``--state s[,s]`` ·
-    ``--running``/``--active`` · ``--failed`` · ``--done``. Unknown tokens are
-    ignored (forward-compatible with the make ARGS shim); a bad ``--state``
-    value is not — it lands in ``opts["bad_states"]`` for the caller to error
-    out on.
+    ``--full`` (no cap) · ``--limit N`` · ``--run NAME`` (``RUN=<name>``) ·
+    ``--state s[,s]`` · ``--running``/``--active`` · ``--failed`` · ``--done``.
+    Unknown tokens are ignored (forward-compatible with the make ARGS shim); a
+    bad ``--state`` value is not — it lands in ``opts["bad_states"]`` for the
+    caller to error out on. ``opts["limit"]`` is ``None`` until ``--limit``
+    sets it to a positive number.
     """
     extra = list(extra or [])
     opts = {
-        "all": False,
+        "full": False,
         "states": None,
         "bad_states": None,
-        "limit": _STATUS_DEFAULT_LIMIT,
+        "limit": None,
+        "run": os.environ.get("RUN") or None,
     }
     i = 0
     while i < len(extra):
         a = extra[i]
-        if a == "--all":
-            opts["all"] = True
+        if a == "--full":
+            opts["full"] = True
         elif a in ("--running", "--active"):
             opts["states"] = set(ACTIVE_STATES)
         elif a == "--failed":
@@ -125,41 +132,110 @@ def _parse_status_flags(extra):
         elif a == "--limit" and i + 1 < len(extra):
             i += 1
             try:
-                opts["limit"] = int(extra[i])
+                opts["limit"] = max(int(extra[i]), 0) or None
             except ValueError:
                 pass
+        elif a == "--run" and i + 1 < len(extra):
+            i += 1
+            opts["run"] = extra[i]
+        elif a.startswith("--run="):
+            opts["run"] = a.split("=", 1)[1]
         i += 1
     return opts
 
 
-def _job_target(job: dict) -> str | None:
-    """Best-effort label for *what* a job operates on. Command jobs
-    (soup/preprocess/distill) carry it in ``argv`` (``--name`` /
-    ``--path_pattern`` / the bench script's own ``--label``, else the ``-m``
-    module); train jobs carry it as the ``output_name`` override, else fall back
-    to ``method``.
+# Flags that name a run outright, in scan order. ``--label`` is last: it is what
+# separates a grid of N bench runs of the same script.
+_RUN_NAME_FLAGS = ("--name", "--path_pattern", "--output_name", "--label", "--run")
 
-    ``--label`` is scanned last and is what separates a grid of N bench runs of
-    the same script."""
-    argv = job.get("argv") or []
+# What a job on a shipped config writes: the LoRA file (train), the image folder
+# (generate), the cache folder (cache). Its name stands in for a run name there.
+_ARTIFACT_FLAGS = ("--output", "--out_dir", "--out")
+
+
+def _shipped_config(config: str) -> bool:
+    """True for a config under the repo's ``configs/`` tree: a recipe many jobs
+    share (``configs/moss/i2i/swap_text/train.toml``), not one run's file."""
+    path = Path(config)
+    if path.is_absolute():
+        try:
+            path = path.relative_to(_cfg.ROOT)
+        except ValueError:
+            return False
+    return path.parts[:1] == ("configs",)
+
+
+def _argv_value(argv, flag: str) -> str | None:
+    """The value of ``flag`` in ``argv`` (``--flag v`` or ``--flag=v``), else None."""
+    for i, tok in enumerate(argv):
+        if tok == flag and i + 1 < len(argv):
+            return argv[i + 1]
+        if isinstance(tok, str) and tok.startswith(f"{flag}="):
+            return tok.split("=", 1)[1]
+    return None
+
+
+def _job_run_name(job: dict) -> tuple[str | None, str | None]:
+    """``(run name, what ran)`` for a job; ``daemon-jobs --run`` matches on the first.
+
+    Command jobs, first hit wins: a naming flag in ``argv`` (``--name`` /
+    ``--path_pattern`` / ``--output_name`` / the bench script's own ``--label`` /
+    ``--run``, unless its value is a path), else the stem of the ``--config`` file
+    (a run's config file carries its ``output_name``), else the ``-m`` module or
+    the script path. A config under ``configs/`` is a shipped recipe that many
+    jobs share, so there the name is what the job writes (the stem of
+    ``--output``, the last folder of ``--out_dir`` / ``--out``), else the config's
+    last two path parts (``swap_text/train``). Train jobs:
+    the ``output_name`` override, else ``--output_name`` in ``extra``, else the
+    method (``--method`` in ``extra`` wins over the record's).
+
+    The second item is the script (command jobs) or method (train jobs), set
+    only when the name came from a config stem or an ``--output_name``, where
+    the name alone no longer says what ran.
+    """
     if job.get("kind") == "command":
-        for flag in ("--name", "--path_pattern", "--output_name", "--label"):
-            for i, tok in enumerate(argv):
-                if tok == flag and i + 1 < len(argv):
-                    return argv[i + 1]
-                if tok.startswith(f"{flag}="):
-                    return tok.split("=", 1)[1]
-        if "-m" in argv:
-            i = argv.index("-m")
-            if i + 1 < len(argv):
-                return argv[i + 1]
-        return argv[0] if argv else None
-    overrides = job.get("overrides") or {}
-    return overrides.get("output_name") or job.get("method")
+        argv = job.get("argv") or []
+        for flag in _RUN_NAME_FLAGS:
+            name = _argv_value(argv, flag)
+            if name and not (flag == "--run" and os.sep in name):
+                return name, None
+        script = _argv_value(argv, "-m") or (argv[0] if argv else None)
+        config = _argv_value(argv, "--config")
+        if config and Path(config).stem:
+            if not _shipped_config(config):
+                return Path(config).stem, script
+            for flag in _ARTIFACT_FLAGS:
+                artifact = _argv_value(argv, flag)
+                if artifact and Path(artifact).stem:
+                    return Path(artifact).stem, script
+            return "/".join(Path(config).with_suffix("").parts[-2:]), script
+        return script, None
+    extra = job.get("extra") or []
+    method = _argv_value(extra, "--method") or job.get("method")
+    name = (job.get("overrides") or {}).get("output_name") or _argv_value(
+        extra, "--output_name"
+    )
+    return (name, method) if name else (method, None)
+
+
+def _job_target(job: dict) -> str | None:
+    """A job's run name (see ``_job_run_name``)."""
+    return _job_run_name(job)[0]
+
+
+def jobs_by_run_name(name: str, jobs) -> list[dict]:
+    """The records in ``jobs`` whose run name is exactly ``name``, oldest first.
+
+    An exact match on ``_job_run_name``, not a search over argv: a later job
+    that passes ``--init <name>`` is a different run.
+    """
+    hits = [j for j in jobs if _job_run_name(j)[0] == name]
+    hits.sort(key=lambda j: j.get("submitted_at") or 0)
+    return hits
 
 
 def _job_line(job: dict) -> str:
-    """One job as one line: when · id · state · rc · target · error."""
+    """One job as one line: when · id · state · rc · run name [what ran] · error."""
     ts = job.get("started_at") or job.get("submitted_at") or 0
     when = time.strftime("%m-%d %H:%M", time.localtime(ts)) if ts else "  -  "
     rc = job.get("returncode")
@@ -170,10 +246,23 @@ def _job_line(job: dict) -> str:
     dur = f"{(end - started) / 60:5.1f}m" if started and end else "     -"
     err = (job.get("error") or "").splitlines()
     tail = f"  {err[0][:60]}" if err else ""
+    name, ran = _job_run_name(job)
+    target = f"{name}  {ran}" if name and ran else (name or "-")
     return (
         f"{when}  {job.get('id', '?'):<22} {str(job.get('state')):<8} "
-        f"rc={'-' if rc is None else rc:<4} {dur}  {_job_target(job) or '-'}{tail}"
+        f"rc={'-' if rc is None else rc:<4} {dur}  {target}{tail}"
     )
+
+
+def job_line_with_dir(job: dict, jobs_dir: Path | None = None) -> str:
+    """``_job_line`` plus the job's directory as the last field (relative to the
+    CWD when it sits under it), so its ``stdout.log`` opens without a lookup."""
+    path = Path(jobs_dir or _cfg.JOBS_DIR).absolute() / str(job.get("id"))
+    try:
+        path = path.relative_to(Path.cwd())
+    except ValueError:
+        pass
+    return f"{_job_line(job)}  {path}"
 
 
 def cmd_daemon_status(extra):
@@ -211,11 +300,16 @@ def cmd_daemon_status(extra):
 
 def cmd_daemon_jobs(extra):
     """The job history as greppable lines, oldest first (``| tail -5`` = the five
-    most recent).
+    most recent): the newest 15, or the whole history with ``--full``.
 
-    Filters: ``--limit N`` · ``--all`` · ``--running``/``--active`` ·
+    Filters: ``--limit N`` · ``--full`` · ``--running``/``--active`` ·
     ``--failed`` · ``--done`` · ``--state s[,s]``. Falls back to the on-disk
-    records when the daemon is down.
+    records when the daemon is down (exit 1).
+
+    ``--run NAME`` / ``RUN=<name>``: every job in the history whose run name is
+    exactly ``NAME`` (``_job_run_name``), each line ending in its job directory.
+    The newest 5 matches unless ``--limit`` / ``--full`` is given (a name that
+    matches more is shared by many jobs); exit 1 when nothing matches.
     """
     opts = _parse_status_flags(extra)
     if opts["bad_states"]:
@@ -230,17 +324,33 @@ def cmd_daemon_jobs(extra):
     jobs = cl.list_jobs() if up else list(iter_records())
     jobs.sort(key=lambda j: j.get("submitted_at") or 0)  # oldest first: tail = newest
     total = len(jobs)
+    run = opts["run"]
+    if run:
+        jobs = jobs_by_run_name(run, jobs)
     if opts["states"] is not None:
         jobs = [j for j in jobs if j.get("state") in opts["states"]]
-    if not opts["all"] and opts["limit"]:
-        jobs = jobs[-opts["limit"] :]  # the newest N, still oldest-first
+    matched = len(jobs)
+    limit = opts["limit"] or (_RUN_DEFAULT_LIMIT if run else _STATUS_DEFAULT_LIMIT)
+    if not opts["full"] and limit:
+        jobs = jobs[-limit:]  # the newest N, still oldest-first
     for job in jobs:
-        print(_job_line(job))
+        print(job_line_with_dir(job) if run else _job_line(job))
     shown = len(jobs)
     note = "" if up else "  (daemon down — read from disk)"
+    if run:
+        if not matched:
+            print(f"no job with run name {run!r} in {total} jobs{note}", flush=True)
+            sys.exit(1)
+        rest = (
+            ""
+            if shown == matched
+            else "  — a name many jobs share; --full for the rest"
+        )
+        print(f"\n{shown} of {matched} jobs named {run!r}{note}{rest}", flush=True)
+        return
     print(
         f"\n{shown} of {total} jobs{note}"
-        + ("" if opts["all"] or shown == total else "  — --all for the rest"),
+        + ("" if shown == matched else "  — --full for the rest"),
         flush=True,
     )
     if not up:

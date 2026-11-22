@@ -141,6 +141,14 @@ tokens' m and guided x̂₀ fitted on the tone directions. Mean over 15 renders,
   +0.40 / +0.55), L does not (+0.58 vs −0.05 for v3), and per page the two differ by up to 0.7.
   The mask is from the seed-0 render, so seeds 42–44 may edit some "rest" pixels.
 
+### Open (the user, 2026-11-12: "다음에 볼게")
+
+- The small decoder's round-trip Δb on the five eval pages (the 20-page mean is −0.26 in
+  `i2i_tone_loss.md`, which may be most of v3's residual −0.23). About a minute.
+- Cond against guided x̂₀ on the same trajectory (a head-output hook in `tone_traj_probe.py`).
+- `tone_weight` stays at v3's 0.003: 0.001 at 2,216 steps read worse (Δb −0.87 against −0.23),
+  and the residual is outside what the term sees.
+
 ## Phase 1: train with a tone-shifted x_t
 
 Per step, with probability p, on the whole page:

@@ -1,0 +1,4 @@
+# Tokenizer tables: single lines of megabytes, noise in every code search. git tracks them.
+tokenizer.json
+vocab.json
+merges.txt

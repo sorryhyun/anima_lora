@@ -245,6 +245,14 @@ One to two hours in all.
   `k`. § 2.1's order column is the baseline (ρ 0.25 at σ 0.9).
 - The four heads instead of four block means, if the block-mean term proves diffuse.
 
+### Rules for these runs
+
+- The user's read comes first on hand and body distortion, then on the numbers.
+- A blind set is deleted from the blind repo (`../anima-blind-pairs`) once it is scored; its key
+  and verdicts stay under `output/blind/<set>/` (local).
+- A contrast arm takes a λ calibrated on its own gradient norm: at box_lo's λ its loss is about
+  0.8 against the box term's 3.5 and the maps barely move.
+
 ## 7. What this does not address
 
 - Glyph identity: neither probe ties alignment to whether the asked letters come out.

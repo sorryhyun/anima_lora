@@ -118,8 +118,10 @@ COMMANDS = {
     "daemon-jobs": (
         daemon.cmd_daemon_jobs,
         "Job history as lines, OLDEST first — the newest row is last, so "
-        "'| tail -5' means the five most recent. Filters: "
-        "--limit N/--all/--running/--failed/--done/--state s; reads the "
+        "'| tail -5' means the five most recent. Shows the newest 15; --full "
+        "is the whole history. RUN=<name> (ARGS='--run <name>'): the jobs whose "
+        "run name is exactly <name>, each with its job directory (exit 1 = none). "
+        "Filters: --limit N/--running/--failed/--done/--state s; reads the "
         "on-disk records when the daemon is down. One job's full record + its "
         "result envelope: python -m anima_daemon status <id>.",
     ),
@@ -427,7 +429,8 @@ COMMANDS = {
     "run-status": (
         utilities.cmd_run_status,
         "Step/ETA/last-ckpt one-liner for a run from its progress.jsonl "
-        "(RUN=<output_name|path>, default newest; ARGS='--list|--json')",
+        "(RUN=<output_name|path>, default newest; ARGS='--list|--json'). A daemon "
+        "job that wrote no stream answers with its daemon-jobs line.",
     ),
     "print-config": (
         utilities.cmd_print_config,

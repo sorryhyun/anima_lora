@@ -86,7 +86,8 @@ whichever shell submitted next).
 |---|---|---|
 | Is a job running / is the queue busy? | `make daemon-status` (health line + unfinished jobs), or `make daemon-jobs ARGS="--state queued,running,paused"` | one line per unfinished job; `0 of M` = nothing running (exit 1 = daemon down) |
 | How far along is the current run? | `make run-status` | `step N/total`, it/s, ETA, last losses, last ckpt (§ Run status below) |
-| Did job `<id>` finish, and with what exit code? | `make daemon-jobs ARGS="--all" \| grep <id>` | one line with state, `rc=` and the first error line |
+| Did job `<id>` finish, and with what exit code? | `make daemon-jobs ARGS="--full" \| grep <id>` | one line with state, `rc=` and the first error line |
+| Which job ran run `<name>`, and where is its log? | `make daemon-jobs RUN=<name>` | the jobs whose run name is exactly `<name>` (whole history), each line ending in its job dir; exit 1 = none |
 | …and block until it does? | `make daemon-wait JOB=<id>` | exits with the job's own code |
 | What argv did job `<id>` run? | `python -c "import json;print(' '.join(json.load(open('output/daemon/jobs/<id>/job.json'))['argv']))"` | the child argv on one line. **Command jobs only**: a train job's `argv` is empty |
 | One job's full record + its bench `result.json`? | `python -m anima_daemon status <id>` | the whole record, envelope inlined under `result` |
@@ -95,8 +96,14 @@ whichever shell submitted next).
 `daemon-jobs`, `daemon-log`, `run-status` and the `job.json` read all work with the
 daemon down.
 
-`daemon-jobs` prints **oldest first** (`| tail -5` = the five most recent), capped at 15;
-filter with `ARGS="--running|--failed|--done|--state s[,s]|--limit N|--all"`. A chained
+`daemon-jobs` prints **oldest first** (`| tail -5` = the five most recent), capped at 15
+(`--full` = the whole history); filter with
+`ARGS="--running|--failed|--done|--state s[,s]|--limit N|--run <name>"`. A job's run name
+is its naming flag (`--name` / `--output_name` / a bench `--label` / `--run`), else the stem of its
+`--config` file, else the script; on a shipped config under `configs/` it is what the job writes
+(`--output` stem, `--out_dir` / `--out` folder), else `<parent>/<stem>` (`swap_text/train`).
+A `--run` lookup prints the newest 5 matches and the count; a name that matches more is one
+many jobs share, and `--full` lists them all. A chained
 job waits on its parent, so ask for pending work by state rather than trusting the
 newest-15 slice to contain it. `make daemon-log [JOB=<id>]` dumps a job's stdout from disk
 (`ARGS="-n 200"`; `-n 0` = all); `daemon-attach` follows a live stream only.
@@ -121,8 +128,9 @@ newest-15 slice to contain it. `make daemon-log [JOB=<id>]` dumps a job's stdout
 `run_end` + dead pid), digested from the run's `progress.jsonl`
 (`library/runtime/progress.py::read_status` — importable; `scripts/run_status.py` is the
 CLI). Covers train.py methods, `make turbo` **and** moss train (`scripts/moss/train.py`); a bespoke loop that writes no
-`progress.jsonl` (e.g. `project/cjk_anima_reseed/run.py`) shows nothing here — read the
-step off `make daemon-log JOB=<id>`.
+`progress.jsonl` (e.g. `project/cjk_anima_reseed/run.py`) has no step to show: `make
+run-status RUN=<name>` prints that job's `daemon-jobs` line (state, `rc=`, job dir) — read
+the step off `make daemon-log JOB=<id>`.
 
 It scans an inline run's `output/logs/<name>.progress.jsonl` and a daemon job's
 `output/daemon/jobs/<id>/progress.jsonl` (a daemon run's dir under `output/logs/` holds the

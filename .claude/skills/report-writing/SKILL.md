@@ -11,7 +11,7 @@ Applies to `project/*/reports/`, `project/*/findings/`, plan entries and state s
 
 ## Facts and interpretation are separate sections
 
-- **Facts:** what ran, settings, data, numbers, tables, probe and eval outputs, recorded verdicts,
+- **Facts:** what ran (named by its config file), data, numbers, tables, probe and eval outputs, recorded verdicts,
   shipped artifacts, and the user's own reads and decisions, attributed to the user ("The user read
   1403's composition as better than 1020's").
 - **Interpretation:** what the numbers suggest, mechanisms, hypotheses, conclusions, the reasoning
@@ -40,11 +40,18 @@ Where a probe verdict and the user's read differ, both are written on adjacent l
 ("Probe: not passed. The user's read: composition better than 1020's, the line goes on."), and
 the report's first line says they differ.
 
+## Settings stay in the config
+
+A run's settings, question and gate are written once, in its config header (`experiment-planning`
+skill). A report, plan entry, README or memory names the run by its config file name
+(`x2llgf1024_1122_1919`) and adds what was measured or decided. A comparison names the two config
+files; the key that differs is in their headers.
+
 ## What a number carries
 
 - The run id and checkpoint (EMA step), the script or log tag it came from, and n: pairs, prompts,
   seeds.
-- Its conditions when they differ from the report's stated setup (teacher, LR, data).
+- Its conditions when they differ from the named config (an eval on another teacher or data).
 - For a comparison, the spread it is read against and that spread's source, or "spread unknown".
   A gap is called a gain, a loss or a tie only against a spread.
 - Where the output lives. `output/`, `results/`, `_archive/` and paths outside the repo are local:

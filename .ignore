@@ -7,4 +7,5 @@
 # it leaks or over-hides. Only bare-basename rules work from here. Current ones:
 #   docs/{findings,experimental}/assets/.ignore   figure PNGs
 #   library/anima/assets/.ignore                  the uncond TE safetensors
+#   library/anima/configs/.ignore                 tokenizer / vocab / merges tables
 #   project/finished/<line>/.ignore               finished lines' record material

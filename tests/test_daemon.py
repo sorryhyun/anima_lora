@@ -71,6 +71,155 @@ def test_split_daemon_run_args_own_flags_before_script():
     assert tail == []
 
 
+def _cmd_job(job_id: str, *argv: str, state: str = "done") -> dict:
+    """A command job record as ``daemon-jobs`` reads it; the id sets submit order."""
+    return {
+        "id": job_id,
+        "kind": "command",
+        "argv": list(argv),
+        "state": state,
+        "returncode": 0 if state == "done" else None,
+        "submitted_at": float(job_id.rsplit("-", 1)[-1]),
+    }
+
+
+def test_job_run_name_precedence():
+    from scripts.tasks.daemon import _job_line, _job_run_name, _job_target
+
+    x2 = "scripts/pixel_head/train_x2.py"
+    cfg = "project/pixel_decoder/configs/x2llgf1024_1122_1919.toml"
+    # the name is the config file's stem; the script stays on the line
+    job = _cmd_job("j-1", x2, "--config", cfg, "--compile")
+    assert _job_run_name(job) == ("x2llgf1024_1122_1919", x2)
+    assert _job_line(job).endswith(f"x2llgf1024_1122_1919  {x2}")
+    assert _job_target(_cmd_job("j-1", x2, f"--config={cfg}")) == "x2llgf1024_1122_1919"
+    # a naming flag wins over the config stem, --label included
+    job = _cmd_job("j-1", x2, "--config", cfg, "--output_name", "smoke_input")
+    assert _job_run_name(job) == ("smoke_input", None)
+    job = _cmd_job(
+        "j-1", "bench/turbo/probe.py", "--label", "gap_1028", "--config", cfg
+    )
+    assert _job_target(job) == "gap_1028"
+    # no naming flag and no config: the module, else the script
+    job = _cmd_job("j-1", "-m", "scripts.distill_turbo", "--config", "c/turbo_a.toml")
+    assert _job_run_name(job) == ("turbo_a", "scripts.distill_turbo")
+    assert _job_target(_cmd_job("j-1", "-m", "pytest", "tests/x.py")) == "pytest"
+    # --run names a run, unless it carries a path (render_ab.py's checkpoint)
+    assert _job_target(_cmd_job("j-1", "src/grpo.py", "--run", "grpo_1113_1940")) == (
+        "grpo_1113_1940"
+    )
+    job = _cmd_job("j-1", "bench/render_ab.py", "--run", "output/ckpt/a.safetensors")
+    assert _job_target(job) == "bench/render_ab.py"
+    # a config under configs/ is a shipped recipe: the name is what the job writes
+    gen, shipped = (
+        "scripts/moss/generate.py",
+        "configs/moss/i2i/swap_text/generate.toml",
+    )
+    job = _cmd_job(
+        "j-1", gen, "--config", shipped, "--out_dir", "output/eval/swap_1114_kv"
+    )
+    assert _job_run_name(job) == ("swap_1114_kv", gen)
+    job = _cmd_job(
+        "j-1", "scripts/moss/train.py", "--config", "configs/moss/lora.toml",
+        "--output", "output/ckpt_moss/ama_r32.safetensors",
+    )  # fmt: skip
+    assert _job_target(job) == "ama_r32"
+    assert (
+        _job_target(_cmd_job("j-1", gen, "--config", shipped)) == "swap_text/generate"
+    )
+    assert _job_target(_cmd_job("j-1", x2, "--init", "x2b4k_1121_0950")) == x2
+    # train jobs: output_name sits in `extra` on real records, else the method
+    train = {"kind": "train", "method": "lora", "overrides": {}, "argv": []}
+    named = train | {"extra": ["--seed", "42", "--output_name", "smoke_lpr10"]}
+    assert _job_run_name(named) == ("smoke_lpr10", "lora")
+    assert _job_run_name(train | {"extra": ["--method", "xacon_1120"]}) == (
+        "xacon_1120",
+        None,
+    )
+    assert _job_target(train | {"extra": []}) == "lora"
+
+
+def _daemon_jobs(monkeypatch, capsys, records, *args: str):
+    """Run ``daemon-jobs`` over ``records`` with the daemon down; (exit code, stdout)."""
+    from scripts.tasks import daemon as tasks_daemon
+
+    class _Down:
+        def health(self):
+            return None
+
+    monkeypatch.delenv("RUN", raising=False)
+    monkeypatch.setattr(tasks_daemon._client, "DaemonClient", _Down)
+    monkeypatch.setattr(tasks_daemon, "iter_records", lambda: iter(records))
+    with pytest.raises(SystemExit) as ei:  # daemon down, or no match: exit 1
+        tasks_daemon.cmd_daemon_jobs(list(args))
+    return ei.value.code, capsys.readouterr().out
+
+
+def test_daemon_jobs_run_lookup_is_an_exact_match(monkeypatch, capsys):
+    from scripts.tasks import daemon as tasks_daemon
+
+    head = "bench/pixel_readout/x2_head.py"
+    records = [
+        _cmd_job("j-1", head, "--init", "real", "--label", "x2b4k_1121_0950"),
+        # later jobs that only read that run: a different run each
+        _cmd_job("j-2", head, "--resume_x2", "x2b4k_1121_0950", "--label", "x2gan"),
+        _cmd_job("j-3", head, "--init", "x2b4k_1121_0950"),
+        _cmd_job("j-4", head, "--label", "safe_x2b4k_1121_0950"),
+        _cmd_job("j-5", "train_x2.py", "--config", "cfg/x2b4k_1121_0950.toml"),
+    ]
+    assert [
+        j["id"] for j in tasks_daemon.jobs_by_run_name("x2b4k_1121_0950", records)
+    ] == ["j-1", "j-5"]
+
+    class _Up:
+        def health(self):
+            return {"pid": 1}
+
+        def list_jobs(self):
+            return list(records)
+
+    monkeypatch.delenv("RUN", raising=False)
+    monkeypatch.setattr(tasks_daemon._client, "DaemonClient", _Up)
+    tasks_daemon.cmd_daemon_jobs(["--limit", "1", "--run=x2b4k_1121_0950"])
+    rows = capsys.readouterr().out.splitlines()
+    # --limit still applies when asked for; each row ends in its job dir
+    assert " j-5 " in rows[0] and rows[0].endswith("jobs/j-5")
+    assert rows[-1] == (
+        "1 of 2 jobs named 'x2b4k_1121_0950'"
+        "  — a name many jobs share; --full for the rest"
+    )
+
+    # RUN=<name> is the make spelling; a run's own name fits under the cap
+    monkeypatch.setenv("RUN", "x2b4k_1121_0950")
+    tasks_daemon.cmd_daemon_jobs([])
+    assert capsys.readouterr().out.count("jobs/j-") == 2
+
+    monkeypatch.setenv("RUN", "nope")
+    with pytest.raises(SystemExit) as ei:
+        tasks_daemon.cmd_daemon_jobs([])
+    assert ei.value.code == 1
+    assert capsys.readouterr().out.strip() == "no job with run name 'nope' in 5 jobs"
+
+
+def test_daemon_jobs_full_is_the_only_uncapped_listing(monkeypatch, capsys):
+    records = [_cmd_job(f"j-{i}", "run.py", "--label", f"r{i}") for i in range(40)]
+
+    def rows(*args):
+        code, out = _daemon_jobs(monkeypatch, capsys, records, *args)
+        assert code == 1  # read from disk: the daemon is down
+        return [ln for ln in out.splitlines() if " j-" in ln], out.splitlines()[-1]
+
+    shown, tail = rows()
+    assert len(shown) == 15 and shown[-1].endswith("r39")
+    assert tail.startswith("15 of 40 jobs") and tail.endswith("--full for the rest")
+    assert len(rows("--limit", "20")[0]) == 20
+    # neither the old flag nor --limit 0 lifts the cap
+    assert len(rows("--all")[0]) == 15
+    assert len(rows("--limit", "0")[0]) == 15
+    shown, tail = rows("--full")
+    assert len(shown) == 40 and "--full" not in tail
+
+
 def _seed_job(state: str, age_days: float, job_id: str) -> jobs.Job:
     """A persisted job in ``state``, finished ``age_days`` ago, with a stdout.log."""
     ts = time.time() - age_days * 86400.0
@@ -502,7 +651,9 @@ def test_reconcile_orphan_requeue_adopt(tmp_path, monkeypatch):
     dead.persist()
 
     # a `queued` job that never started
-    pend = jobs.Job(id="pend", method="lora", preset="default", state=record.STATE_QUEUED)
+    pend = jobs.Job(
+        id="pend", method="lora", preset="default", state=record.STATE_QUEUED
+    )
     pend.persist()
 
     # a `running` job that's actually alive (use this test process as the pid)
@@ -920,8 +1071,7 @@ def test_tools_manifest_operations_are_routed(daemon):
 
 def test_mcp_bridge_does_not_load_the_job_manager():
     code = (
-        "import sys, anima_daemon.mcp; "
-        "sys.exit('anima_daemon.manager' in sys.modules)"
+        "import sys, anima_daemon.mcp; sys.exit('anima_daemon.manager' in sys.modules)"
     )
     assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
 

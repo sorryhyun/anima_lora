@@ -145,3 +145,54 @@ so older commands still resolve.
   writes its reports to this line's `reports/`. Every GPU step goes through the
   daemon.
 - Hardware: RTX 5070 Ti 16 GB. No bitsandbytes on cu132.
+
+## Rules — the label review loop (v7, main / sub)
+
+The line is in use for labelling. The split policy is [`main-sub-approach.md`](main-sub-approach.md);
+finished work goes to `reports/mainsub_*.md`, not into that doc.
+
+### The page
+
+- `~/ko_label_review/index.html` is a local page (the user's call: not an Artifact). Its state is
+  in the browser's localStorage; Export writes `~/Downloads/ko_label_review.tsv`.
+- The export holds changed rows only, against the assets and manifests at build time: rebuild the
+  page after each apply.
+- A fix made outside the page is undone by the browser's saved edit at the next export. Drop the
+  row from a later export if it carries the old text again.
+- From every export, filter `3261138_279400` and the stale `軍神か……` edit
+  (`Nekodama_007_0004b534` → `…`).
+- A reviewed row exports its sub proposal untouched, so a wrong ruby read becomes a reviewed
+  positive.
+
+### After each export
+
+1. Copy it to `assets/`, run `probes/apply_ko_review.py <tsv>` with `ANIMA_MANGA109S_ROOT`
+   exported (earlier edits show as "stale": already applied). The user deletes the Downloads
+   file. Applied exports in `assets/` may be deleted; the gate / mark / sub / mainsub TSVs stay.
+2. Check the crops of a small export and report suspected typos with paste-ready text. Fix only
+   on the user's word.
+3. Retrain only when asked; export `ANIMA_MANGA109S_ROOT` at submit.
+4. Rebuild the page (commands in `main-sub-approach.md` § Review).
+
+### Labels (the user's rules)
+
+- Korean keeps `...` and `…` apart: dots are never folded on KO text (`ellipsis_fold` is a JA
+  speech rule).
+- The label follows the 4 px training crop as shown. What the crop does not show stays empty;
+  text or dots only the page shows are not typed. Merged blocks go.
+- Unswapped JA lettering under a KO label stays Japanese.
+- `swaprelax_v5` was audited by agents and the user read every gelnote KO row: neither set is
+  "unreviewed".
+- An empty sub is never trained as "". `OCR2:` negatives are set up by the user.
+- Mains waiting on a line-break proposal stay out of training; agents do not fill them.
+- Rows over the training cap (main > 150 normalized characters) are hidden on the page and
+  still export.
+
+### Traps
+
+- A 2-epoch run runs out of memory on 16 GB without `--ckpt_lm_only` or `--grad_ckpt`.
+- Eval `exact` is whitespace-stripped, so line breaks never move it.
+- There is no KO eval set.
+- Parallel agents sharing one scratchpad overwrote each other's helper scripts and outputs: each
+  agent gets a private output directory and no shared script.
+- Agents split sub lines by label line or by printed column inconsistently.

@@ -15,6 +15,9 @@ An inline run writes ``output/logs/<output_name>.progress.jsonl``; a daemon job
 writes ``output/daemon/jobs/<id>/progress.jsonl``, a bare filename, so a run name
 there is matched against the ``run_start`` event inside the stream (a job id
 works as a target as well).
+
+A daemon job that wrote no stream (a bench or probe script) still answers by its
+run name or job id: its ``daemon-jobs`` line (state, ``rc=``, job directory).
 """
 
 from __future__ import annotations
@@ -107,6 +110,35 @@ def format_streamless(rec: dict) -> str:
     )
 
 
+class _NoStream(SystemExit):
+    """A named target with no progress stream; ``main`` then tries the job records."""
+
+
+def _streamless_jobs(target: str, jobs_dir: Path | None) -> list[dict]:
+    """The daemon jobs named ``target`` (run name, or job id), oldest first."""
+    if jobs_dir is None or not jobs_dir.is_dir():
+        return []
+    by_id = read_record(jobs_dir / target)
+    if by_id is not None:
+        return [by_id]
+    from scripts.tasks.daemon import jobs_by_run_name
+
+    records = (read_record(d) for d in sorted(jobs_dir.iterdir()))
+    return jobs_by_run_name(target, (r for r in records if r is not None))
+
+
+def format_streamless_jobs(target: str, jobs: list[dict], jobs_dir: Path) -> str:
+    from scripts.tasks.daemon import job_line_with_dir
+
+    head = f"no progress stream for {target!r}; daemon job(s) with that name:"
+    lines = [job_line_with_dir(j, jobs_dir) for j in jobs[-5:]]
+    if len(jobs) > 5:  # a name many jobs share: the newest few and the count
+        lines.append(
+            f"5 of {len(jobs)} jobs  — make daemon-jobs RUN={target} ARGS=--full"
+        )
+    return "\n".join([head, *lines])
+
+
 def _resolve(target: str | None, logs_dir: Path, jobs_dir: Path | None) -> Path:
     """Resolve a path / run name / job id / nothing-at-all to one stream file."""
     streams = _find_streams(logs_dir, jobs_dir)
@@ -132,7 +164,7 @@ def _resolve(target: str | None, logs_dir: Path, jobs_dir: Path | None) -> Path:
         if hit is not None:
             return hit
         where = f"{logs_dir}" + (f" and {jobs_dir}" if jobs_dir else "")
-        raise SystemExit(f"no progress stream for {target!r} (looked under {where})")
+        raise _NoStream(f"no progress stream for {target!r} (looked under {where})")
     if not streams:
         raise SystemExit(
             f"no progress stream under {logs_dir}"
@@ -201,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
         nargs="?",
         help="run name (output_name), a .progress.jsonl path, or omit for the "
         "most recently updated run (or the daemon's running job, while it has "
-        "no stream yet).",
+        "no stream yet). A daemon job without a stream answers with its job line.",
     )
     p.add_argument(
         "--logs-dir",
@@ -247,7 +279,30 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(format_streamless(running))
             return 0
-        streams = [_resolve(args.target, logs_dir, jobs_dir)]
+        try:
+            streams = [_resolve(args.target, logs_dir, jobs_dir)]
+        except _NoStream:
+            found = _streamless_jobs(args.target, jobs_dir)
+            if not found:
+                raise
+            if args.json:
+                last = found[-1]  # the newest job of that name
+                json.dump(
+                    {
+                        "status": last.get("state"),
+                        "job": last.get("id"),
+                        "label": last.get("method"),
+                        "returncode": last.get("returncode"),
+                        "job_dir": str(jobs_dir / str(last.get("id"))),
+                        "global_step": None,
+                    },
+                    sys.stdout,
+                    indent=2,
+                )
+                sys.stdout.write("\n")
+            else:
+                print(format_streamless_jobs(args.target, found, jobs_dir))
+            return 0
 
     statuses = []
     for path in streams:

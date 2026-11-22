@@ -7,7 +7,9 @@ Orientation and invariants for this repository. Task-shaped detail lives in skil
 `configs/`, `networks/`, `gui/`.
 
 **Read memory before the first action of a session.** Only the `MEMORY.md` index loads by
-itself. Read the memory files whose index line bears on the task.
+itself. Read the memory files whose index line bears on the task. A line's memory holds its home
+path and the next step only: state and history stay in the line's plan and reports, and a rule that
+belongs to one line goes in its `project/<line>/README.md`.
 
 ## What this repo is
 
@@ -64,6 +66,9 @@ can fail on the torch index split. Weights are rows in the model catalog
   `--compile_dynamic_seq` on `inference.py`, the line's own switch on MOSS / Qwen). Check
   it before queuing; a new bench or render script starts with it on. A single
   interactive render is the only exception.
+- **Search the tree with `rg`**, which honors the per-directory `.ignore` files (tokenizer tables,
+  finished lines' records, run outputs). A hook refuses a recursive `grep`; `rg --no-ignore`
+  searches the hidden trees on purpose.
 - **Lint only the files you touched**: `ruff check --fix <files>` (a repo-wide F401
   autofix strips the re-exports `library/train_util.py` and `anima_lora/__init__.py`
   exist for). Run `ruff format <files>` only right before a commit — mid-task it reflows
@@ -313,6 +318,9 @@ CNS and DAVE, which also run on MOSS: `docs/inference/`. Channel scaling (on by 
 - Active research lines: each directory under `project/` is one. **A line's
   live work can sit on its own branch** — run `git branch -a` and check before editing a
   `project/<line>/`.
+- A run's settings are written once, in its config header (`<handle>_mmdd_hhmm.toml`); plans,
+  reports, READMEs and memory name the config file and do not repeat them (`experiment-planning`
+  and `report-writing` skills).
 - Finished lines: `project/finished/` (code search skips most of it); retired lines and
   benches: the gitignored `_archive/`. Proposals: `docs/{moss,anima}/proposal/`.
 - Docs: one folder per line (`docs/moss/`, `docs/anima/`); docs shared across lines

@@ -5,9 +5,10 @@ description: How to plan and record an experiment here — its design, gate and 
 
 # Planning an experiment
 
-An experiment is written down before it runs, in two places: the run config's header comment
-(`project/<line>/configs/<handle>_mmdd_hhmm.toml`) and the arm's entry in the line's `plan.md`. The
-record has three parts: design, gate, preconditions. Write it with the `report-writing` skill's
+An experiment is written down before it runs, in one place: the run config's header comment
+(`project/<line>/configs/<handle>_mmdd_hhmm.toml`). The line's `plan.md`, its reports, its README
+and memory name the run by its config file name and do not repeat its settings, question or gate.
+The record has three parts: design, gate, preconditions. Write it with the `report-writing` skill's
 split: what is set and measured as facts, the reasoning for the arm as interpretation.
 
 ## Design

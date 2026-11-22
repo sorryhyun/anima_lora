@@ -41,3 +41,19 @@ merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
   own `_int8_gptq` files; the base GPTQ is refused on a merged DiT.
 - Checkpoints `output/ckpt/<id>/`, logs `output/logs/turbo/<stamp>/`, renders `output/tests/turbo4/`.
 - Older material: `_archive/turbo_dmad/`, `_archive/proposals/turbo_*`.
+
+## Rules
+
+The user's calls and what earlier reads on this line showed.
+
+- The line is from scratch except what `plan.md` lists as carried. An archived report is not
+  cited as the reason for a choice.
+- Probe numbers on this line have not predicted the user's blind read (`turbo_1118_1818` won
+  every probe number and lost the read 0 / 12). The read decides; numbers are reported beside it.
+- `k_anchor` stays a free knob with a warning on mismatch. The 3-step grid is not run.
+- Before a target is built on, check the interval it is applied over. A ceiling probe is not a
+  ranking of training targets.
+- A run is proposed once, and not again while the user is still asking what the method is.
+- Sheets for the user: the student column only, two columns 0 / 1 shuffled per row, one file per
+  row at the probe PNGs' size; picks come back as a 0 / 1 string (a missing row is no pick). Rows
+  are p0 group, p1 café, p2 guitarist × seeds 1–4; read `key.json`'s `cell` before naming a row.

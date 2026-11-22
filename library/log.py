@@ -53,7 +53,12 @@ def setup_logging(args=None, log_level=None, reset=False):
                 from rich.logging import RichHandler
                 from rich.console import Console
 
-                handler = RichHandler(console=Console(stderr=True))
+                console = Console(stderr=True)
+                if not console.is_terminal:
+                    # A pipe or a daemon job's stdout.log: rich would fall back
+                    # to 80 columns and split every path over several lines.
+                    console.width = 200
+                handler = RichHandler(console=console)
             except ImportError:
                 msg_init = "rich is not installed, using basic logging"
 

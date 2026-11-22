@@ -32,3 +32,16 @@ VL16 is not a reader.
 
 State (11-13): P1 arm R failed (`grpo_1113_1940`, rows `rl_p1`). Next: arm A and the D0
 probes (proposal § 4).
+
+## Rules
+
+The user's calls (2026-11-13).
+
+- The goal is the intended sentence (order, length, no invented text), not crisper glyphs.
+  Rewards and reads are sequence-level. SFX is in scope and needs a style guard.
+- Sampler: SDE a = 0.7.
+- Prompt pool: every caption with a JA text / SFX clause, only the quoted strings swapped. It
+  holds out the ruler's images and 5-grams and the `$CHARACTER_REF_EXCLUDE` tags. No rating
+  filter.
+- Rows can learn order (proposal § 2), so arm A is a sample-count fallback, not an order fix.
+- Arm A starts with the `src/grpo.py` fixes: summed log π, G 16–24.
