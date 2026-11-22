@@ -328,27 +328,37 @@ Interpretation:
   16-window overfit on fine-stroke crops with the VAE decode as target, the ×1 form beside one with a
   pixel-shuffle stage (`bench/pixel_readout/x2_overfit.py` is the ×2 version of this probe).
 
-#### The long run at the lower LR, `x1ll_1122_0855` (postponed by the user)
+#### The long run at the lower LR, `x1ll_1122_1000`
 
 The user (2026-11-22): "x2는 어차피 x1에서 init한 형태이니까, x1를 먼저 5e-5로 돌려보고 x1를
 확정한다음 x2도 longer and better recipe (b only -> gan 마무리) 로 하면 좋겠어."
 
 Queued at 08:53 and cancelled a few minutes in, with its three read jobs, on the user's word
-("longer은 나중에 돌릴거라 일단은 취소해줘"); no result. The design stands for the later run,
-which takes a new name.
+("longer은 나중에 돌릴거라 일단은 취소해줘"); no result (that run was `x1ll_1122_0855`).
+Taken up again the same morning on the user's word ("ㅇㅇ 그러자", to this run before the 16-window
+overfit probe) as `x1ll_1122_0957`, the same design, stopped before
+rollout 0 on the user's word ("처음에 계속 eval 돌리는데 그거 끄자") and queued again as
+`x1ll_1122_1000` with `--no_start_eval`. The probe is not queued.
 
 Facts (the design, set before the run):
 
-- `x1long_1121_2230`'s argv with `--lr` 2e-4 → 5e-5, nothing else changed (12,000 rollouts, init
-  `mixr_1119_1455`, pages 0.33, seed 0, the same eval points). It is equally `x1lowlr_1121_2230`
+- `x1long_1121_2230`'s argv with `--lr` 2e-4 → 5e-5, nothing else changed in training (12,000
+  rollouts, init `mixr_1119_1455`, pages 0.33, seed 0, the same eval points). It is equally `x1lowlr_1121_2230`
   with 3,000 → 12,000 rollouts, and is read against both.
 - Records it rests on: the Outcome table above (`x1long` 34.13 / 0.0741, `x1lowlr` 33.97 / 0.0769,
   `realr` 33.75 / 0.0807 on test at σ 0.0577); `x1lowlr`'s history (33.51 / 0.102 at rollout
   1,000, where `x1long` read 32.03 / 0.176).
+- `--no_start_eval`: no P1 linear pass and no eval at rollout 0 (`x1long`'s stands, same init);
+  the held-out features are built at the eval at rollout 1,000. Measured on this run's log beside
+  `x1long`'s: the first 50 rollouts 152 s against 56, the build at rollout 1,000 146 s (151 s in
+  `x1long`'s setup), the training timer at rollout 1,100 1,001 s against 737 (about 0.022 s per
+  rollout on `sec_per_rollout`), and that rollout reached about 90 s later in wall time
+  (45 s heartbeat). Training noise is seeded per rollout index and the draws have their own RNGs.
 - Read: the held-out evals at every point beside `x1long` and `x1lowlr`; the generated-image
-  reads `x1llb28_1122_0855` and `x1llturbo_1122_0855` (`realr`, `x1lowlr`, `x1long`, this head on
-  the same latents); the monochrome and fine-stroke renders through this head. The user's read
-  of the sheets decides the ×1 head.
+  reads `x1llb28_1122_1000` and `x1llturbo_1122_1000` (`realr`, `x1lowlr`, `x1long`, this head on
+  the same latents); the monochrome and fine-stroke renders through this head
+  (`20261122-1000-x1ll_renders`, local), as pairs against `x1long` and `x1lowlr` without arm
+  labels. The user's read of the sheets decides the ×1 head.
 - Bars: the `realr` / `x1twin` gap (test 0.06 dB / 0.0013 LPIPS, 3,000-rollout runs). No twin of
   a 12,000-rollout run: spread unknown at that length.
 - Not in this run: the page share stays 0.33 (`x1page` read level on mono, a little up on

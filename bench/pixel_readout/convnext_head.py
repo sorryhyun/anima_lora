@@ -366,6 +366,12 @@ def main():
     p.add_argument(
         "--init", default=None, help="start the head from <run>/head.safetensors"
     )
+    p.add_argument(
+        "--no_start_eval",
+        action="store_true",
+        help="no read before training (P1 linear, the --init head at rollout 0); the "
+        "held-out features are built at the first periodic eval",
+    )
     p.add_argument("--n_sheets", type=int, default=12)
     args = p.parse_args()
     start_heartbeat(label="convnext")
@@ -638,41 +644,44 @@ def main():
             g["lr"] = lr * s
 
     # --- held-out features once (CPU), so evals cost no DiT forward ---
-    t0 = time.perf_counter()
     # (item, set, features, x_t patches, {target: decode}, original | None, point name)
     held_feats = []
+    sets: list[str] = []
     held_items = (
         [(ci, "test") for ci in test]
         + [(ci, "text") for ci in text]
         + [(pth, "manga") for pth in page_eval]
     )
-    origs: dict[int, torch.Tensor] = {}
-    for point in points:  # the same noise per item at every point
-        for j, (item, key) in enumerate(held_items):
-            f, lat, tgts = rollout(
-                item, 10_000 + j, targets=("x0", "xhat0"), point=point
-            )
-            if j not in origs:  # one copy per item, shared by its points
-                origs[j] = load_real(item, tuple(tgts["x0"].shape[-2:])).to(
-                    "cpu", torch.float16
+
+    def build_held():
+        start = time.perf_counter()
+        origs: dict[int, torch.Tensor] = {}
+        for point in points:  # the same noise per item at every point
+            for j, (item, key) in enumerate(held_items):
+                f, lat, tgts = rollout(
+                    item, 10_000 + j, targets=("x0", "xhat0"), point=point
                 )
-            orig = origs[j]
-            held_feats.append(
-                (
-                    item,
-                    key,
-                    f.to("cpu", torch.bfloat16),
-                    lat.cpu(),
-                    {k: v.to("cpu", torch.float16) for k, v in tgts.items()},
-                    orig,
-                    point[0],
+                if j not in origs:  # one copy per item, shared by its points
+                    origs[j] = load_real(item, tuple(tgts["x0"].shape[-2:])).to(
+                        "cpu", torch.float16
+                    )
+                orig = origs[j]
+                held_feats.append(
+                    (
+                        item,
+                        key,
+                        f.to("cpu", torch.bfloat16),
+                        lat.cpu(),
+                        {k: v.to("cpu", torch.float16) for k, v in tgts.items()},
+                        orig,
+                        point[0],
+                    )
                 )
-            )
-    sets = list(dict.fromkeys(skey(h[6], h[1]) for h in held_feats))
-    print(
-        f"held-out features {len(held_feats)} in {time.perf_counter() - t0:.0f}s",
-        flush=True,
-    )
+        sets.extend(dict.fromkeys(skey(h[6], h[1]) for h in held_feats))
+        print(
+            f"held-out features {len(held_feats)} in {time.perf_counter() - start:.0f}s",
+            flush=True,
+        )
 
     @torch.no_grad()
     def predict(f, lat, use_head=True):
@@ -688,6 +697,8 @@ def main():
     def evaluate():
         """{set: mean PSNR vs VAE(x0)}, {set_xhat0: … vs VAE(x̂0)}, and against the
         original image {set_orig: PSNR, set_lpips_orig: LPIPS}."""
+        if not held_feats:
+            build_held()
         head.eval()
         out: dict[str, list] = {}
         for _, key, f, lat, tgts, orig, pt in held_feats:
@@ -710,16 +721,18 @@ def main():
             for k in sets
         )
 
-    p1_lin: dict[str, list] = {}
-    for _, key, f, lat, tgts, _, pt in held_feats:
-        p1_lin.setdefault(skey(pt, key), []).append(
-            psnr(predict(f, lat, use_head=False), tgts["x0"].to(device))
+    if not args.no_start_eval:
+        build_held()
+        p1_lin: dict[str, list] = {}
+        for _, key, f, lat, tgts, _, pt in held_feats:
+            p1_lin.setdefault(skey(pt, key), []).append(
+                psnr(predict(f, lat, use_head=False), tgts["x0"].to(device))
+            )
+        p1_scores = {k: float(np.mean(v)) for k, v in p1_lin.items()}
+        print(
+            "P1 linear: " + "  ".join(f"{k} {v:.2f}" for k, v in p1_scores.items()),
+            flush=True,
         )
-    p1_scores = {k: float(np.mean(v)) for k, v in p1_lin.items()}
-    print(
-        "P1 linear: " + "  ".join(f"{k} {v:.2f}" for k, v in p1_scores.items()),
-        flush=True,
-    )
     # P1 linear weights are about to train; keep a frozen copy for the sheets
     p1_linear = nn.Linear(D, PATCH * PATCH * 3).to(device)
     p1_linear.load_state_dict(head.linear.state_dict())
@@ -738,7 +751,7 @@ def main():
     assert not (args.replay and args.accum > 1), "--replay and --accum do not combine"
     replay: deque = deque(maxlen=max(1, args.replay))
     replay_rng = random.Random(args.seed + 3)
-    if args.init:  # the loaded head on this run's points and meters
+    if args.init and not args.no_start_eval:  # the loaded head on this run's points
         ev = evaluate()
         history.append({"rollout": 0, "step": 0, **ev})
         print(f"  eval @ 0 ({args.init} as loaded): {fmt(ev)}", flush=True)

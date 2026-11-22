@@ -44,8 +44,8 @@ settled recipe), `bench/pixel_readout/x2_head.py` (the earlier arms and the whol
 - No finetune head was picked for the Hub; `x2bgan2_1121_1340` stays the Hub file through this
   sequence.
 - Order:
-  1. ×1: 12,000 rollouts at LR 5e-5 (`plan.md`, "The long run at the lower LR"; designed as
-     `x1ll_1122_0855`, postponed by the user, not run). The user's read fixes the ×1 head.
+  1. ×1: 12,000 rollouts at LR 5e-5 (`plan.md`, "The long run at the lower LR"; `x1ll_1122_1000`).
+     The user's read fixes the ×1 head.
   2. ×2, B only: `scripts/pixel_head/train_x2.py` with `init` = the fixed ×1 head and
      `pegan_ratio` 0 (arm B: the real 2× image, base points σ 0.0577 – 0.1364, LPIPS 0.1,
      dc 1.0), longer than `x2b4k_1121_0950`'s 4,000 rollouts.
