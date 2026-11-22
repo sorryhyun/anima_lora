@@ -11,6 +11,7 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
 - [plan.md](plan.md) — the ×1 base recipe, the plan of its GAN finish (the release to be), the
   P5 topics and the open items. P1 – P4: `archive/phases_p1_p4_2026_11_19.md` (local).
 - [x2_plan.md](x2_plan.md) — the ×2 output topic of P5, what is ahead only: B only from the ×1 base (12k at LR 5e-5), then a GAN finetune (2k), and the read.
+- [rgba_plan.md](rgba_plan.md) — the RGBA topic of P5: an alpha head for white and light simple backgrounds; R0 / R1 done (`reports/rgba_r0_r1_2026_11_22.md`), R2 ahead.
 - [reports/](reports/) — the records the plans still work from, indexed in its `README.md`.
 - `archive/` (local, gitignored) — finished runs, probes and closed branches, indexed in its `README.md`.
   In git they end at 4978b929, under `reports/`.

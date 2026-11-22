@@ -1,8 +1,10 @@
 # RGBA output — plan (2026-11-22)
 
 The P5 topic "RGBA" of `plan.md`, as its own plan: an alpha readout at ×1 for renders on a white
-background, trained on real cutouts composited onto white. This file is the training strategy.
-Crawling and filtering are the user's and are not planned here. No step below has run.
+or light simple background, trained on real cutouts composited onto such backgrounds. This file is
+the training strategy.
+Crawling and filtering are the user's and are not planned here. R0 and R1 ran 2026-11-22
+(`reports/rgba_r0_r1_2026_11_22.md`); the steps below are what is ahead.
 
 ## State
 
@@ -12,6 +14,27 @@ Crawling and filtering are the user's and are not planned here. No step below ha
   투명으로 변환, 그걸 그대로 학습"; then, on labels from real alpha: "transparent background 및
   너가 말한대로 필터링해서 크롤링하고 그걸로 학습하면 괜찮을듯?"; then: "여기는 내가 크롤해오면 학습 전략만
   rgba_plan.md 만 쓰자 내가 알아서 필터링해올게".
+- The user (2026-11-22, after the cutouts arrived): "흰색 말고도 연한 다양한 색 (실제 image dataset에서
+  나오는 simple background 의 느낌을 쓰거나 합성하면 좋을듯) 을 쓰면 좋을듯? plan에서 split은 무시하고
+  r0 r1 해보자".
+- The delivered folder `$CAPTION_CORPUS_DIR/transparent` (local), measured 2026-11-22: 327 RGBA + caption
+  pairs, 322 after reposts and near-identical variants, 8 artists, 290 of the files from one.
+- Simple backgrounds of `image_dataset`, measured 2026-11-22: of the tagged images whose border
+  one affine colour field holds, 574 in all, 488 are white and 80 light (luma ≥ 180), neutral greys
+  and pale tints, some with a gradient and grain of a few levels.
+- R0 `rgbar0_1122_1515`, done: at σ 0.0577 – 0.1364 the base head keeps 0.864 – 0.933 of thin
+  strokes' contrast to the background on white, flat and gradient, VAE(x0) 0.963 – 0.975.
+  Generated `white background` borders: median 255, 20 of 20. Colour prompts: 8 of 10 outside the
+  light palette.
+- R1 `rgbar1_1122_1515`, done: the whole head on 16 images × 3 backgrounds, 6,000 updates at LR
+  5e-5: alpha L1 0.0047 fit, 0.0065 the same images on new backgrounds, 0.0387 on 16 images not
+  fitted. Decoding with the estimated B is within 0.01 levels of the true B.
+- The user (2026-11-22, after R1): "누가 up out 돌리래; full만 돌려". The whole head trains; the
+  smaller arms are not run again.
+- The LR check `rgbar1lr_1122_1535` (whole head at 2e-4) was cancelled by the user at 4,500+ of
+  6,000 updates; its last log line: fit L1 0.0015, transition 0.0224, against 0.0049 / 0.0768 at
+  5e-5 and the same step.
+- The user (2026-11-22): "지금 학습 취소하고, 5e-5로 바꾸고 1k로, lpips 넣어".
 - Init is the ×1 base `output/pixel_head/x1ll_1122_1000/head.safetensors` (local), written out as a
   path, and not the release (`plan.md`, State).
 - The base at σ 0.0577 against the original, test 30: 34.25 dB / LPIPS 0.0725. VAE(x̂0): 35.11 /
@@ -35,14 +58,18 @@ Crawling and filtering are the user's and are not planned here. No step below ha
 
 ### Interpretation
 
+- R1 leaves two things open: fine strokes and translucency off the fit images (R2). On the fit
+  images the cancelled LR check points at LR / length for the strokes before the head's form.
 - The content need not be something Anima would generate: the head is teacher-forced on low-σ
   features of a given latent. It has to cover what the decoder will be used on. The weak axis so
   far is a content type (fine strokes, screentone), which alpha at hair tips may share.
-- Compositing onto exact 255 matches the base renders measured, so there is no background
-  augmentation. Two prompts are a small sample; R0 widens it.
+- Exact 255 is what the DiT paints under `white background` (R0). The user's light colours widen
+  what the head is for; saturated and dark ones stay outside it unless the palette is widened.
 - With the background known, alpha is the only unknown: the semi-transparent foreground colour
-  that `plan.md` lists as out of the head's reach follows from C and α.
-- White foreground on white has no pixel evidence. There the head can only use what the feature
+  that `plan.md` lists as out of the head's reach follows from C, α and B. On a light colour B is
+  read from the pixels the head calls background.
+- A foreground of the background's colour has no pixel evidence. There the head can only use what
+  the feature
   knows about the object, which is also where it could beat a colour or flood rule.
 
 ## The form
@@ -51,11 +78,13 @@ Crawling and filtering are the user's and are not planned here. No step below ha
 
 - A separate alpha file in `PixelHead`'s form with one output channel: the base's weights, the
   output layer replaced (512 → 8 × 8 × 1, 32,832 parameters).
-- Target a = 2α − 1. Loss `rec_loss` on it (L1, MSE, gradient). No LPIPS, GAN or composite term.
+- Target a = 2α − 1. Loss `rec_loss` on it (L1, MSE, gradient) + 0.05 LPIPS on a as three
+  channels, 512 crop (the user, 2026-11-22). No GAN or composite term.
 - Decode, with C the RGB decode in [0, 1]:
 
       α = clamp((a + 1) / 2, 0, 1)
-      P = clamp(C − (1 − α), 0, α)          premultiplied foreground
+      B = affine colour field fitted on C where α ≤ 0.02
+      P = clamp(C − (1 − α) · B, 0, α)      premultiplied foreground
       F = P / α where α > 0, else 0         straight colour, for PNG
 
 - C can come from any ×1 decode: the base, the release or the VAE.
@@ -81,14 +110,16 @@ Crawling and filtering are the user's and are not planned here. No step below ha
   |---|---|
   | size | `fit_size`, about 4,100 tokens, native aspect |
   | resize | LANCZOS on premultiplied colour and alpha together |
-  | input | composite on 255 white, VAE-encoded |
+  | input | composite on a background (below), VAE-encoded |
   | label | the resized alpha, uint8, no threshold |
-  | caption | the sidecar through `parse_caption` / `compose_caption`, `transparent background` → `white background` (added if neither is there); TE max-padded |
-  | split | by artist; posts without an artist by id |
-  | held-out | 30 test images from artists outside train, plus a fixed stress set of 10 (hair tips, holes, white on white, semi-transparent) picked before any run is read |
+  | background | `white` 255; `flat`, a light colour of `image_dataset`'s simple backgrounds ± 6 levels, half of the draws tinted; `field`, such a background's affine gradient with its grain |
+  | caption | the sidecar through `parse_caption` / `compose_caption`, `transparent background` → `simple background`, plus `white background` on white; TE max-padded |
+  | split | none by artist (the user); R2 leaves out R1's 16 read-only images |
 
 - Checked once at build: counts, sizes, alpha histogram, composite | alpha sheets of the stress set.
 - `pixel_pages` and the cached training set are not in the mix.
+- Backgrounds, σ and noise are drawn at cache time, `draws` per cutout and background kind; a
+  changed input re-encodes its rows only (`library/anima/pixel_alpha_cache.py`).
 
 ### Interpretation
 
@@ -101,75 +132,52 @@ Each run gets `project/pixel_decoder/configs/<handle>_mmdd_hhmm.toml` with this 
 header. Common to all: base DiT, fp32 stream, DiT and head compiled, σ 0.0577 – 0.1364, through
 the daemon.
 
-### R0. Does the tap hold the cutouts? (forward only, minutes)
+### R2. Does it generalise, and beat post-hoc matting? (micro, 1,000 rollouts)
 
 Facts (as set):
 
-- The base head on held-out composites at σ 0.0577 and 0.1364, against the composite, beside
-  VAE(x̂0): dB and LPIPS on the foreground's box (flat white inflates whole-image dB), and sheets
-  original | VAE(x̂0) and VAE(x̂0) | head on the stress set.
-- The working set below rendered once: the border values of the backgrounds.
+- Two jobs, extraction and training apart (the user, 2026-11-22: "코드 다시 짜 특징추출 (캐싱)이랑
+  학습 분리"; `rgbar2_1122_1542`, which had both in one job, was cancelled at about 50 rollouts):
+  1. cache `rgbacache_1122_1550`: `scripts/pixel_head/cache_alpha.py`, 918 train rows + 96 read, about 20 GB;
+  2. train `rgbar2_1122_1550`, one arm, the whole head: `scripts/pixel_head/train_alpha.py`, the cache alone
+     on the card with LPIPS.
+  The generated-image read and the matting references below follow them, not part of either job.
+- Amount against R1, at 16 updates a rollout and LR 5e-5 from the base:
 
-Interpretation:
-
-- Strokes present in VAE(x̂0) → R1.
-- Strokes gone in VAE(x̂0) already → that detail is out of reach at this tap; it is recorded and
-  not chased by training.
-- Backgrounds off 255 → the composite colour and the decode's B follow the measured values before
-  the cache is built for training.
-
-### R1. How much of the head has to train? (16-image overfit, minutes)
-
-Facts (as set):
-
-- Features computed once for 16 train images, stress content included; the arms differ only in
-  what trains:
-
-  | arm | trains |
-  |---|---|
-  | `out` | the new output layer |
-  | `up` | + `up_blocks`, `norm_out` (about 2.1 M) |
-  | `full` | the whole head (about 23 M) |
-
-- `rec_loss`, the run's optimizer, LR 5e-5. `out` also at 2e-4: its layer starts from random.
-- Read: GT | arm, one file per (image, arm), on black; L1 per region beside it.
-
-Interpretation:
-
-- The smallest arm that holds hair tips and holes is R2's form.
-- `full` does not fit either → the form question of `plan.md` (Open) comes first; a longer run
-  would not answer it.
-
-### R2. Does it generalise, and beat post-hoc matting? (micro, 2,000 rollouts)
-
-Facts (as set):
+  | run | rollouts | updates | Σ LR against R1 | updates an image |
+  |---|---|---|---|---|
+  | R1 | 375 (equivalent) | 6,000 | 1 | 375 (16 images) |
+  | micro | 1,000 | 16,000 | 2.72 | 52 (306 images) |
 
 - Parent: the ×1 base recipe (`configs/pixel_head/base_x1.toml`). 16 updates per rollout, replay
   64, LR 5e-5, one cosine, warmup 200, seed 0.
 - Changed together, not separated: target α for RGB, the cutout set for cache + pages, base points
-  alone (no turbo point), no LPIPS, R1's trainable part.
+  alone (no turbo point), LPIPS on the alpha. The whole head trains (the user, 2026-11-22).
 - References on the same images:
 
   | reference | input | role |
   |---|---|---|
   | all opaque | — | null |
-  | colour key, 1 − min(RGB) | the head's C | null |
-  | flood from the border, min(RGB) ≥ 250 | the head's C | cheap baseline |
+  | colour key against B | the head's C | null |
+  | flood from the border, within 5 levels of B without its grain | the head's C | cheap baseline |
   | BiRefNet, skytnt anime-segmentation | the head's C | baseline to beat; weights to fetch first |
 
-- Held-out numbers, per image and σ: alpha L1 over four GT regions:
+- Held-out numbers, per image and σ: alpha L1 over the GT regions:
   1. transition, 0.02 < α < 0.98;
   2. enclosed background, α ≤ 0.02 and not connected to the border;
   3. near-white foreground, α ≥ 0.98 and min RGB ≥ 240;
-  4. the whole image.
-- The same four for the flood and matting references on the original composite, so a decode error
+  4. translucent interior, 0.02 < α < 0.98 more than 4 px inside;
+  5. thin strokes, under 7 px;
+  6. translucency within 5 levels of B (no pixel evidence), reported apart;
+  7. the whole image.
+- The same regions for the flood and matting references on the original composite, so a decode error
   is not read as a matting error.
 - Generated images: the working set, base 28 steps CFG 4, α from the CFG feature. No GT. Blind
   pairs alpha head | best post-hoc baseline, on black and on checker, one (prompt, seed) per file.
   Beside them: L1 between α of the CFG and of the cond feature.
 - Bars: spread unknown. The user's read decides.
-- Cost: at most about 25 min at the base run's 0.674 s per rollout, plus evals (estimate; this run
-  decodes no VAE target).
+- Cost: not measured on the cache. With the DiT in the loop the cancelled run was at about 1.0 s a
+  rollout at 50, so the base's 0.674 s is no estimate for this head.
 
 Interpretation:
 
@@ -183,7 +191,7 @@ Interpretation:
 
 Facts (as set):
 
-- R2's config with rollouts 2,000 → 12,000, nothing else changed; at most about 2 h 15 min.
+- R2's config with rollouts 1,000 → 12,000, nothing else changed; at most about 2 h 15 min.
 - A seed twin for the spread, with the held-out noise seed fixed apart from `seed` first (today
   `--seed` moves both).
 - Ship read on the second set below, against the best post-hoc baseline, blind. The user decides.
@@ -220,11 +228,9 @@ Ship set, seeds 7, 8, read by no arm before R3:
 
 ## Code to write
 
-- `library/anima/pixel_head.py`: an output channel count on `PixelHead`, stamped `channels`
-  (absent = 3), read by `load_pixel_head`.
-- The cache builder (Data).
-- `scripts/pixel_head/train_alpha.py` + `configs/pixel_head/alpha.toml` on `X1Trainer`'s loop, and
-  an invariant test: a stamped one-channel file round-trips, a three-channel file loads as before.
+- Written 2026-11-22: `library/anima/pixel_alpha{,_data,_cache}.py`,
+  `scripts/pixel_head/{cache_alpha,train_alpha}.py`, `tests/test_pixel_alpha.py`. The channel
+  count goes into the vendored `pixel_head.py` at the ship step.
 - `p3_generated.py`: a prompt-set switch and the alpha read.
 - Decode, catalog, node and docs only after the ship read.
 
@@ -232,5 +238,5 @@ Ship set, seeds 7, 8, read by no arm before R3:
 
 - Turbo σ 0.5: x̂0's outline can leave the original's, so GT alpha may not align. Its own probe
   after R3.
-- Coloured or scenic backgrounds: they need random-background composites and an estimate of B.
+- Scenic, dark or patterned backgrounds.
 - ×2 alpha; tuning the DiT for transparency (LayerDiffuse).

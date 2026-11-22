@@ -1,0 +1,37 @@
+# RGBA R2 micro on the feature cache: rgbar1_1122_1515's full arm -> every cutout, 1,000 rollouts,
+# with LPIPS (the user, 2026-11-22: "5e-5로 바꾸고 1k로, lpips 넣어"; then "특징추출 (캐싱)이랑 학습 분리").
+# One arm: full (the whole head, out fresh at one channel), init x1ll_1122_1000, LR 5e-5.
+# Changed together, not separated: 16 fit images -> 306 cutouts (R1's 16 read-only images stay
+#   out, no split by artist), 48 samples -> 918 cached ones (each cutout on 3 backgrounds, sigma
+#   and noise fixed per row),
+#   6,000 -> 16,000 updates, LPIPS 0 -> 0.05 on the alpha as three channels (the base recipe's
+#   weight and 512 crop).
+# Question: does alpha generalise off the trained images, translucency first, with fine strokes
+#   sharp and flat translucent sheets clean under LPIPS?
+#   Yes -> the read on generated images and against post-hoc matting, then R3's length.
+#   Translucency off train still opaque -> data before length. Strokes merged -> length / LR
+#   (the cancelled 2e-4 check fitted them closer). Texture on flat sheets -> the LPIPS weight.
+# Records it rests on:
+#   - rgbar1_1122_1515 full, alpha L1 all / transition / translucent: new_bg 0.0065 / 0.099 /
+#     0.075 (16 images, then fit), other 0.0387 / 0.241 / 0.260; the same samples are read here.
+#   - x1ll_1122_1000: 16 updates a rollout, replay 64, one cosine, warmup 200, LPIPS 0.05.
+# Read: GT | full sheets of R1's samples (labelled) and L1 per region beside R1's and the flood
+#   null (B without grain); the user's read decides.
+# Bars: spread unknown.
+# Cost: not measured on the cache. The cancelled rgbar2_1122_1542, which ran the DiT in the loop,
+#   was at about 1.0 s a rollout at 50.
+# make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_alpha.py --config <this file>"
+output_name = "rgbar2_1122_1550"
+output_dir = "output/pixel_head"
+cache_dir = "post_image_dataset/pixel_alpha"
+init = "output/pixel_head/x1ll_1122_1000/head.safetensors"
+rollouts = 1000
+opt_steps = 16
+replay = 64
+lr = 5e-5
+warmup = 200
+lambda_lpips = 0.05
+lpips_crop = 512
+eval_every = 250
+compile = true
+seed = 0

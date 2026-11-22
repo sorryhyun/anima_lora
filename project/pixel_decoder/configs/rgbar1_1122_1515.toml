@@ -1,0 +1,30 @@
+# RGBA R1: overfit, an alpha layer on x1ll_1122_1000's head, RGB target -> 2 alpha - 1
+# (rec_loss, AdamW, no LPIPS; project/pixel_decoder/rgba_plan.md R1).
+# Changed together, not separated: the target, the cutout data and its light backgrounds. The
+# arms differ only in what trains: out | out at LR 2e-4 | up_blocks + norm_out | whole head.
+# Question: how much of the head has to train to hold hair tips, holes and translucency on a
+#   background whose colour it is not told? The smallest arm that holds -> R2's form.
+#   full does not fit either -> the head's form (plan.md, Open) before any longer run.
+# Records it rests on:
+#   - rgbar0_1122_1515: what the tap holds on the same images and backgrounds.
+#   - x1ll_1122_1000: LR 5e-5, sigma 0.0577-0.1364, fp32 stream, the recipe's optimizer.
+# Read: fit / same images on unseen backgrounds / 16 images not fitted; L1 per region against
+#   GT, beside the opaque, colour-key and flood nulls (key and flood handed the true B); sheets
+#   GT | arm on alpha, black, checker, labelled; the user's read decides.
+# Bars: the up / up_twin gap (this run) is the spread; no pass bar.
+# Cost: 144 forwards, 5 arms x 6,000 head steps; about 15 min (estimate).
+output_name = "rgbar1_1122_1515"
+stage = "r1"
+cutouts = "{CAPTION_CORPUS_DIR}/transparent"
+bg_source = "image_dataset"
+init = "output/pixel_head/x1ll_1122_1000/head.safetensors"
+n_fit = 16
+sigma_lo = 0.0577
+sigma_hi = 0.1364
+arms = "out,out_2e4,up,up_twin,full"
+steps = 6000
+warmup = 200
+eval_every = 1500
+stream = "fp32"
+compile = true
+seed = 0
