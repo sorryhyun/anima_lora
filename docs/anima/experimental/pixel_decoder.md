@@ -162,8 +162,8 @@ Choices that held up:
 
 | Choice | What it replaced | Record |
 |---|---|---|
-| No linear skip from f to the patch | A P1 linear readout as skip, zero-init output, layer scale 1e-6: stalled at 26.50 dB | `reports/p2_skip_2026_11_19.md` |
-| One 2× upsample stage before the last block | All blocks at token resolution: 32.93 → 33.64 dB test | `reports/upsample_2026_11_19.md` |
+| No linear skip from f to the patch | A P1 linear readout as skip, zero-init output, layer scale 1e-6: stalled at 26.50 dB | `archive/p2_skip_2026_11_19.md` (local) |
+| One 2× upsample stage before the last block | All blocks at token resolution: 32.93 → 33.64 dB test | `archive/upsample_2026_11_19.md` (local) |
 | Output layer kept in fp32 under bf16 autocast | bf16 output weights cost dB (measured with the skip head) | `library/anima/pixel_head.py` |
 
 ## Training
@@ -206,7 +206,7 @@ loop runs during training.
   The two points alternate per rollout, with the LoRA toggled by `set_enabled`.
 - **Data.** The LoRA training caches (`post_image_dataset/lora/`) plus 3,000 manga pages
   (Manga109-s and JA web manga, one fixed tag caption) at share 0.33. The pages took the manga eval from 26.64 to 28.15 dB
-  (`reports/pagemix_2026_11_19.md`).
+  (`archive/pagemix_2026_11_19.md` (local)).
 - **Cost.** 900 rollouts in 11.3 min on a 5070 Ti (`replay_1119_1225`). The release head took
   3,000 rollouts on top of `pagemix_1119_1242` (2,000).
 
@@ -243,7 +243,7 @@ glyphs are slightly soft under zoom. The loss has no perceptual or local-tone te
                               head into the DiT · RGBA · a head at every step · MOSS
 ```
 
-P1–P4 are complete (2026-11-19). Per-phase record: `project/pixel_decoder/reports/phases_p1_p4_2026_11_19.md`.
+P1–P4 are complete (2026-11-19). Per-phase record: `project/pixel_decoder/archive/phases_p1_p4_2026_11_19.md` (local).
 
 ## ×2 output (P5)
 

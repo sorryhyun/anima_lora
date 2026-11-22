@@ -1,12 +1,12 @@
 # Plan (2026-11-19, updated 2026-11-22)
 
 What is ahead on the pixel decoder: the ×1 recipe as confirmed, the GAN finish (confirmed
-to sharpen, shipped as the sharp file), the P5 topics and what is open. What ran is in `reports/` (index:
-`reports/README.md`):
+to sharpen, shipped as the sharp file), the P5 topics and what is open. Records in use are in `reports/`, finished
+ones in `archive/` (local; an index in each `README.md`):
 
-- P1 – P4 and their recipe `reports/phases_p1_p4_2026_11_19.md`; the P4 wrap-up (release,
-  promotion, node) `reports/p4_wrapup_2026_11_19.md`;
-- the release head `realr_1119_2200` `reports/real_target_2026_11_19.md`;
+- P1 – P4 and their recipe `archive/phases_p1_p4_2026_11_19.md` (local); the P4 wrap-up (release,
+  promotion, node) `archive/p4_wrapup_2026_11_19.md` (local);
+- the release head `realr_1119_2200` `archive/real_target_2026_11_19.md` (local);
 - the ×1 batch `1121_2230` and `x1ll_1122_1000` `reports/x1_recipe_2026_11_22.md`;
 - pixel losses into v `reports/lpips_grad_2026_11_21.md`, `reports/lpips_lora_2026_11_21.md`;
 - ×2: `x2_plan.md`.
@@ -60,14 +60,14 @@ make daemon-run ARGS="--queue --stall-timeout 900 bench/pixel_readout/experiment
 
 | part | value | record |
 |---|---|---|
-| form | width 1024, 2 ConvNeXt at token spacing, a 2× pixel shuffle, 1 ConvNeXt, no skip | `upsample_2026_11_19.md`, `p2_skip_2026_11_19.md` |
-| init | `mixr_1119_1455` (target VAE(x̂0)) | `p4_mix_2026_11_19.md` |
-| base points | σ 0.0577 – 0.1364, target the original image, LPIPS 0.05 | `real_target_2026_11_19.md` |
-| turbo point | σ 0.5 with v4_longer, target VAE(x̂0), in turn with the base point | `real_target_2026_11_19.md` |
-| pages | share 0.33 | `pagemix_2026_11_19.md`; 0.1 was run and not taken up, `x1_recipe_2026_11_22.md` |
-| schedule | LR 5e-5, one cosine over 12,000 rollouts, 16 updates each from a 64-rollout replay | `x1_recipe_2026_11_22.md` |
-| σ range | not widened | `x1_recipe_2026_11_22.md` |
-| stream | fp32, DiT and head compiled | `replay_recipe_2026_11_19.md` |
+| form | width 1024, 2 ConvNeXt at token spacing, a 2× pixel shuffle, 1 ConvNeXt, no skip | `archive/upsample_2026_11_19.md` (local), `archive/p2_skip_2026_11_19.md` (local) |
+| init | `mixr_1119_1455` (target VAE(x̂0)) | `archive/p4_mix_2026_11_19.md` (local) |
+| base points | σ 0.0577 – 0.1364, target the original image, LPIPS 0.05 | `archive/real_target_2026_11_19.md` (local) |
+| turbo point | σ 0.5 with v4_longer, target VAE(x̂0), in turn with the base point | `archive/real_target_2026_11_19.md` (local) |
+| pages | share 0.33 | `archive/pagemix_2026_11_19.md` (local); 0.1 was run and not taken up, `reports/x1_recipe_2026_11_22.md` |
+| schedule | LR 5e-5, one cosine over 12,000 rollouts, 16 updates each from a 64-rollout replay | `reports/x1_recipe_2026_11_22.md` |
+| σ range | not widened | `reports/x1_recipe_2026_11_22.md` |
+| stream | fp32, DiT and head compiled | `archive/replay_recipe_2026_11_19.md` (local) |
 
 At σ 0.0577 against the original image, dB / LPIPS (spread: the `realr` / `x1twin` gap of two
 3,000-rollout runs, test 0.04 / 0.0013; unknown at 12,000):
@@ -253,7 +253,7 @@ line of work with its own proposal; order not set. The first steps are Claude's 
 
 ### ×2 / ×4 output
 
-Its own plan: `x2_plan.md`. Next there: B only from the ×1 base, longer, then a short GAN finish.
+Its own plan: `x2_plan.md`. Next there: B only from the ×1 base (12k at LR 5e-5), then a GAN finetune (2k).
 
 ### RGBA
 
@@ -303,11 +303,11 @@ memory is the motive there (the fp32 VAE decode does not fit beside the DiT). No
   user's read on `mixr_1119_1455`, good enough to release). On the finish light tone gets its
   dots back and dark tone turns into a weave (Claude's read, labelled; Outcome).
 - Tone: the head is darker than the VAE on textured regions (the user's read; `tone_probe.py`,
-  `reports/p4_mix_2026_11_19.md`): about 2.5 levels in linear light on screentone-like blocks of
+  `archive/p4_mix_2026_11_19.md` (local)): about 2.5 levels in linear light on screentone-like blocks of
   mono renders on the base DiT, 1 on turbo, under 1 level over a whole image; flat regions level.
   The loss has no term on local tone.
 - The turbo point is trained on v4_longer; other turbo files are outside it
-  (`reports/release_2026_11_19.md`).
+  (`archive/release_2026_11_19.md` (local)).
 - Spectrum renders of `mixr_1119_1455` have numbers only (34.37 / 26.00); no sheet was made.
 - Not run in ComfyUI: the Spectrum KSampler, the base DiT at CFG 4.
 - The head's flat grey on screentone carries a faint regular weave at the patch scale (Claude's
@@ -320,9 +320,9 @@ memory is the motive there (the fp32 VAE decode does not fit beside the DiT). No
   that rounding costs readout PSNR is unchecked.
 - The compiled head (`torch.compile(head, dynamic=True)`) hits `recompile_limit` 12 on image
   shape and runs eager after that, in every run of the replay recipe
-  (`reports/p4_mix_2026_11_19.md`); speed only.
+  (`archive/p4_mix_2026_11_19.md` (local)); speed only.
 - Spread: one twin pair at 3,000 rollouts (`realr` / `x1twin`, which also differ in the held-out
   noise); none at 12,000.
 - Grey tint on mono generations (Claude's read on `p3_1119_1056`): on teacher-forced greyscale
-  pages the pagemix head adds about 0.5 level of chroma over the VAE (`reports/pagemix_2026_11_19.md`);
+  pages the pagemix head adds about 0.5 level of chroma over the VAE (`archive/pagemix_2026_11_19.md` (local));
   generated mono images are not re-checked.

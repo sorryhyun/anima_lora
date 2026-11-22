@@ -18,7 +18,7 @@ Crawling and filtering are the user's and are not planned here. No step below ha
   0.0560 (`plan.md`, "The ×1 base recipe").
 - A head trained on real latents read generated colour images at 30.90 dB against VAE(x_final),
   26 renders, and generated mono at 22.51, 6 renders. Its CFG feature and cond feature read
-  within 0.03 dB (`reports/p3_2026_11_19.md`).
+  within 0.03 dB (`archive/p3_2026_11_19.md` (local)).
 - Background of generated white-background images, measured 2026-11-22 on existing sheets (local:
   `bench/pixel_readout/results/20261122-1215-x1llb28_1122_1000/`,
   `20261122-1222-x1llturbo_1122_1000/`): prompts `maid` and `chibi` × seeds 0, 1, the 12-px image

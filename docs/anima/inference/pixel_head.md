@@ -28,7 +28,7 @@ At any other last-step σ it still decodes and logs a warning; no refusal. The c
 (`realr_1119_2200`, since 2026-11-19) was trained on the original image with LPIPS at the base
 points and on VAE(x̂0) at the turbo point, with the turbo LoRA
 `anima_turbo_4step_v4_longer.safetensors`; it reads 33.75 dB / LPIPS 0.081 against the original
-on held-out test images at σ 0.0577 (`project/pixel_decoder/reports/real_target_2026_11_19.md`).
+on held-out test images at σ 0.0577 (`project/pixel_decoder/archive/real_target_2026_11_19.md` (local)).
 The previous head (`old/anima_pixel_head.safetensors` on the Hub, VAE(x̂0) target, turbo point
 on the turbo repo's `old/` file) read turbo 35.4 dB and base 28 steps + Spectrum 33.0 dB against
 the VAE decode; the numbers below are that head's.
@@ -68,7 +68,7 @@ Spectrum), **Anima Pixel Decode** (tapped MODEL, the sampler's LATENT, head file
 Decode; it decodes at the head file's own scale (no scale input since 0.3.1). The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
 `pixel_head`. Run the DiT on the fp32 stream (Anima Adapter Loader `stream = fp32`), as the head
 was trained. Turbo in ComfyUI 0.43: 1.127 s per image with VAE Decode, 1.005 s with the head
-(`bench/pixel_readout/comfy_e2e.py`, `project/pixel_decoder/reports/comfy_node_2026_11_19.md`).
+(`bench/pixel_readout/comfy_e2e.py`, `project/pixel_decoder/archive/comfy_node_2026_11_19.md` (local)).
 
 ## How it works
 

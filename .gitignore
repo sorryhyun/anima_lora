@@ -55,6 +55,8 @@ _logs/
 .anima-update-backups
 node.zip
 _archive
+# finished pixel_decoder reports, kept local (tracked up to 4978b929 under reports/)
+/project/pixel_decoder/archive/
 gui/gui_settings.json
 sincos_decensored/
 # ResShift SR sidecar (finished — lives under project/finished/sr/, whose own

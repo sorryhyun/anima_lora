@@ -19,7 +19,7 @@
 #     (deploy/README.md, "wavy pattern" on the shorts) is the user's second instance.
 #   - x2gan1 / x2gctl / x2gan4 at rollout 1000, test 12 / text 5 against the real 2× image:
 #     29.93 / 25.49 dB, LPIPS 0.153 / 0.144; 30.18 / 25.57, 0.145 / 0.142; 29.50 / 25.23,
-#     0.186 / 0.180 (reports/x2_gan_micro_2026_11_21.md). x2bgan2 at 4000: 29.82 / 25.52,
+#     0.186 / 0.180 (archive/x2_gan_micro_2026_11_21.md, local). x2bgan2 at 4000: 29.82 / 25.52,
 #     0.158 / 0.145.
 #   - x2bgan2's GAN weight: 0.151 at rollout 1050 (head LPIPS 0.27, LR at 0.85 of peak), 0.012
 #     at 1250, 0.006 at 4000 (reports/x2_full_run_deploy_2026_11_21.md).

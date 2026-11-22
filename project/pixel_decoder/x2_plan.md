@@ -1,114 +1,97 @@
 # ×2 output — plan (2026-11-19, updated 2026-11-22)
 
-The P5 topic "×2 / ×4 output" of `plan.md`, as its own plan: decode and 2× upscale in one
-readout of the DiT's last features, so a 1024-tier render leaves the head at 2048. This file
-holds what is ahead; everything that ran is in `reports/` (index: `reports/README.md`):
+The P5 topic "×2 / ×4 output" of `plan.md`: decode and 2× upscale in one readout of the DiT's
+last features, so a 1024-tier render leaves the head at 2048. This file holds only what is
+ahead. Records in use: `reports/`. Finished ones: `archive/` (local). Each has an index in its `README.md`.
 
-- arm A `x2_arm_a_2026_11_19.md`, arms 1 + 2 `x2_lpips_dc_2026_11_19.md`, the preview release
-  `x2_preview_release_2026_11_19.md`, arm 3 `x2_critic_2026_11_20.md`, the feature probe
-  `feat_probe_2026_11_20.md`, the state after arm 3 and the finished-arms table
-  `x2_state_2026_11_20.md`;
-- arm B (the real 2× image as the target) `x2_arm_b_2026_11_20.md`, B at 4,000 rollouts
-  `x2_b4k_2026_11_21.md`, the discriminator probes `x2_disc_probes_2026_11_21.md`, the GAN
-  micro arms and the glyph read `x2_gan_micro_2026_11_21.md`;
-- the settled recipe, its full run `x2bgan2_1121_1340`, the training code's move into the
-  library, the deployment plan and the "Deployed" record `x2_full_run_deploy_2026_11_21.md`;
-- the tiled pattern on that file and the GAN finetune arms `x2gft_1121_2225` /
-  `x2gftw_1121_2300` / `x2gftl_1121_2300` `x2_tile_gft_2026_11_22.md`.
-
-Code: `scripts/pixel_head/train_x2.py` on `library/anima/pixel_head_train.py` (training of the
-settled recipe), `bench/pixel_readout/experiments/x2_head.py` (the earlier arms and the whole-image
-reads), `bench/pixel_readout/experiments/x2_overfit.py` (fit probe), and in `bench/pixel_readout/`
-`x2_masters.py` / `x2_flex.py` (real 2× targets and the set),
-`x2_pair.py` (pair sheets); results under `bench/pixel_readout/results/` and
-`output/pixel_head/` (local).
+Code: `scripts/pixel_head/train_x2.py` on `library/anima/pixel_head_train.py`. Outputs:
+`output/pixel_head/<run>/` (local).
 
 ## State
 
-- The form: a ×1 head plus a second 2× stage (512 → 4 × 256 pixel shuffle, ConvNeXt blocks at
-  4-px spacing, an 8×8 RGB patch per position, 32×32 output pixels per token). The shipped ×2
-  file holds the ×2 output only; the file decides the scale.
-- Shipped: Hub `anima_pixel_head_x2.safetensors` = `x2bgan2_1121_1340` (arm B's recipe with the
-  PE-Spatial GAN term at ratio 2 from rollout 1000 of 4,000): 29.82 / 25.52 dB, LPIPS 0.158 /
-  0.145 against the real 2× image (test 12 / text 5).
-- Reported by the user on that file (2026-11-21): a systematic tiled pattern on fine texture,
-  and a region of fine dense strokes coming out blurred.
-- The GAN finetune heads (`x2gft`, `x2gftw`: ratio 2 on the converged B 4k head, 1,000
-  rollouts) were not picked for the Hub; the shipped file stays through the sequence below.
+- The form: a ×1 head plus a second 2× stage, 32×32 output pixels per token. A ×2 file holds
+  the ×2 output only.
+- The file to replace: Hub `anima_pixel_head_x2.safetensors` = `x2bgan2_1121_1340`. The user
+  reported on it (2026-11-21) a systematic tiled pattern on fine texture and a blurred region
+  of fine strokes.
+- The ×1 base to start from: `x1ll_1122_1000`,
+  `output/pixel_head/x1ll_1122_1000/head.safetensors` (local).
 
 ## The sequence after the ×1 head is fixed (2026-11-22)
 
+Two runs in order, then the read. Neither is queued and neither config is written.
+
 ### Facts
 
-- The user (2026-11-22): "x2는 어차피 x1에서 init한 형태이니까, x1를 먼저 5e-5로 돌려보고 x1를
-  확정한다음 x2도 longer and better recipe (b only -> gan 마무리) 로 하면 좋겠어."
-- The user (2026-11-22, later): "x2 하듯이 마지막에 gan 마무리 하는걸 배포본으로, 그리고 x1ll 은 일종의
-  base 느낌으로, x2나 추후 rgba 용도 등으로 사용하면 어때?" So the ×1 head this sequence starts from
-  is the base `x1ll_1122_1000`, and not the ×1 release.
-- No finetune head was picked for the Hub; `x2bgan2_1121_1340` stays the Hub file through this
-  sequence.
-- Order:
-  1. ×1: 12,000 rollouts at LR 5e-5 (`x1ll_1122_1000`, done;
-     `reports/x1_recipe_2026_11_22.md`): the base. Its own GAN finish (`plan.md`) is the ×1
-     release and is not an input here.
-  2. ×2, B only: `scripts/pixel_head/train_x2.py` with `init` = the base's path,
-     `output/pixel_head/x1ll_1122_1000/head.safetensors`, written out (an
-     empty `init` loads the catalog's head, the release), and
-     `pegan_ratio` 0 (arm B: the real 2× image, base points σ 0.0577 – 0.1364, LPIPS 0.1,
-     dc 1.0), longer than `x2b4k_1121_0950`'s 4,000 rollouts.
-  3. ×2, GAN finish: the `x2gft` form on that head (`resume`, `pegan_ratio` 2, `pegan_start` 0,
-     a new cosine cycle, 1,000 rollouts), with a seed twin.
-  4. Read: the `text_04` place, the monochrome render and the fine-stroke renders, the new head
-     beside the shipped file. The user's read decides the Hub file.
-- Records the steps rest on: `x2b4k_1121_0950`'s ×2 LPIPS on test read 0.196 at rollout 0, 0.272
-  at 1,000, 0.195 at 2,000 and 0.141 at 4,000 (still falling at the end of its cosine); `x1lowlr`
-  against `realr` and `x1long` against `realr` on ×1 (`reports/x1_recipe_2026_11_22.md`); `x2gftl`'s stripes at
-  3,000 GAN rollouts against none at 1,000 (`reports/x2_tile_gft_2026_11_22.md`).
-- The user's read of `x2gftw` / `x2gftl` (2026-11-22): "확실히 길게 학습하는게 좋네"
-  (`reports/x2_tile_gft_2026_11_22.md`). Step 3's 1,000 rollouts were set before that read: its
-  length is open.
-- Not set yet: step 2's length and LR. No ×2 run has been made at another LR or past 4,000
-  rollouts; the values are written into the run's config when step 1 is read.
+The user (2026-11-22): "x1 base 에서 init해서 x2 b only 로 12k with low lr (the same with x1 low
+lr) 그다음 gan finetune 2k 하는걸로 x2 plan 업데이트 하자".
+
+| | 1. B only | 2. GAN finetune |
+|---|---|---|
+| starts from | `init` = the base's path, with a new second stage | `resume` = step 1's `head_x2.safetensors` |
+| `rollouts` | 12000 | 2000 |
+| updates (16 per rollout) | 192,000 | 32,000, all with the term |
+| `lr` | 5e-5, one cosine | 5e-5, a new cosine |
+| `pegan_ratio` | 0 | 2 |
+| `pegan_start` | unused | 0 |
+| `eval_every` | 1000 | 500 |
+| seed | 0 | 0, and a twin at 1 |
+| cost, estimated | 2.8 – 3.4 h + evals | 43 – 45 min + evals, each |
+
+- Every other key is `configs/pixel_head/x2.toml`'s: arm B (the real 2× image as the target, σ
+  0.0577 – 0.1364, LPIPS 0.1, dc 1.0). That file's own `lr`, `rollouts`, `pegan_ratio` and
+  `pegan_start` are the shipped file's recipe, so both run configs set them.
+- `init` is written out: empty, it loads the catalog's head, which is not the base.
+- Where the values come from: step 1's LR, length and eval interval are `x1ll_1122_1000`'s.
+  Step 2's length is the user's. Its LR and eval interval are the ×1 finish's
+  (`x1fgan_1122_1247`), its ratio and start `x2gft_1121_2225`'s. The twin is carried over from
+  this plan's previous version.
+- Costs come from 0.84 (`x2b4k_1121_0950`) to 1.02 s per rollout (`x2move_1121_1350` at rollout
+  150) without the term, and 1.29 – 1.35 s with it (`x2gftl_1121_2300`, `x2gft_1121_2225`).
+- Both load paths were checked on the CPU (2026-11-22): the base into a new ×2 head, and a file
+  saved by `train_x2.py` as a resume.
+
+Records the steps rest on, test / text against the real 2× image:
+
+| run | updates | LR | summed LR | dB | LPIPS |
+|---|---|---|---|---|---|
+| `x2b4k_1121_0950`, B only from the preview | 64,000 | 2e-4 | 6.4 | 30.45 / 25.92 | 0.141 / 0.137 |
+| step 1 | 192,000 | 5e-5 | 4.8 | | |
+| `x2gft_1121_2225`, finetune on that head | 16,000 | 2e-4 | 1.6 | 29.74 / 25.40 | 0.161 / 0.149 |
+| `x2gftl_1121_2300`, the same, longer | 48,000 | 2e-4 | 4.8 | 29.86 / 25.48 | 0.152 / 0.135 |
+| step 2 | 32,000 | 5e-5 | 0.8 | | |
+
+- Summed LR is LR × updates / 2 (cosine), warmup left out.
+- On `x2gftl` against the shorter finetune (`reports/x2_tile_gft_2026_11_22.md`):
+  - The user's read: "확실히 길게 학습하는게 좋네".
+  - Claude's read, labelled: parallel stripes at 48,000 updates, none at 16,000.
+
+Read:
+
+1. Step 1: its evals beside `x2b4k`'s row.
+2. Step 2: its evals beside step 1's end and the `x2gft` row.
+3. Renders, the new finetune beside the shipped file, one pair per file: the `text_04` mesh, the
+   monochrome render (seed 42), the fine-stroke renders (seeds 42, 43). The user's read decides
+   the Hub file.
+
+Bars: spread unknown at these settings. `seed` also moves the held-out noise in `train_x2.py`
+(`DiTRollout`), so the twin's gap is a spread only after both heads are read on one noise.
 
 ### Interpretation
 
-- `x2b4k` spent half its run under its start, as `realr` did on ×1, and ended while still
-  improving; the ×1 batch says a warm start gains from a lower LR and from length. Step 2 carries
-  that over, and its config names the carry-over as unmeasured on ×2.
-- The GAN stays a short finish on a converged head: that form has no pinwheel on two seeds, and
-  length on it brings a regular pattern back.
-- The ×1 head changes under step 2 (the base trains with the second stage), so the ×2 file's own
-  ×1 column is read against the fixed ×1 head, as in "Keeping ×1" below.
-
-## Next arms
-
-Claude's drafts, none queued, behind the sequence above. Micro arms on arm B's recipe, read as
-arm B is. The numbering is kept: the reports cite it.
-
-1. Done: GAN on PE-Spatial features (`reports/x2_arm_b_2026_11_20.md`,
-   `reports/x2_gan_micro_2026_11_21.md`, `reports/x2_full_run_deploy_2026_11_21.md`).
-2. The ×2 stage's width (1.6 M new parameters at width 256), if arm B reads level or the GAN
-   arm sharpens too little.
-3. The turbo point at ×2: postponed by the user (2026-11-20).
-4. Keeping ×1: the ×1 loss weight, or a lower LR on the base, against the drift under ×2
-   training. Read on the ×1 column of any arm above before a separate run.
-
-Not taken up: the previous step's feature as a second input (+0.24 dB on a linear readout,
-`reports/feat_probe_2026_11_20.md`).
+- Question: does a converged low-LR B head from the ×1 base, with a 2k finetune, give sharp
+  lines without the regular pattern? Yes on the user's read → it replaces the Hub file. A
+  pattern → the finetune's length or ratio is redone from step 1's head. No pattern and soft
+  lines → the finetune is too weak at this LR.
+- Not separated against `x2b4k`: the init, the LR and the length change together.
+- Not measured on ×2: LR 5e-5. On ×1 every layer started trained. Here the second stage starts
+  new, and step 1's summed LR is 0.75 of `x2b4k`'s, which itself continued a trained stage. A
+  step 1 that ends behind `x2b4k` and still falling is short, and is read so before step 2.
+- Step 2 has twice `x2gft`'s updates at half its summed LR, with the discriminator's LR
+  unchanged at 1e-4. Whether the stripes follow the update count or the head's movement is not
+  known.
 
 ## Open
 
-- One twin pair only (`x2gft` / `x2gftw`, the GAN finetune form); no spread for the other ×2
-  recipes.
-- 16-window fit: a ceiling or slow convergence is not separated (the cosine schedule ends as
-  the curve flattens); the 2-window numbers rest on one window per point.
-- Numbers are teacher-forced only. Base rollouts through the ×2 head exist as renders (the
-  card's, the monochrome and fine-stroke ones), with no number on them; no turbo rollouts; no
-  end-to-end time beside VAE → ResShift (teacher 3.16 s per image against the head's 12.9 ms).
-- The dark-pixel lift is not split into softness and tone; `tone_probe.py` does not read the
-  two-column sheets.
-- No seed twin of a full ×2 run (the two-run gaps in
-  `reports/x2_full_run_deploy_2026_11_21.md` are from rollouts 500 and 1000).
-- ×4 not started.
-- Arm B: whether masters are upscales or re-encoded (matters most on 896 / 768, near 1:1);
-  a 2× source for the manga pages; a held-out set inside the 1024 set.
+- The turbo point at ×2: postponed by the user (2026-11-20).
+- ×4: not started.
