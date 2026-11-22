@@ -551,9 +551,7 @@ def split_daemon_run_args(
 def cmd_daemon_run(extra):
     """Submit an arbitrary GPU command job (``ARGS="<script.py> [flags…]"``).
 
-    For a bench script or one-off probe that a background shell would lose: an
-    agent harness silently SIGKILLs GPU work started there after ~60s. Same run
-    modes as the train/gen targets: attach by default (stream stdout, exit with
+    For a bench script or one-off probe. Same run modes as the train/gen targets: attach by default (stream stdout, exit with
     the job's code, ctrl-C detaches), ``--queue`` to detach, ``--inline`` to
     bypass the daemon.
 

@@ -1,20 +1,18 @@
 """Comfy-native register-token adapter for the Anima DiT (cosmos MiniTrainDIT).
 
-The training-side adapter (``networks/methods/register.py``) patches the DiT's
-**fused** ``self_attn.qkv_proj`` and wraps ``_run_blocks`` (a training-only seam).
-ComfyUI's Anima runs ``comfy.ldm.cosmos.predict2.MiniTrainDIT`` which has **split**
-``q_proj``/``k_proj``/``v_proj`` and an inline block loop (no ``_run_blocks``). So
-this file is a from-scratch reimplementation against the comfy backbone — the same
-pattern the EasyControl KSampler node used ("reimplemented against predict2, split
-q/k/v"). No vendored training code.
+Register checkpoints were trained against the DiT's **fused**
+``self_attn.qkv_proj`` and its ``_run_blocks`` seam. ComfyUI's Anima runs
+``comfy.ldm.cosmos.predict2.MiniTrainDIT``, which has **split**
+``q_proj``/``k_proj``/``v_proj`` and an inline block loop (no ``_run_blocks``), so
+this file reimplements the mechanism against the comfy backbone. No vendored
+training code.
 
 What it does, faithfully mirroring the training mechanism:
 
 * **Split QKV surface.** The checkpoint stores the surface already split into
   q/k/v (``qkv.{bi}.q/k/v`` for unfrozen, or ``down`` + ``up_q/up_k/up_v`` for
-  lora — see ``register.py``). We fold any lora into a single ``(inner, D)`` ΔW
-  per component and add it onto ``q_proj``/``k_proj``/``v_proj`` — a direct match,
-  zero fusion logic. **This is the q/k/v fix.**
+  lora). We fold any lora into a single ``(inner, D)`` ΔW per component and add
+  it onto ``q_proj``/``k_proj``/``v_proj`` — a direct match, zero fusion logic.
 * **Register tokens.** ``K`` learned tokens are concatenated onto the self-attn
   sequence at block ``insert_block`` (DSR's "starting block"; 0 = stack entry —
   the default for pre-``ss_insert_block`` checkpoints), carried through the
@@ -35,7 +33,7 @@ rebuild), a strength change on re-queue always takes effect, workflows that skip
 the node see the pristine model, and no stranded references trip ComfyUI's
 "memory leak with model" detector (refcount-based — permanent bound-method
 attributes on the module are self-cycles it can't free without a full gc).
-Do NOT stack with the Block Compile node — the register mechanism runs eager.
+The register forward runs eager.
 """
 
 from __future__ import annotations

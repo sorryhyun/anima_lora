@@ -17,8 +17,6 @@ the pipeline does.
 Block compile is on by default (``torch.compile(dynamic=True)``, one graph for
 every sample size); it pays where the step is compute-bound (−11 % at 1024²) and
 not where it is PCIe-bound. Modes: ``accel.compile_blocks``.
-
-    make daemon-run ARGS="scripts/qwen21/train.py --epochs 8"
 """
 
 from __future__ import annotations

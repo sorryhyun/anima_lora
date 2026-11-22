@@ -20,9 +20,6 @@ Pieces, in the order a rollout uses them:
 - :class:`X2Trainer` — replay buffer, schedule, the PE-GAN weight rule and its start.
 - :func:`psnr`, :func:`tone_stats`, :func:`densest_window`, :func:`pair_sheet` — the read.
 - :func:`save_x2_head` — the file :func:`library.anima.pixel_head.load_pixel_head` reads.
-
-The earlier arms (teacher target, ×1 loss in a ×2 file) and the whole-image reads with the
-teacher columns are in ``bench/pixel_readout/experiments/x2_head.py``.
 """
 
 from __future__ import annotations

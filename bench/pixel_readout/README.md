@@ -6,7 +6,7 @@ App. C). Run records, numbers and reads: `project/pixel_decoder/reports/` (in us
 `project/pixel_decoder/archive/` (finished; local), an index in each `README.md`. Plan and current recipe: `project/pixel_decoder/plan.md`.
 
 The model code (`PixelHead`, `PixelTap`, `load_pixel_head`, `lat_patches`, `from_patches`,
-`PATCH`) lives in `library/anima/pixel_head.py` since 2026-11-19. A script here imports the
+`PATCH`) lives in `library/anima/pixel_head.py`. A script here imports the
 library and this package's `_*.py`, never another script: `_shared.py` (run lookup, sizes),
 `_prompts.py` (P3's prompts), `_teacher.py` (the ResShift ×2 student), `_masters.py` (real 2×
 targets).
@@ -15,13 +15,10 @@ Training of the settled recipes is in `scripts/pixel_head/`:
 
 - ×1 base: `base_x1.py` (`configs/pixel_head/base_x1.toml`)
 - ×1 GAN finish on the base: `train_x1.py` (`configs/pixel_head/x1.toml`)
-- ×2: `train_x2.py` (`configs/pixel_head/x2.toml`)
+- ×2: `train_x2.py` (`configs/pixel_head/x2.toml`; the real 2× image as the target, PE-GAN
+  from a start rollout), on `library/anima/pixel_head_train.py`
 
-The arms that led to them are in `experiments/`.
-
-×2 training of the settled recipe (the real 2× image as the target, PE-GAN from a start
-rollout) is `scripts/pixel_head/train_x2.py` on `library/anima/pixel_head_train.py`
-(config `configs/pixel_head/x2.toml`) since 2026-11-21. `experiments/x2_head.py` keeps the earlier
+The arms that led to them are in `experiments/`. `experiments/x2_head.py` keeps the earlier
 arms (teacher target, ×1 loss in a ×2 file) and the whole-image reads with the teacher / chain
 columns; it imports the loss, window, discriminator and sheet helpers from the library module.
 

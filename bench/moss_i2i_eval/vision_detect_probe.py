@@ -6,7 +6,7 @@ whether the clean twin differs there. Folds are grouped by artist, so a recurrin
 watermark is never on both sides.
 
 Arms (image rows only; rows per page are logged, they are the cost):
-  img         image alone at the page's pixel count (= the rows of today's image → caption order)
+  img         image alone at the page's pixel count (= the rows of the shipped image → caption order)
   cap_img     the sanitize caption, then the image
   neu_img     a neutral caption, then the image
   img_lo      image alone at a quarter of the pixels

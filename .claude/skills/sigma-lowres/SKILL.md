@@ -27,7 +27,8 @@ spans/routes, are setup-time errors — the surface validates before the model l
 `--sigma_lowres_span early|late|spread[:FRAC]` gates by training progress (bias placed
 during subspace selection is amplified). `_span2` is the same for rule 2.
 
-- **combolate** — the shipped recipe, what `configs/base.toml` sets: the stacked router
+- **combolate** — the shipped recipe, the knobs `configs/base.toml` carries (with
+  `sigma_lowres = false`): the stacked router
   with `late:0.75` spans on **both** rules. ~−14% wall, ΔW ~0.75 (endpoint weights close
   to native).
 - **combo** — both spans cleared (`sigma_lowres_span = ""` / `_span2 = ""`): the
@@ -41,5 +42,4 @@ during subspace selection is amplified). `_span2` is the same for rule 2.
   preprocess-demote` emits them. Siblings are **keys inside** the native VAE npz
   (`demoted_{H}x{W}`, one per route, outside the latents namespace) — not separate files.
 - Validation stays native; output is an ordinary LoRA.
-- In the soup pipeline, `--sigma_lowres*` is a whole-pipeline knob replayed onto the
-  uncond run and folded into its name — see the `soup` skill.
+- Soup pipeline handling of `--sigma_lowres*`: `soup` skill § Knobs.

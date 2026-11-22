@@ -5,28 +5,20 @@ description: Qwen-Image-2.1 LoRA line (NOT Anima) — running cache/train throug
 
 # Qwen-Image-2.1 LoRA (`library/qwen21/`)
 
-**Not Anima.** Read `library/qwen21/CLAUDE.md` first — the root invariants (5D latents,
-max-padded text, free-fit bucketing) are wrong here. Research state
-and measured numbers: `project/finished/qwen21_lora/README.md` + `report.md`.
+Code map, the import boundary and the invariants that differ from Anima: `library/qwen21/CLAUDE.md`
+(read it first). Research state and measured numbers: `project/finished/qwen21_lora/README.md` +
+`report.md`.
 
 ## Layout
 
 | Where | What |
 |---|---|
-| `library/qwen21/` | core: `loader` / `lora` / `accel` (the swapper attachment is `library/runtime/blockswap.py`), `cache.run_cache(req)`, `train.run_train(req)`, `generate.run_generate(req)` |
-| `library/qwen21/requests.py` | **torch-free** `CacheRequest` / `TrainRequest` / `GenerateRequest` — the one flag definition |
-| `library/qwen21/scan.py` | torch-free folder/cache counts (GUI) |
+| `library/qwen21/` | core (module table: `library/qwen21/CLAUDE.md`) |
 | `scripts/qwen21/{cache,train,generate}.py` | sidecar CLIs: `Request.from_argv()` → `run_*` |
 | `gui/qwen21/` | `make gui-qwen` window (en/cn): the `LineSpec` + strings over the shared `gui/lines/window.py` (also used by `make gui-moss`) |
-| `project/finished/qwen21_lora/src/` | one-off research scripts (`backward_smoke`, `smoke_t2i`, `bench_accel`) |
-
-`tests/test_qwen21_boundary.py` enforces the island: nothing Anima-side imports
-`library.qwen21`; it imports only `library.env` / `library.runtime.{offloading,blockswap,device,dynamo}`;
-`requests` and `gui.qwen21.app` stay torch-free.
+| `project/finished/qwen21_lora/src/` | one-off research scripts |
 
 ## Running
-
-GPU work goes through the daemon:
 
 ```bash
 make daemon-run ARGS="--stall-timeout 900 scripts/qwen21/cache.py --src 'post_image_dataset/resized/channel_(caststation)'"
@@ -48,7 +40,9 @@ each run to `out_dir/<timestamp>/`, and shows the pair from its `manifest.json`.
 Defaults: `--src post_image_dataset/resized` (walks subfolders; captions = the revised
 `{stem}.txt`, `.variants.txt` ignored), cache and LoRA under `output/qwen21/`. The
 research cache is `project/finished/qwen21_lora/cache` — pass `--out` / `--cache` explicitly.
-Relative paths resolve under the repo home, not the CWD.
+Relative paths resolve under the repo home, not the CWD. `post_image_dataset/resized` is
+already Anima-resized, so `--resolution` resamples it a second time (resized, never cropped:
+`library/qwen21/CLAUDE.md`).
 
 **Model dir** (diffusers layout: `transformer/ text_encoder/ vae/ scheduler/`):
 `--model_dir` → `$ANIMA_QWEN21_MODEL_DIR` (env or `.env`) → `models/qwen_image_2.1`. On
@@ -83,10 +77,6 @@ choices made.
   stem in two subfolders; the GUI warns before submitting.
 - **Caching skips existing files.** An edited caption keeps its old embedding until
   `--overwrite` (or the `.te` file is deleted). The GUI counts these as stale.
-- **Resolution is an area, not a crop.** `calculate_dimensions(res², aspect)` keeps the
-  native aspect with both edges on a multiple of 32. The image is resized, not cropped, so
-  aspect drifts up to ~2 %. `post_image_dataset/resized` input is already Anima-resized,
-  so it gets resampled twice.
 - **Stall budget.** The daemon's default command watchdog is 120 s. The text-encoder load
   and long passes can be quieter than that, so the GUI submits with 900 s; pass
   `--stall-timeout 900` on the CLI too.
@@ -98,9 +88,11 @@ choices made.
   `  latents i/n`, `  step i/n`, `  image i/n`. Keep that shape if you change the prints
   — the GUI's bar parses it (tqdm bars too, but tqdm's `\r` redraws only reach the log
   at the next newline, so the denoise bar arrives in one burst).
-- **Swap sizing.** `report_fit` prints after step 1 with a `--blocks_to_swap`
-  suggestion measured against `mem_get_info` free. At 1024² the step is compute-bound,
-  so fewer swaps doesn't make it faster (see `library/qwen21/CLAUDE.md`). The reserve
+- **Size the swap from a measurement, not a reserve guess.** `report_fit` prints the fit
+  after step 1 with a `--blocks_to_swap` suggestion measured against `mem_get_info` free,
+  not `total - max_allocated`, which ignores the allocator's reserve (~0.7 GB) and the
+  desktop (~0.5 GB) and recommends a swap that OOMs. At 1024² the step is compute-bound,
+  so fewer swaps does not make it faster (swap 14→5 changed nothing). The reserve
   the sizer leaves for activations follows the cache: a checkpointed step holds
   **0.3 GB + 0.6 MB × (largest image + text token count)** (measured 2026-09-24, affine
   to 6746 tokens, text and image tokens cost the same — `project/finished/qwen21_lora/report.md`
@@ -109,8 +101,10 @@ choices made.
   the old constant 3.5 left 0.5 GB spare and 2.0 OOMed at step 1; ~1.5 GB for 512² data.
   `--activation_reserve_gb` overrides it with a constant.
 - **Block compile is on by default** (`--compile_seq dynamic`, `torch.compile(dynamic=True)`):
-  −11 % per step where the step is compute-bound, ~40 s of compile at step 1, one graph
-  for every sample size. `--no-compile` for a quick smoke; `--compile_seq bounded` is the
-  same speed with the compile paid as 17 s + one recompile (`accel.compile_blocks`).
+  −11 % per step at 1024² with 7 swaps (compute-bound), ±0 at 512² with 12 swaps
+  (PCIe-bound); ~40 s of compile at step 1, one graph for every sample size. `--no-compile`
+  for a quick smoke; `--compile_seq bounded` (automatic dynamic + `mark_dynamic` over the
+  cache's joint-token range) is the same speed with the compile paid as 17 s + one recompile
+  (`accel.compile_blocks`).
 - **RAM:** the whole checkpoint is ~33 GB bf16 and sits in page cache on the 64 GB box.
   Reloads are ~free, so there is no resident-model worker; VRAM is the constraint.

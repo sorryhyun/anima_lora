@@ -6,17 +6,16 @@ This directory holds two kinds of file:
   (method settings + inline dataset blueprint, no `dataset_config` reference).
   Auto-discovered by `--method easycontrol` / `make easycontrol` via
   `_resolve_method_path` (the per-method-dir layout takes precedence over the
-  flat `configs/methods/` folder). This is the EasyControl pilot for the
-  consolidated per-method layout — see `configs/CLAUDE.md`.
+  flat `configs/methods/` folder; per-method layout: `configs/CLAUDE.md`).
 - **EasyControl descriptors** (`near_twins.toml`, `colorize.toml`, …) — the
   EasyControl half of an i2i task (`[preprocess]` / `[training]` knobs, the
   miner-written blueprint tail, the GUI `[variant]` block), selected via
   `EASYADAPTER=<task>`. The model-agnostic half (`name`, `stage`, `[staging]`)
   is `i2i_tasks/configs/<task>.toml`; see `i2i_tasks/README.md`.
 
-The `gui-methods` variant (`configs/gui-methods/easycontrol.toml`) still points
-at the standalone `configs/datasets/easycontrol.toml` blueprint; keep the inline
-subset in `easycontrol.toml` in sync with it until gui-methods is migrated.
+The `gui-methods` variant (`configs/gui-methods/easycontrol.toml`) points at the
+standalone `configs/datasets/easycontrol.toml` blueprint, which the inline subset
+in `easycontrol.toml` mirrors (`configs/CLAUDE.md`).
 
 | File | Producer | Points at |
 |---|---|---|
@@ -49,7 +48,7 @@ the train step first extracts the blueprint into a generated sidecar
 each run) and points `--dataset_config` there; keys in `[training]` override the
 method defaults (CLI wins the merge chain).
 
-**It's a text-removal control task.** The generated blueprint pairs each twin via
+`near_twins` is a text-removal control task. The generated blueprint pairs each twin via
 `cond_cache_dir` (EasyControl roles: `cache_dir` = denoising target,
 `cond_cache_dir` = `set_cond` reference):
 

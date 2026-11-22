@@ -151,7 +151,7 @@ class BaseLoRAModule(torch.nn.Module):
         org_forwarded = self.org_forward(x)
 
         if not self.training:
-            # T-LoRA is training-only; inference always runs full rank.
+            # Full rank unless _eval_mask is set (inference --lora_timestep_mask).
             return org_forwarded + self._eval_delta(x, org_forwarded)
 
         if self._skip_module():

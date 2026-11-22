@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Can the ×2 head fit 16 windows? (pixel_decoder P5 ×2, capacity ceiling of arm A)
 
-``x2a_1119_1802`` ended 30.70 dB from the teacher on test with a second teacher draw at
-42.45. This probe takes the data size, the DiT and the teacher out of the loop: features,
+This probe takes the data size, the DiT and the teacher out of the loop: features,
 x_t, VAE(x̂0) and the teacher's ×2 of it are computed once for ``--n_fit`` train windows
 (decode points in turn, every fourth a manga page), then each arm trains a fresh ×2 stage
-on the released base head against those pairs with the run's optimizer and loss.
+on the released base head against those pairs with ``x2a_1119_1802``'s optimizer and loss.
 
     x2a      2 blocks at width 256, base trainable        (= x2a_1119_1802)
     frozen   2 blocks at width 256, base frozen           (×1 output untouched)

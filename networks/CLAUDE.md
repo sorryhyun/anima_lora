@@ -18,24 +18,18 @@ by both training and inference.
 | `protocol.py` | `typing.Protocol` description of the duck-typed adapter surface: `AdapterNetwork` (core lifecycle) + `RouterConditionableNetwork` (per-step routing setters, LoRA family only). Not an enforced base — consumers `hasattr`-probe; guarded by `tests/test_adapter_protocol.py` (which also guards the inference↛training import boundary). |
 | `methods/easycontrol.py`, `methods/easycontrol_attention.py` | EasyControl (`easycontrol_attention.py` is the extended self-attention math): per-block cond LoRA on self-attn (q/k/v/o) + FFN + scalar `b_cond` logit-bias gate; two-stream block forward at training, KV-cache prefill at inference. Target-stream adaln LoRA (`train_adaln`): `configs/easycontrol/easycontrol.toml` sets it true, and `configs/gui-methods/easycontrol.toml` pins it false because base.toml's true reaches every network module (`docs/anima/methods/adaln.md` §EasyControl). |
 | `methods/turbo_dmd.py` | Turbo Anima DP-DMD distillation harness — owns student + fake `LoRANetwork` instances on one frozen DiT; output is a normal LoRA. See `docs/anima/methods/turbo.md`. |
-| `methods/soft_tokens.py`, `methods/ip_adapter_pe_lora.py` | Soft tokens (SoftREPA parameterization) + the PE-LoRA delta path (`inject_pe_lora`), vendored into the Anima-Tagger ComfyUI node. |
+| `methods/soft_tokens.py`, `methods/ip_adapter_pe_lora.py` | Soft tokens (SoftREPA parameterization) + the PE-LoRA delta path (`inject_pe_lora`). The Anima LoRA Adapter node keeps a hand copy of `soft_tokens.py` (`custom-nodes` skill). |
 | `grad_basis.py` | Gradient-SVD `lora_down` init (`down_init="grad_svd"` / `"basis_file"`). The basis is **depth-baked** (`load_basis` refuses a block-count mismatch); `grad_svd` sketches in `library/anima/trainer/network.py::sketch_grad_basis` before the network is built and is refused under block swap. `docs/anima/methods/svd-down-lora.md` §Gradient-seeded siblings. |
 | `attention_dispatch.py` | Unified `dispatch_attention()` — backend router (SDPA / FA2 / FA3 / sageattn / flex). |
 | `spectrum.py`, `spectrum_forecast.py`, `spectrum_sea.py` | Spectrum inference acceleration (Chebyshev feature forecasting). `spectrum_forecast.py` is the pure-compute forecaster shared with `ComfyUI-Spectrum-KSampler`; `spectrum_sea.py` is the SEA when-to-skip filter. See `docs/inference/spectrum.md`. |
 | `spd.py`, `spd_core.py` | Spectral Progressive Diffusion — training-free inference acceleration (grow spatial resolution along the trajectory, spectral noise-expansion handoff). Sampler-level runner registered like Spectrum. The math lives in `spd_core.py`, vendored into the Spectrum SPEED node by `scripts/release/sync_vendor.py`. See `docs/anima/inference/spd.md`. |
 | `foveated.py` | Deferred-foveated merge — training-free inference acceleration (full grid above σ_c, then fovea tokens 1:1 + periphery 2×2-token groups merged via the `token_merger` forward kwarg; endogenous `combo` mask). Sampler-level runner registered like Spectrum/SPD. See `docs/anima/inference/foveated.md`. |
-| `calibration/` | Shipped artifacts: `channel_stats.safetensors` + `cond_channel_stats.safetensors` (per-channel scaling, main + EasyControl cond stream; `docs/anima/optimizations/channel_scaling.md`), `cns_gamma.npz` (CNS γ), `dave_alpha.npz` (DAVE), `moss_cns_gamma*.npz` (MOSS CNS γ per variant × CFG, read by `library/moss/cns.py`). |
+| `calibration/` | Shipped artifacts: `channel_stats.safetensors` + `cond_channel_stats.safetensors` (per-channel scaling, main + EasyControl cond stream; `docs/anima/optimizations/channel_scaling.md`), `cns_gamma.npz` (CNS γ), `dave_alpha.npz` (DAVE), `moss_cns_gamma*.npz` (MOSS CNS γ per variant × CFG, read by `library/moss/cns.py`). ComfyUI nodes carry copies of the CNS γ and DAVE files: `custom-nodes` skill. |
 
-## Three-axis routing surface
+## Routing
 
-The LoRA-family routing cfg is three orthogonal axes — `use_moe_style` /
-`route_per_layer` / `router_source` — parsed by
-`lora_anima/config.py::LoRANetworkCfg.from_kwargs` and dispatched by
-`__init__.py::resolve_network_spec` to a `NETWORK_REGISTRY` entry.
-
-The `lora-routing` skill also holds the metadata stamps (`ss_use_moe_style` /
-`ss_route_per_layer` / `ss_router_source`, and which unstamped checkpoints don't load) and
-the router-collapse failure mode.
+The three routing axes, their legal values and the variant matrix, the `ss_*` metadata
+stamps and `GlobalRouter`: `lora-routing` skill.
 
 ## Attn fuse spec (qkv/kv fuse↔split)
 

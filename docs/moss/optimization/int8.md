@@ -18,8 +18,8 @@ Base only; SFT has no file and trains on round-to-nearest weights.
 
 ## Running it
 
-Train: the defaults are `--int8 stream --ema_card --stream fp32 --blocks_to_swap 0
---activation_memory_budget 0.3`. How the step gets there:
+Train: the defaults are `--int8 stream --ema_card --stream fp32 --blocks_to_swap 20
+--activation_memory_budget 0.4` (the table below was measured at swap 0). How the step gets there:
 [training_step.md](training_step.md). The fp32 stream:
 [methods/fp32_stream.md](../methods/fp32_stream.md).
 
@@ -57,7 +57,7 @@ Generation runs on it by default (`int8 on`, `stream fp32`, t2i and i2i; the GUI
 
 | plan | s/step | peak |
 |---|---|---|
-| swap 0, budget 0.3 (default) | 1.05 | 12.88 GB |
+| swap 0, budget 0.3 | 1.05 | 12.88 GB |
 | swap 0, budget 0.2 | 1.06 | 11.83 GB |
 | swap 0, budget 0.1 | 1.07 | 10.78 GB |
 | swap 0, budget 0.05 | 1.16 | 9.98 GB |

@@ -1,46 +1,41 @@
 #!/usr/bin/env python3
 """Does σ-demoted training regularize memorization? Paired MIA bench.
 
-MOTIVATION. Combo (`--sigma_lowres` with both spans cleared — the unscheduled
-E16 stacked router: 1024→768 on σ∈(0.65,0.95), 1024→896 on the rest of σ>0.5)
-trains every high-σ step on a lower-res sibling latent. High σ is where
-composition binds to the conditioning — exactly where frame-xeroxing starts —
-so demotion *could* act as an incidental memorization regularizer. Or not.
-This bench measures it.
+Combo (`--sigma_lowres` with both spans cleared, the unscheduled E16 stacked
+router: 1024→768 on σ∈(0.65,0.95), 1024→896 on the rest of σ>0.5) trains every
+high-σ step on a lower-res sibling latent. High σ is where composition binds to
+the conditioning, so this bench measures whether demotion lowers member-vs-holdout
+membership signal.
 
 DESIGN. N arms per seed, exactly paired (same seed → identical data order +
 FM noise; the sample_ratio half is keyed to validation_seed, so all arms
 train on the identical member half and the other half is a clean same-artist
-holdout — the July-4 `bench_sincos_half_*` operating point, report.md):
+holdout, the `bench_sincos_half_*` operating point):
 
   * native  — the calibrated plain-LoRA overfit recipe (dim 16 / α 90, 4 ep,
-    sample_ratio 0.5, T-LoRA mask off). July anchor: AUC 0.82.
+    sample_ratio 0.5, T-LoRA mask off).
   * combo   — identical + `--sigma_lowres`, spans cleared (stacked router).
   * half896 — identical + `--sigma_lowres`, span cleared, route2 cleared:
-    the certified single half-line route 1024→896 on σ>0.5 only. If its
-    clean-σ AUC interpolates between native and combo, demote depth/coverage
-    is a memorization dial rather than an on/off switch.
+    the single half-line route 1024→896 on σ>0.5 only.
 
 Each checkpoint then goes through ``loss_gap.py`` (the calibrated loss-MIA
 probe) unchanged; this driver aggregates the paired comparison.
 
-THE CONFOUND THIS DRIVER EXISTS TO HANDLE. ``loss_gap.py`` scores re-noised
-*native-resolution* latents at every σ. The combo arm trained σ>0.5 at demoted
+THE CONFOUND. ``loss_gap.py`` scores re-noised *native-resolution* latents at every σ. The combo arm trained σ>0.5 at demoted
 resolution, so a lower member-vs-holdout AUC at σ>0.5 is ambiguous: less
 member signal in the weights, or member signal stored at the demoted grid
 where a native-res probe can't see it. Only σ ≤ threshold (both arms trained
 native there) is an apples-to-apples read — so the HEADLINE metric is the
 clean-σ composite AUC (per-item mean of delta_s over σ≤0.5, member vs
 same-artist holdout), and the σ>0.5 rows are reported but labeled confounded.
-Prior data helps: the July runs found the member signal lives at σ≤0.7, so
-most of it is inside the clean window.
+Earlier runs put the member signal at σ≤0.7, mostly inside the clean window.
 
-Usage (GPU work — submit the whole thing through the daemon)::
+Usage::
 
     make daemon-run ARGS="bench/memorization/demote_mia.py --seeds 1001 1002"
 
     # probe-only rerun against existing checkpoints:
-    uv run python bench/memorization/demote_mia.py --seeds 1001 1002 --skip_train
+    .venv/bin/python bench/memorization/demote_mia.py --seeds 1001 1002 --skip_train
 
 Cost: 2 arms x len(seeds) short trainings (~7 min each at this recipe; combo
 slightly less) + one loss_gap probe per checkpoint. Existing checkpoints are

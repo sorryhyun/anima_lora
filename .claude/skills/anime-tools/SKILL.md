@@ -29,7 +29,7 @@ What stays trainer-side:
   by `anime_tools.vision.pe`**, so a standalone `anime_tools` groups with the same
   PE-Spatial-B16-512 the trainer uses. The `library/vision/` encoder/bucket registry
   stays here.
-- `configs/clause_vocabulary.yaml` — the user-editable override of the package default.
+- `configs/clause_vocabulary.yaml` (`captions` skill).
 - Benches that use the tagger as a *judge of DiT output*.
 
 ## The typed request API is the front door
@@ -68,14 +68,12 @@ A **git dependency, not PyPI**: `pyproject.toml` pins a **release tag** (`tag = 
 under `[tool.uv.sources]` (a plain project dependency) — cut with the
 package's `release` skill (version bump → annotated tag → `release.yml`).
 
-**The trainer `.venv` holds the pinned copy, not `../anime_tools`.** An edit in the
-sibling checkout is invisible to `make` targets, daemon jobs and the GUI until a tag is
-cut and the pin moves — this has silently run stale package code on the GPU before.
-`python -c "import anime_tools"` with cwd=`../anime_tools` lies (sys.path[0]); check from
-the trainer root.
+The trainer `.venv` holds the pinned copy, not `../anime_tools` (stale-pin rule: root
+`CLAUDE.md` § Curation; the GUI reads the pinned copy too). `python -c "import
+anime_tools"` with cwd=`../anime_tools` lies (sys.path[0]); check from the trainer root.
 
 - **Ship a package change**: release it upstream (tag pushed), move the `tag` in
-  `pyproject.toml`, then `uv lock --upgrade-package anime-tools && uv sync`.
+  `pyproject.toml`, then `uv lock --upgrade-package anime-tools && make sync`.
 - **The package's `[tool.uv.sources]` leak into this lock.** uv honors a git dependency's
   own sources, so a torch index pinned upstream collides with the trainer's
   `rocm-windows` group at `uv lock`. Any upstream torch source must be
@@ -88,8 +86,8 @@ the trainer root.
   `DaemonClient.submit_command(argv=["-m", ...], extra_env={"PYTHONPATH":
   "/home/sorryhyun/anima/anime_tools"})` — `PYTHONPATH` matches none of the daemon's
   `CAPTURED_ENV_PREFIXES`, so `make daemon-run` cannot pass it.
-- `uv sync` also **prunes ad-hoc-installed packages** — reinstall anything you added by
-  hand after a sync.
+- A sync also **prunes ad-hoc-installed packages**; reinstall anything you added by
+  hand after it.
 
 ## Moving more code into the package
 

@@ -3,9 +3,7 @@
 Run a **register-token adapter** (DSR-style non-decoded self-attention tokens +
 trained self-attn QKV surface) on a stock Anima MODEL. The training method
 (`train.py --method register`) was removed from the trainer; this node still loads
-adapters trained before that. It was the inference/eyeball vehicle for the
-`_archive/proposals/headroom_register_tokens.md` line — there is no automated Anima
-quality reward, so a human-in-ComfyUI A/B is the quality gate.
+adapters trained before that, and LoRA-family checkpoints that carry registers (below).
 
 ## Node
 
@@ -44,14 +42,13 @@ twice. One `strength` scales both halves, matching in-repo inference's single
 `--lora_multiplier`. Registers at strength 0 still occupy K sequence slots
 (zero-token attention-sink lesion), matching training semantics.
 
-## Comfy-native (the q/k/v fix)
+## Comfy-native forward (split q/k/v)
 
 The training-side adapter patches the DiT's **fused** `self_attn.qkv_proj` and
 wraps `_run_blocks`. ComfyUI's Anima runs `comfy.ldm.cosmos.predict2.MiniTrainDIT`,
 which has **split** `q_proj`/`k_proj`/`v_proj` and an inline block loop (no
 `_run_blocks`). So `register_apply.py` is a from-scratch reimplementation against
-the comfy backbone (the pattern the EasyControl node used — no vendored training
-code):
+the comfy backbone, with no vendored training code:
 
 * The checkpoint stores the QKV surface **already split** into q/k/v (a `lora`
   mode is folded to a single `(inner, D)` ΔW per component on load), so each

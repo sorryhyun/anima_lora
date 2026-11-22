@@ -1079,10 +1079,10 @@ def cmd_preprocess_pe(extra):
     """Cache PE-Core-L14-336 vision-encoder features.
 
     Reads pre-resized images from ``post_image_dataset/resized/`` and writes
-    ``{stem}_anima_pe.safetensors`` sidecars into the LoRA cache dir, consumed
-    by IP-Adapter. Also emits the dataset-mean PE centroid sidecar
+    ``{stem}_anima_pe.safetensors`` sidecars into the LoRA cache dir, read by
+    CMMD validation. Also emits the dataset-mean PE centroid sidecar
     (``post_image_dataset/ip_adapter/anima_pe_centroid_pe.safetensors``) via
-    ``--centroid`` so IP-Adapter mean-centering needs no separate pass.
+    ``--centroid``.
     """
     run(
         [

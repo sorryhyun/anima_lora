@@ -12,11 +12,6 @@ memorization with a nearest-neighbour ratio (their Eq. 6): a generated sample is
 "memorized" if ``||x - a_nn1|| / ||x - a_nn2|| < k`` (k=1/3) over the training
 set in pixel L2.
 
-**Why this matters here.** Artist/style LoRAs train on *tiny* n — structurally
-the memorization-prone regime (narrow ``[tau_gen, tau_mem]`` window). Our live
-val signal (CMMD) measures distributional quality, not "is this checkpoint
-xeroxing training frames." This probe adds the missing axis.
-
 **What it measures (and why not naive pixel-L2).** Pixel L2 over the whole set
 (the paper's literal metric) is a verbatim-copy detector for unconditional
 DMs. For a *conditional* style LoRA it conflates two things: (a) global style
@@ -56,8 +51,7 @@ Artifacts
 
 This is Phase 0: a diagnostic, no training-loop wiring. It reuses the trainer's
 own config chain / dataset split / PE encoder (same machinery as
-``_archive/bench/seed_lottery/probe.py`` and ``library/training/validation.py``), so the
-items and caches are exactly the ones the run saw — no re-preprocess needed.
+``library/training/validation.py``), so the items and caches are exactly the ones the run saw — no re-preprocess needed.
 
 Usage
 -----
@@ -113,7 +107,7 @@ GEN_SEED_BASE = 7_000_000
 
 
 # ---------------------------------------------------------------------------
-# Trainer-faithful args + train-split items (mirrors _archive/bench/seed_lottery).
+# Trainer-faithful args + train-split items.
 # ---------------------------------------------------------------------------
 
 
@@ -178,8 +172,7 @@ def build_train_items(
 ) -> list:
     """The *training* split items (info, te_npz, pe_sidecar) — memorization is
     about the images the model actually trained on. Same blueprint path as the
-    trainer; we take the train group (the archived seed_lottery probe took the
-    val group). TE + PE caches must already exist (no live encoding).
+    trainer; we take the train group. TE + PE caches must already exist (no live encoding).
 
     ``pe_encoder`` selects which cached PE sidecar to use as the reference
     feature: ``pe_spatial`` (``{stem}_anima_pe_spatial.safetensors`` — what
@@ -269,8 +262,7 @@ def build_train_items(
 
 
 # ---------------------------------------------------------------------------
-# Minimal Accelerator shim for the sampler (device + autocast), as the archived
-# seed_lottery probe.
+# Minimal Accelerator shim for the sampler (device + autocast).
 # ---------------------------------------------------------------------------
 
 

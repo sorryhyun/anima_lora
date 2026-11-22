@@ -484,7 +484,7 @@ def main():
     for q in lp.parameters():
         q.requires_grad_(False)
     # channels_last + compile, pred and target as two inputs: 40.3 → 19.6 ms per
-    # 768² step (lpips_speed.py, archived)
+    # 768² step
     lp.to(memory_format=torch.channels_last)
     lp_train = torch.compile(lp) if compile_blocks else lp
 

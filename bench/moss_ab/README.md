@@ -1,8 +1,7 @@
 # bench/moss_ab
 
 LoRA and sampler A/B grids on MOSS-Image: same noise per (prompt, seed), one column per
-arm, so a row differs by the arm only. Moved from `project/finished/moss_lora/src/`
-(2026-10-28); findings that used them: `docs/moss/findings/t2i_lora_recipe.md`,
+arm, so a row differs by the arm only. Findings that used them: `docs/moss/findings/t2i_lora_recipe.md`,
 `docs/moss/findings/sigma_staircase.md`, `project/finished/moss_lora/done/{sampler,swift}.md`.
 
 | Script | What it renders |

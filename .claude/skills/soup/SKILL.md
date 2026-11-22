@@ -10,11 +10,11 @@ soup). Recipe from `bench/memorization/report.md`; deep-dive: `docs/anima/experi
 
 ## What it does
 
-Three stages, submitted as one daemon command job (attach-by-default; `--queue` detaches,
+Up to three stages, submitted as one daemon command job (attach-by-default; `--queue` detaches,
 `--inline` bypasses the daemon):
 
-1. **Uncond inter-train** — a short `caption_dropout_rate 1.0` train on a **diluted pool**: `POOL_PATH_PATTERN` (default `*` = whole dataset), diluted by `--sample_ratio`, with the fine-tune set always unioned in. The checkpoint name is deterministic and the checkpoint is **reused if it exists** — one shared uncond init serves every soup drawing the same pool.
-2. **Fine-tunes** — 3 seeded fine-tunes on `PATH_PATTERN` starting from that init.
+1. **Uncond inter-train** (off by default: `no_uncond`, § Knobs) — a short `caption_dropout_rate 1.0` train on a **diluted pool**: `POOL_PATH_PATTERN` (default `*` = whole dataset), diluted by `--sample_ratio`, with the fine-tune set always unioned in. The checkpoint name is deterministic and the checkpoint is **reused if it exists** — one shared uncond init serves every soup drawing the same pool.
+2. **Fine-tunes** — 3 seeded fine-tunes on `PATH_PATTERN` starting from that init (or from `down_init` when stage 1 is off).
 3. **Soup** — exact ΔW average, SVD-truncated back to `network_dim` → `anima_soup_<slug>.safetensors` + snapshot (slug derived from the pattern or `NAME`).
 
 ## Ingredient check
@@ -39,7 +39,7 @@ per-ingredient LR diversity. By default ingredients vary by **seed only**; the s
 uniform average with **no greedy-selection gate**, so a bad LR draw is averaged in, not
 dropped.
 
-`NO_UNCOND=1` / `[soup] no_uncond = true` (the `soup.toml` default since 2026-11-15, the merged14 recipe; `false` restores Phase 1) skips Phase 1 — ingredients init from
+`NO_UNCOND=1` / `[soup] no_uncond = true` (the `soup.toml` default; `false` restores Phase 1) skips Phase 1 — ingredients init from
 `down_init` (`weight_svd` [+ top-level `svd_slice`]); **required** for `svd_slice != 0`
 (the uncond `--network_weights` warm-start would overwrite the slice; the pipeline
 refuses). All ingredients of one soup share one slice; the slug gets

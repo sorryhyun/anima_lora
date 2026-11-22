@@ -464,8 +464,8 @@ def build_run(args, cfg: TurboConfig) -> RunContext:
         """The DiT as ``view`` on a 4D ``x`` → the 4D velocity.
 
         ``model.training`` stays True for the whole run (the DiT is frozen), which
-        keeps ``Block.forward``'s grad-ckpt gate armed; toggling it per forward was
-        the dominant per-forward CPU stall.
+        keeps ``Block.forward``'s grad-ckpt gate armed; toggling it per forward
+        stalls the CPU on every forward.
         """
         turbo.set_view(view)
         model.rewind_block_swap()

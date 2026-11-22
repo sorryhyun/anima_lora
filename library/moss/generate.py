@@ -13,8 +13,6 @@ fp32); with ``sampler="euler"``, ``spectrum=None`` it is
 of the output's sides and rides every forward (``denoise(ref=…)``); with
 ``ref_vision`` it also enters the TE through the vision tower ahead of the prompt
 (``library.moss.vision_te``), as a colorize cache encodes the page.
-
-    make daemon-run ARGS="scripts/moss/generate.py --prompt '…' --steps 30"
 """
 
 from __future__ import annotations

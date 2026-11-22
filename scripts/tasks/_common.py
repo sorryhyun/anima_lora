@@ -187,7 +187,7 @@ def _random_ref_image(directory: Path) -> str | None:
     """Pick a random image under ``directory`` (recursive), or ``None`` if empty.
 
     Recurses because source layouts nest images under per-artist subdirs.
-    Shared by the EasyControl/IP-Adapter/DirectEdit test commands as the
+    Shared by the EasyControl/DirectEdit test commands as the
     fallback reference when no REF_IMAGE is supplied.
     """
     if not directory.is_dir():

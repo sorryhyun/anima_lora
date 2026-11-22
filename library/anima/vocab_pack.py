@@ -1,6 +1,6 @@
 """CJK vocab pack as a first-class text-encoder asset.
 
-A vocab pack is **not a LoRA**: it is a table of extra T5-side embedding rows
+A vocab pack is a table of extra T5-side embedding rows
 (``ext_embed [rows, 1024]``, ids ``>= T5_TABLE_SIZE``) plus a JSON sidecar
 carrying the segmentation / row maps (``library.anima.ext_vocab`` owns the
 primitives). Applying it patches two places, both owned by this module and

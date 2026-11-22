@@ -70,7 +70,7 @@ def build_training_namespace(
     _config_schema.populate_schema(parser, extras=build_network_extras())
     args = parser.parse_args([], namespace=argparse.Namespace(**merged))
 
-    # Backward-compat shim — matches the top-of-file logic in train.py's __main__.
+    # "sdpa" is an alias of "torch", mapped as library/anima/trainer/cli.py does.
     if getattr(args, "attn_mode", None) == "sdpa":
         args.attn_mode = "torch"
 

@@ -43,8 +43,6 @@ Default memory plan: ``docs/moss/optimization/training_step.md``;
 ``--grad_checkpointing`` wraps each block's ``forward`` (``checkpoint_blocks``;
 not ``__call__``), so the block swapper's forward hooks fire once per step and
 never again during the recompute.
-
-    make daemon-run ARGS="scripts/moss/train.py --cache post_image_dataset/moss/<set> --epochs 8"
 """
 
 from __future__ import annotations

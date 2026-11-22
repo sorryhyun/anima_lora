@@ -1,8 +1,7 @@
 # Findings
 
-Settled turbo findings, moved from `docs/anima/findings/` on 2026-11-12 (still indexed in
-`docs/anima/findings/README.md`, which also lists three that now sit in the local
-`_archive/anima_turbo/findings/`).
+Settled turbo findings, also indexed in `docs/anima/findings/README.md` (which lists three
+more in the local `_archive/anima_turbo/findings/`).
 
 - [turbo_gan_dm_grad_orthogonal.md](turbo_gan_dm_grad_orthogonal.md): the GAN gradient is
   elementwise DM-orthogonal.

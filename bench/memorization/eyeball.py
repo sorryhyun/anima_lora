@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Eyeball contact sheet — the human validation layer over the loss-gap verdict.
 
-``loss_gap.py`` can say an adapter's WEIGHTS carry member-specific signal
-(e.g. bench_sincos_half_plain: AUC 0.82) and ``probe.py`` can score feature-
-space snapping, but the final call — "is this LoRA usable / is it visibly
-xeroxing" — is a human look. This bench renders that look in one grid:
+``loss_gap.py`` scores member-specific signal in an adapter's WEIGHTS and
+``probe.py`` scores feature-space snapping; this bench renders the grid a human
+reads for "is this LoRA usable / is it visibly xeroxing":
 
   rows (default 6 prompts, all reused verbatim from training captions):
     * target artist, MEMBER caption   — the memorization check: does the
@@ -24,7 +23,7 @@ comparable.
 
 Usage (from anima_lora/; ~18 generations, one DiT load)::
 
-    uv run python bench/memorization/eyeball.py \
+    .venv/bin/python bench/memorization/eyeball.py \
         --adapter output/ckpt/bench_sincos_half_plain.safetensors \
         [--other_artists aak abmayo] [--seeds 0 1 2] [--plan_only]
 

@@ -1,8 +1,8 @@
 # Findings
 
-Empirical results and analyses on the Anima model — what we measured, tested, and learned. Each doc states a premise, runs a probe or A/B against the real model, and records what the data showed. Some lines led to shipped features, some to "don't build it," some are pure measurement of how the base model behaves; all of them are evidence you can build the next decision on. Read the relevant doc before reviving — or re-deriving — an idea it covers.
+Probes and A/Bs on the Anima model: each doc states a premise, tests it against the real model and records what the data showed. Read the relevant doc before reviving an idea it covers.
 
-The leftmost column is the outcome — what the evidence settled:
+The leftmost column is the outcome:
 
 - MEASUREMENT — a probe characterizing how the base model behaves; no code path changed, but the structure it found constrains later work.
 - NO-GO / FALSIFIED — an external method (usually a paper port) whose load-bearing premise does not hold on Anima. Evidence against building it.

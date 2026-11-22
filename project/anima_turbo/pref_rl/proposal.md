@@ -144,8 +144,8 @@ unchanged. Beside it: sameness and the `judge_hard` grids, as for every turbo ar
 
 ## 4. Phases and gates
 
-Criteria are fixed here, before any result. A gate passes when its evidence does (CLAUDE.md
-§ Papers and gates).
+Criteria are fixed here, before any result. A gate passes when its evidence does (`experiment-planning`
+skill, Gate).
 
 ### P0 — bases on gelcrawl (no clicks, no generator training)
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """xattn_loc — where the quoted OCR strings' cross-attn lands on real training pages.
 
-Question (2026-11-20): before an attention-alignment loss goes into Anima LoRA
-training, is there anything for it to teach? On the pages of the training set
+Measures whether there is anything for an attention-alignment loss to teach in
+Anima LoRA training. On the pages of the training set
 whose caption carries a text clause and whose OCR sidecar has the line's box,
 the base DiT (no LoRA, shipped vocab pack rows) is run once per σ on the real
 ``x_t = (1 − σ)·x0 + σ·ε`` with the cached context the trainer feeds it, and

@@ -389,7 +389,7 @@ def load_basis(
     Refuses a depth mismatch: a LoRA's module names carry the block index, so a
     28-block basis seeding a 40-block DiT would silently leave the tail blocks
     Kaiming (the same failure mode as merging a 40-block adapter onto the base
-    — CLAUDE.md §DiT depth). The stamped ``ss_num_blocks`` is preferred; older
+    — root CLAUDE.md, Anima invariants). The stamped ``ss_num_blocks`` is preferred; older
     artifacts are checked against the block count implied by their keys.
     """
     from safetensors import safe_open

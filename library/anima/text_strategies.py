@@ -616,7 +616,8 @@ class LatentsCachingStrategy:
         Optional[np.ndarray],
     ]:
         """
-        for SD/SDXL
+        Load cached latents from the unsuffixed ``latents`` key (the Anima
+        strategy overrides this with stride 8, reading ``latents_{H}x{W}``).
 
         Args:
             npz_path (str): Path to the npz file.

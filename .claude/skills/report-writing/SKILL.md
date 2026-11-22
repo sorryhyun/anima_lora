@@ -34,7 +34,8 @@ report, keep them word for word in Facts; do not reword, soften or re-judge them
 
 Claude's own read of renders goes in Facts under its own label ("Claude's read"), with whether the
 arm labels were visible when it was made. It is an observation to check, not a verdict: no plan
-entry or later report gives it as the reason an arm passed or a line went on.
+entry or later report gives it as the reason an arm passed. Going on from it on an easy read is
+covered in the `experiment-planning` skill (Gate).
 
 Where a probe verdict and the user's read differ, both are written on adjacent lines in Facts
 ("Probe: not passed. The user's read: composition better than 1020's, the line goes on."), and
@@ -42,10 +43,9 @@ the report's first line says they differ.
 
 ## Settings stay in the config
 
-A run's settings, question and gate are written once, in its config header (`experiment-planning`
-skill). A report, plan entry, README or memory names the run by its config file name
-(`x2llgf1024_1122_1919`) and adds what was measured or decided. A comparison names the two config
-files; the key that differs is in their headers.
+A run's settings, question and gate live in its config header (`experiment-planning` skill). A
+report names the run by its config file name (`x2llgf1024_1122_1919`) and adds what was measured
+or decided; a comparison names the two config files.
 
 ## What a number carries
 

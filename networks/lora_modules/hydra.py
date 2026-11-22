@@ -25,7 +25,7 @@ __all__ = [
 
 class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
     """HydraLoRA: shared lora_down + per-expert lora_up, layer-local routing.
-    See docs/anima/methods/hydra-lora.md and networks/CLAUDE.md §Three-axis routing surface.
+    See docs/anima/methods/hydra-lora.md and the ``lora-routing`` skill.
 
     Router input concatenates pooled rank-R signal + optional sinusoidal(σ) /
     FEI(z_t) features, as router *input* (not additive bias) so gradient

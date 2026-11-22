@@ -15,8 +15,7 @@ first-step full-FT gradient energy that basis passes:
 
 against four references — the artist's own held-out image half (the reliability
 ceiling), ``down_init="weight_svd"``, a random rank-r subspace, and the
-universal basis built from 1, 2, 4, 8, … pool artists (the breadth curve that
-answers "all 83 at 1 pass or 16 at 2?" from the proposal's open questions).
+universal basis built from 1, 2, 4, 8, … pool artists (the breadth curve).
 
 Kill (_archive/proposals/grad_basis_init.md §E0): held-out capture < 0.45, or
 < 2× weight_svd → ship only the per-run ``grad_svd`` mode.

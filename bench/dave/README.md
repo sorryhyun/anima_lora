@@ -1,9 +1,8 @@
 # DAVE — DC Attenuation for diVersity Enhancement (Anima port)
 
 Training-free, representation-level intervention to recover same-prompt sample
-diversity. Reconstructed from the abstract + teaser figure of an unrevealed
-**ICML'26** paper (no code/weights public as of 2026-06-05) — treat the exact
-mechanism as our best-faithful guess, not a spec.
+diversity: a port of *Breaking the Lock-in* (ICML'26, arXiv 2606.06813). Phases 0–2a
+were built from the abstract and teaser figure; Phases 2b–2e align it with the full paper.
 
 ## The idea
 
@@ -19,7 +18,7 @@ output rewrite that attenuates the DC while leaving the AC residual intact:
 
 The teaser figure pairs this with a **Power Ratio** (`‖μ‖²/‖h‖²`) gate — i.e. the
 attenuation is meant to be *block-selective*, hitting only where the DC carries
-energy. See the root `image.png` for the figure we worked from.
+energy.
 
 ### How it maps onto Anima
 
@@ -345,9 +344,7 @@ pool). Both are grounded in the full paper:
    has shifted from "which block dots" (solved) to **"how much diversity before
    hands/text break"** — being settled by the production `eyeball.py` s0.3-vs-s0.5 sweep.
 
-   *(Kept below for the record — what the probe was meant to do.)* The dot cap is
-   the one knob still set by eye; this measures it directly. For each block ℓ it
-   re-generates with DAVE attenuating **ℓ alone** (a one-hot mask through the real
+   What the probe computes: for each block ℓ it re-generates with DAVE attenuating **ℓ alone** (a one-hot mask through the real
    `generate()` path — same τ-gate, same σ window, same dose), diffs the final
    latent against a baseline (`Δ_ℓ = lat_ℓ − lat_base`), and scores
 
@@ -359,15 +356,12 @@ pool). Both are grounded in the full paper:
    output as a patch-grid pattern (dot-causer); low = broadband/low-freq
    recomposition (safe). Verified on synthetics: smooth recomposition → 0.00, a pure
    patch checkerboard → 1.00, mostly-smooth+few-dots → 0.03. The run prints a
-   per-block ranking + an **agreement check** against the shipped `≤18` cap (are all
-   flagged dot-causers >18, all ≤18 blocks safe?), so the cap becomes *measured*.
+   per-block ranking + an agreement check against the shipped `≤18` cap.
 
    ```bash
-   uv run python bench/dave/probe_patch_imprint.py              # all blocks, 3 seeds
-   uv run python bench/dave/probe_patch_imprint.py --decode 4   # + VAE-decode worst/best for eyeball
+   make daemon-run ARGS="bench/dave/probe_patch_imprint.py"              # all blocks, 3 seeds
+   make daemon-run ARGS="bench/dave/probe_patch_imprint.py --decode 4"   # + VAE-decode worst/best for eyeball
    ```
-   If it confirms the dot-causers are exactly 19–27, the `≤18` cap is vindicated
-   analytically; if the knee sits elsewhere, re-derive the mask with that `block_cap`.
 
 **Why the cap can't be derived from theory alone.** Appendix E proves *why DC and
 why early* (E.6: the ensemble mean is DC-dominated because AC cancels across the
@@ -452,8 +446,8 @@ interaction **−0.005 ≈ 0**. Results: `results/20260611-205*-{base-lora,dave,
 2. **DAVE's unlock is emergent and persistent.** 2–3 attenuated early steps halve
    the *late*-trajectory AC sim (0.538 → 0.265) — divergence compounds through
    the latent long after the hooks go quiet.
-3. **Zero interaction = true orthogonality.** DAVE's effect under MOD is bitwise
-   the same story as without; MOD's (non-)effect likewise.
+3. **Zero interaction = orthogonality.** DAVE's effect under MOD is the same as
+   without; MOD's (non-)effect likewise.
 
 Follow-up proposal: `docs/anima/proposal/dave_mod_bestofn.md` — make "why the compose
 gives better images" falsifiable via best-of-N order statistics with correlated

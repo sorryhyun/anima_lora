@@ -5,7 +5,7 @@ description: The anima_lora programmatic façade for embedders — namespaces an
 
 # Programmatic API (`anima_lora`)
 
-`uv sync` installs the repo editable, so `anima_lora` is importable anywhere. Runnable
+`make sync` installs the repo editable, so `anima_lora` is importable anywhere. Runnable
 scripts live in `examples/` (high-level flows + raw primitives);
 `examples/README.md` is the embedder guide.
 
@@ -31,11 +31,8 @@ singletons lazily (`ensure_text_strategies`).
 
 ## Path anchoring — `ANIMA_HOME`
 
-Repo-relative model/config paths resolve against the **repo home**
-(`library.env.anima_home()` / `resolve_under_home()`), **not the CWD**. Set `ANIMA_HOME`
-for a relocated checkout, or override individual model paths with `ANIMA_DIT` /
-`ANIMA_VAE` / `ANIMA_TEXT_ENCODER`.
-
+The rule (`resolve_under_home()`, repo home not CWD) is in root `CLAUDE.md` § Running work.
+The home is `library.env.anima_home()`: set `ANIMA_HOME` for a relocated checkout, or
+override individual model paths with `ANIMA_DIT` / `ANIMA_VAE` / `ANIMA_TEXT_ENCODER`.
 The anchor is wired at the config-loader chokepoint (`library/config/io.py`) and at the
 model-loader leaves (`load_anima_model` / `load_vae` / `load_qwen3_text_encoder`).
-**New code opening a repo-relative path must call `resolve_under_home()`.**

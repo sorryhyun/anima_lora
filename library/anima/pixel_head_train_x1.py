@@ -15,9 +15,7 @@ Pieces, in the order a run uses them:
 - :class:`X1Trainer` — replay buffer, schedule, LPIPS and the PE-GAN weight rule.
 - :func:`save_x1_head` — the file :func:`library.anima.pixel_head.load_pixel_head` reads.
 
-The shared pieces are in :mod:`library.anima.pixel_head_train`. The arms the recipe left
-behind (a P1 linear skip, gradient accumulation) are in
-``bench/pixel_readout/experiments/convnext_head.py``.
+The shared pieces are in :mod:`library.anima.pixel_head_train`.
 """
 
 from __future__ import annotations

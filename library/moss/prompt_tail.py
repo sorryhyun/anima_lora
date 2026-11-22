@@ -6,10 +6,9 @@ without a LoRA it sharpens hands and backgrounds (``docs/moss/findings/chat_temp
 The TE is causal, so the caption rows keep their states; the template's last ``\\n``
 merges with the tail's first into one ``\\n\\n`` token, and ``sure`` adds 4 rows.
 
-``sure`` is the cache default; the i2i configs pin ``off``. The mode is stamped in TE
-caches (``prompt_tail``, when not ``off``) and in the LoRA; ``GenerateRequest.prompt_tail``
-``auto`` follows the LoRA (unstamped: ``off``), and without a LoRA renders ``sure``. The
-tail goes on cond and uncond alike.
+The mode is stamped in TE caches (``prompt_tail``, when not ``off``) and in the LoRA;
+``GenerateRequest.prompt_tail`` ``auto`` follows the LoRA (unstamped: ``off``), and
+without a LoRA renders ``sure``. The tail goes on cond and uncond alike.
 """
 
 from __future__ import annotations

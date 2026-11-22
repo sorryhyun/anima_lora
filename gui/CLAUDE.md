@@ -2,8 +2,11 @@
 
 PySide6 (Qt6) desktop GUI. Root `CLAUDE.md` owns the training/config/daemon contracts this
 GUI drives. Most of the surface is `tabs/config_tab.py` and the `tabs/preprocess/` package.
-The GUI does not curate — captions, tagging, masks, grouping and exclusion are the
-`anime_tools` web panel's, embedded in the anime_tools tab.
+
+The GUI does not curate: captions, tagging, masks, grouping and exclusion are the
+`anime_tools` web panel's, embedded in the anime_tools tab. The panel curates in
+`workspace/` and exports captions / masks / the revised master (never images); run its
+Export before preprocessing.
 
 ## What it is
 
@@ -102,8 +105,7 @@ must not appear.
   hardware keys (method beats preset).
 - **`tabs/preprocess/`** — `tab.py` =
   `PreprocessingTab`, the **cache builder** (resize → VAE → caption mirror → TE, plus
-  PE). Curation (autotag, position clauses, SAM masks) is the `anime_tools` panel's:
-  every env the tab builds, the Train auto-chain's included, pins `CAPTION_AUTOTAG` /
+  PE). Every env the tab builds, the Train auto-chain's included, pins `CAPTION_AUTOTAG` /
   `CAPTION_POSITION_CLAUSES` to `0` (`knobs.CURATION_GATES_OFF`), so a
   `preprocess.toml` that turns one on never starts it from the GUI. The status line flags a
   workspace caption/mask newer than the last applied Export. **Resize preview**
@@ -174,9 +176,9 @@ must not appear.
   error-check → job-id, used by every launch site) and the one 400 ms stdout observer
   every daemon-watching tab uses (`_init_job_observer` / `_watch_job` / `_poll_job` /
   `_end_job_watch` / `_stop_job`). Hosts customise it through hooks only:
-  `_emit_log_line` (log sink), `_route_progress_line` (which lines feed the bar) and
-  `_on_job_tick` (per-poll extras). ConfigTab uses the last two for progress.jsonl and
-  the live sample gallery; its `_on_job_finished` adds the preprocess→train chain and
+  `_emit_log_line` (log sink, default `self.log.appendPlainText`), `_route_progress_line`
+  (which lines feed the bar) and `_on_job_tick` (per-poll extras). ConfigTab uses the last
+  two for progress.jsonl and the live sample gallery; its `_on_job_finished` adds the preprocess→train chain and
   queue-successor follow. ConfigTab's direct child (Test, EasyControl preprocess) feeds the
   same `_route_line`.
 - **`core/submit.py`** — the submit plan, pure dict-in/dict-out: `path_scope` layering
@@ -218,7 +220,7 @@ must not appear.
   drifts silently.
 - **i18n key parity is tested.** `tests/test_gui_i18n_parity.py` fails when ko/ja/cn lacks
   an English key, carries an extra one, or changes a `{field}`. Add every string to all
-  four (and the matching `_fields.json` / `.html` for help text).
+  four.
 - **The daemon outlives the GUI.** Closing the window does not stop training.
 - **Process kill must walk the tree.** A directly-spawned `QProcess`'s real work runs in a
   grandchild, so `QProcess.kill()` leaks it. Spawn a Python child with

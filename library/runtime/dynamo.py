@@ -99,10 +99,11 @@ def pin_inductor_flag(name: str, value: object) -> None:
 
     Same ContextVar trap as :func:`pin_dynamo_limit`: the grad-enabled step-0
     compile (grad-ckpt recompute / AOT backward) reads the entry's ``.default``.
-    For ``triton.mix_order_reduction`` that default is True, so the
-    ``compile_blocks`` kill reverted and the fusion's ``Ge(seq, 4096)`` guard
-    broke strict dynamic-seq marks (ConstraintViolationError at the first
-    training step under gradient checkpointing).
+    For ``triton.mix_order_reduction`` that default is True, so a plain
+    assignment of ``compile_blocks``' kill reverts there and the fusion's
+    ``Ge(seq, 4096)`` guard breaks strict dynamic-seq marks
+    (ConstraintViolationError at the first training step under gradient
+    checkpointing).
 
     ``name`` is the dotted key, e.g. ``"triton.mix_order_reduction"`` (no
     pinned inductor key is an alias).

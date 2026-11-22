@@ -57,8 +57,10 @@ the user asks for them.
   idled 30 min (`CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1` turns it off): a waiter
   can vanish during a RAM-heavy run. `daemon-jobs` still has the answer.
 - Not **Monitor**: its deadline is capped at 30 min and it kills the command at expiry.
-  `ARGS="--timeout S"` makes `daemon-wait` exit 124 at S seconds with a JSON snapshot
-  (state, last progress event, its staleness).
+  `ARGS="--timeout S"` makes `daemon-wait` stop at S seconds with a JSON snapshot (state,
+  last progress event, its staleness) and exit 124. Through `make` every nonzero exit
+  becomes 2 (make's `Error 124` line keeps the code); `JOB=<id> .venv/bin/python tasks.py
+  daemon-wait --timeout S` returns 124 itself.
 
 ## Job environment
 

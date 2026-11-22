@@ -61,7 +61,7 @@ for char: ``encode_aligned`` maps the offsets back onto the typed text.
 
 Pure-CPU module: no model load; consumers pass embedding tensors in.
 
-Each of the keys above is optional; a pack without one encodes as before.
+Each of the keys above is optional; a pack without one skips that step.
 """
 
 from __future__ import annotations

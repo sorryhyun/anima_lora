@@ -45,8 +45,6 @@ trains; ``holdout_json`` names the pages instead; ``train_json`` names the
 training pages instead of the draw) lands in ``<out>/holdout/`` with
 ``holdout.json``; OCR reads in ``<out>/ocr.json``. A rerun reuses every file
 already written.
-
-    make i2i-preprocess TASK=colorize MODEL=moss
 """
 
 from __future__ import annotations

@@ -1,12 +1,13 @@
 ---
 name: custom-nodes
-description: The ComfyUI node map — which node lives in which standalone repo vs in-tree under custom_nodes/, where each is symlinked, and the vendor-sync rule for the _vendor/ subsets. Load before editing, publishing, or hunting for a ComfyUI node, or before touching anything under custom_nodes/.
+description: The ComfyUI node map — which node lives in which standalone repo vs in-tree under custom_nodes/, where each is symlinked, which files are hand copies of this repo's code, and the publish flow. Load before editing, publishing, or hunting for a ComfyUI node, or before touching anything under custom_nodes/.
 ---
 
 # ComfyUI custom nodes
 
 Most nodes live in standalone repos, **symlinked** into `../comfy/custom_nodes/`. Edit
-the source repo, never the symlink.
+the source repo, never the symlink. A node's behaviour and internals are in its repo's
+`README.md` (and `CLAUDE.md` where one exists).
 
 ## Out of tree
 
@@ -14,21 +15,51 @@ the source repo, never the symlink.
 |---|---|---|
 | Spectrum KSampler + mod-guidance | https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler | ships DCW scalar default `+0.01` + `auto` mode |
 | PiD decode | https://github.com/sorryhyun/ComfyUI-Anima-PiD | symlinked as `comfyui-anima-pid` |
-| EasyControl KSampler | `~/ComfyUI-EasyControl-KSamplerCompat` | |
+| EasyControl KSampler | https://github.com/sorryhyun/ComfyUI-EasyControl-KSamplerCompat, standalone at `~/ComfyUI-EasyControl-KSamplerCompat` | symlinked as `comfyui-easycontrol` |
+| Distilled ResShift | https://github.com/sorryhyun/ComfyUI-Distilled-ResShift, standalone at `~/ComfyUI-Distilled-ResShift` | symlinked as `comfyui-distilled-resshift` |
 | Block Compile | https://github.com/sorryhyun/ComfyUI-Anima-BlockCompile | standalone at `~/ComfyUI-Anima-BlockCompile`, symlinked as `comfyui-anima-blockcompile` |
-| DAVE | https://github.com/sorryhyun/ComfyUI-Anima-DAVE | standalone at `~/ComfyUI-Anima-DAVE`, symlinked as `comfyui-anima-dave`. One node for Anima and the `moss-image` transformer; `mask=auto` picks the bundled pool per model. Its npz masks are copies of `networks/calibration/dave_alpha.npz` and `library/moss/calibration/{dave_alpha,massive_channels}.npz`, not vendor-synced |
-| MOSS Toolkit | https://github.com/sorryhyun/ComfyUI-MOSS-Toolkit (renamed from ComfyUI-MOSS-i2i; registry id `comfyui-moss-toolkit`, the old `comfyui-moss-i2i` id is retired), standalone at `~/ComfyUI-MOSS-Toolkit`, symlinked as `comfyui-moss-toolkit` | `MOSSImageLoader` (`loader.py`): DiT + TE (bf16 dir, or an INT8 / fp8 file under `moss_image/{int8,fp8}/`) + VAE in one node, all through ComfyUI's own loaders, `MOSSImage` model, MOSS-Image TE and bundled tokenizer; the `moss-image` node is not required (since 0.10.0, which needs Spectrum ≥ 2.13.1 for **KSampler (Spectrum for MOSS)** on that model). fp32 stream (`stream.py`, mirrors `library/moss/loader.py::stream_fp32_`): the `stream` knob and the `MOSSStreamFP32` node add an `APPLY_MODEL` wrapper (fp32 `x`, pre-hooks cast the blocks' GEMM inputs back to the compute dtype, ops cast their weights for the call, no weight changes, dynamic VRAM and INT8 work, text blocks stay fp32 on SDPA, and `TextCache` runs the text embedder once per distinct prompt in a queued run, keyed on `(id(dit), weight patches uuid, prompt_id)` + context / text RoPE / mask by value); the node refuses a `moss-image` DiT. i2i: page-through-vision-tower text encode + VAE-reference MODEL patch for the `moss-image` node; the Reference node loads the i2i LoRA itself (`lora_name` / `strength`) and reads `reference_latents` / `ref_scale` / `ref_timestep` / `ref_isolate` from its metadata (an ai-toolkit edit LoRA, no such metadata: full size, t = 0, isolated); a kv LoRA (`ref_adapters = kv`, `ref_layers_N_proj_{k,v}` keys) goes on in bypass and its ref K/V is built on Base with the bank's deltas, outside the malloc graph (`core_ref_kv` / `_ref_pass_bank`, `lora_compat.base_weights()`, 0.14.0); `lora_compat.py` splits fused `proj.qkv` LoRA / LoKr / LoHa groups for the split `moss-image` model and logs the patched non-block modules, and runs a LoRA in bypass (`MOSSLoRA` node, Reference `bypass`) on either q/k/v layout, GPTQ weights kept (ComfyUI's own bypass drops fused q/k/v; since 0.12.0 `DownRows` runs an INT8 linear's `down` matrices as one small INT8 GEMM with `up` in float, and wraps `comfy.ops.linear_input_act` to keep `ffn_down`'s situ fold; bf16, LoKr and LoHa stay on the float hook); on ComfyUI's core `MOSSImage` (fused or split) `reference.py` hands the ref to the model's own `ref_kv` / `ref_latents` path instead of its forward copy (full-size refs only); `task = auto` picks the ref size from the recipe (`ref_isolate`: full size, text-only prompt through a plain CLIP Text Encode; joint: half size, vision-tower Text Encode); saved `colorize` runs as `auto`, saved `custom` still loads (via `VALIDATE_INPUTS`) and uses the `ref_scale` widget. The ref forward (`reference.py`) mirrors `library/moss/model.py` (incl. `_ref_only`: under `ref_isolate` a `patches_replace`-skipped block still runs the ref rows); an isolated ref with a `ref_timestep` is run once per page into `RefKV` (per-block K before RoPE + V, `ref_cache` gpu / cpu / off) and each forward runs the image + text rows only (`_main_block`), the blocks' forward hooks (DAVE) called by hand and runs as an `APPLY_MODEL` wrapper: the OpenMOSS forward never calls `DIFFUSION_MODEL` wrappers. Text: `MOSSCaptionHelper` (task `default` — the caption as written; `layout` — Anima caption → layout JSON / `colorize` / `sanitize` / `decensor`; `layout` passes a caption that already is layout JSON through, a copy of `library/moss/caching/sources.py::is_layout_json`; colorize appends the page's OCR lines, a copy of `library/moss/colorize.py`'s `readable` / `dedupe` / layout — change both together; sanitize / decensor return their `FIXED_CAPTIONS` row, a copy of that task's `configs/moss/i2i/<task>/cache.toml` `fixed_caption`; `swap_text` passes the layout JSON as written and, with `clip` connected, encodes it on a CLIP clone whose tokenizer applies the Hangul syllable split, `token_split.py`, a copy of `library/moss/token_split.py` — the split is in the tokenizer, so only the helper's `conditioning` output carries it; with `clip` connected every task outputs `conditioning`), registered only when `anime_tools` imports; `AnimaCaptionToMossLayout` is its `layout` alone, `DEPRECATED` (hidden from the menu, registered so saved workflows load) |
-| Anima Adapter Loader | https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter | Adapter / FeRA / Soft Tokens loaders, fp32 stream and INT8 (`stream.py`: `stream` input on the Adapter Loader, `AnimaStreamFP32`, `AnimaInt8Loader`, the comfy-kitchen#289 kernel workaround; q / k norms and RoPE run in fp32 through `q_proj` / `k_proj` forward hooks and an `attn_op` object patch); standalone at `~/ComfyUI-Anima_lora-Adapter`. **Read its `CLAUDE.md` for the `forward_hook`-not-override invariant** |
+| DAVE | https://github.com/sorryhyun/ComfyUI-Anima-DAVE | standalone at `~/ComfyUI-Anima-DAVE`, symlinked as `comfyui-anima-dave`. One node for Anima and the `moss-image` transformer; `mask=auto` picks the bundled pool per model |
+| MOSS Toolkit | https://github.com/sorryhyun/ComfyUI-MOSS-Toolkit (renamed from ComfyUI-MOSS-i2i; registry id `comfyui-moss-toolkit`, the old `comfyui-moss-i2i` id is retired), standalone at `~/ComfyUI-MOSS-Toolkit`, symlinked as `comfyui-moss-toolkit` | `MOSSImageLoader`, fp32 stream (`MOSSStreamFP32`), `MOSSLoRA` bypass (`lora_compat.py`, `DownRows`), i2i Reference, `MOSSCaptionHelper`. Its model patches are `APPLY_MODEL` wrappers: the OpenMOSS forward never calls `DIFFUSION_MODEL` wrappers |
+| Anima Adapter Loader | https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter | Adapter / FeRA / Soft Tokens loaders, vocab pack, fp32 stream and INT8 (`stream.py`); standalone at `~/ComfyUI-Anima_lora-Adapter`. **Read its `CLAUDE.md` for the `forward_hook`-not-override invariant** |
 | Pixel Decoder | https://github.com/sorryhyun/ComfyUI-Anima-PixelDecoder (registry id `comfyui-anima-pixel-decoder`, `node.zip` gitignored), standalone at `~/ComfyUI-Anima-PixelDecoder`, symlinked as `comfyui-anima-pixel-decoder` | `AnimaPixelHeadTap` (MODEL → MODEL: `CALC_COND_BATCH` step records, `DIFFUSION_MODEL` wrapper with a call-scoped pre-hook on the live `final_layer.linear`, post-CFG scale) + `AnimaPixelDecode` (MODEL, LATENT, head → IMAGE). `_vendor/pixel_head.py` is `library/anima/pixel_head.py` (vendor-sync). Timed in ComfyUI by `bench/pixel_readout/comfy_e2e.py` |
-| Anima Tagger | inside the `anime_tools` repo (`comfyui/anima_tagger/` there) | symlinked as `comfyui-anima-tagger`; imports `anime_tools.tagger` and vendors nothing. The standalone `ComfyUI-Anima-Tagger` repo is **retired but still on disk** — don't edit it |
+| Anima Tagger | inside the `anime_tools` repo (`comfyui/anima_tagger/` there) | symlinked as `comfyui-anima-tagger`; imports `anime_tools.tagger` and vendors nothing. The standalone `ComfyUI-Anima-Tagger` repo is **retired but still on disk**; don't edit it |
 
 ## In tree
 
 Under `custom_nodes/`: `comfyui-anima-directedit/`, `comfyui-anima-register/`,
 `comfyui-anima-trainer/` (daemon-backed one-shot trainer).
 
-## Vendor trees
+## Vendor trees and hand copies
 
-Several nodes carry a `_vendor/` subset of the live tree. **Regenerate with `make
-vendor-sync` (`scripts/release/sync_vendor.py`), never `cp` by hand** — and re-run it
-before every node publish.
+`_vendor/` subsets and their targets are listed in the `scripts/release/sync_vendor.py`
+docstring; the regeneration rule is in the root `CLAUDE.md` (GUI and ComfyUI nodes).
+
+These files are hand copies of this repo's code or artifacts, not vendor-synced: change
+or regenerate the source, then update the copy.
+
+- Spectrum repo root: `cns_gamma.npz` and `moss_cns_gamma*.npz` are copies of
+  `networks/calibration/` (Anima CNS γ ships there, no release download); copy after
+  regenerating, then publish.
+- DAVE: `dave_alpha.npz` is `networks/calibration/dave_alpha.npz`; `moss_dave_alpha.npz`
+  carries `library/moss/calibration/{dave_alpha,massive_channels}.npz`.
+- MOSS Toolkit:
+  - `stream.py` mirrors `library/moss/loader.py::stream_fp32_`.
+  - The ref forward (`reference.py`) mirrors `library/moss/model.py`, incl. `_ref_only`
+    (under `ref_isolate` a `patches_replace`-skipped block still runs the ref rows).
+  - Caption Helper: `is_layout_json` is a copy of
+    `library/moss/caching/sources.py::is_layout_json`; `colorize`'s OCR lines copy
+    `library/moss/colorize.py`'s `readable` / `dedupe` / layout; `FIXED_CAPTIONS` rows
+    are each task's `configs/moss/i2i/<task>/cache.toml` `fixed_caption`; `token_split.py`
+    is a copy of `library/moss/token_split.py`.
+
+## Publishing
+
+- Run `make vendor-sync` first for a node with a `_vendor/` tree (root `CLAUDE.md`).
+- Spectrum (`~/ComfyUI-Spectrum-KSampler`): check `git status` and ask before
+  vendor-sync or publish; always bump the version. Its `pyproject.toml` is CRLF, so an
+  anchored `sed` bump matches nothing; check `git show --stat`.
+- Spectrum, ResShift and PiD track `node.zip`, and `comfy node publish` zips tracked
+  files only and rewrites `node.zip`. Order: bump → `git add` new files → publish →
+  check `unzip -l node.zip` → commit (zip included) → push.
+- `comfy node publish --token $COMFY_REG` (from `.env`) echoes the PAT. The registry
+  check flags `exec` / `eval`, tests included.

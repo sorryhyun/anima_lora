@@ -7,8 +7,8 @@ description: Free-fit native-shape bucketing — the token bands per edge tier, 
 
 Free-fit is the **sole** resize mode: each image keeps its **native aspect ratio** and
 lands its patch-grid token count *anywhere* inside its tier's band, driving crop loss to
-~zero (sub-patch <16px residual). The discrete `CONSTANT_TOKEN_BUCKETS` pool it replaced
-is gone from the resize path; the name survives only in older docs and node READMEs.
+~zero (sub-patch <16px residual). `CONSTANT_TOKEN_BUCKETS` in older docs and node READMEs
+is the retired discrete pool.
 
 **Ownership**: `freefit_bucket` / `freefit_band_for_edge` are **owned by
 `anime_tools.buckets`**, re-exported by `library/datasets/buckets.py` the way

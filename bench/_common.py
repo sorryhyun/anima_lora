@@ -34,7 +34,7 @@ Usage::
     write_result(run_dir, script=__file__, args=args,
                  metrics={...}, artifacts=["per_step.csv", "curves.png"])
 
-Cache-level data access (issues.md DX4)::
+Cache-level data access::
 
     For raw cache reads without the CachedDataset/blueprint layer, use
     ``library/io/cache.py`` directly:
@@ -237,7 +237,7 @@ def write_result(
     out = run_dir / "result.json"
     out.write_text(json.dumps(record, indent=2))
 
-    # Daemon result-envelope lift (proposal Phase 1a): when this script runs as a
+    # Daemon result-envelope lift: when this script runs as a
     # daemon job, the daemon exported ANIMA_DAEMON_JOB_DIR into our env. Drop a
     # pointer to the just-written envelope there so the monitor can lift its
     # abs path + {label, metrics} digest into the job record on the terminal

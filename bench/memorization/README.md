@@ -81,7 +81,7 @@ adapter's weights carry member-specific information**, using the standard
 loss-based membership-inference statistic (re-noise the cached clean latent,
 score the velocity-field's noise-recovery error) with two calibrations that
 cancel the image-easiness confound (the raw statistic is a flatness
-detector, inherited from the archived `bench/solace` probe):
+detector):
 
 1. paired `delta = R_lora(x) − R_base(x)` on the same image, and
 2. member vs **held-out same-artist** images (`sample_ratio<1` shard

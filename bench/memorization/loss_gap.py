@@ -7,7 +7,7 @@ asks the earlier, cheaper question: do the adapter's *weights* carry
 member-specific information — before/without any xeroxing showing up in
 samples? It needs only forward passes over already-cached latents + TE
 embeddings (no sampling, no VAE, no PE encoder), so it's cheap enough to run
-per-checkpoint and trace the ``tau_mem`` crossing curve the README asks for.
+per-checkpoint and trace the ``tau_mem`` crossing curve.
 
 THE STATISTIC. Per image: re-noise its cached clean latent ``x0`` with known
 noise to ``x_t=(1-s)x0+s*eps``, query the velocity field conditioned on the
@@ -19,10 +19,9 @@ arXiv:2308.06405, score-based MIA 2509.25003); fine-tuned/LoRA'd diffusion
 models are its most vulnerable case (2601.21628, 2402.11989).
 
 THE CALIBRATION (load-bearing).
-Raw confidence tracks image *easiness* (flat/simple images score high — the
-exact artifact that sank SOLACE-as-quality-reward), the known failure of naive
-loss MIA (difficulty calibration: Watson et al. 2111.08440). Two paired
-controls cancel it:
+Raw confidence tracks image *easiness* (flat/simple images score high), the
+known failure of naive loss MIA (difficulty calibration: Watson et al.
+2111.08440). Two paired controls cancel it:
 
   1. ``delta_i = R_lora(x_i) - R_base(x_i)`` — same image under adapter vs
      base. Easiness affects both terms; the difference is the adapter-induced
@@ -60,7 +59,7 @@ READING IT
 
 Usage (run from anima_lora/; cheap — forward passes only)::
 
-    uv run python bench/memorization/loss_gap.py \
+    .venv/bin/python bench/memorization/loss_gap.py \
         --adapter output/ckpt/my_artist_lora.safetensors \
         --method lora --preset default --label my_artist
 

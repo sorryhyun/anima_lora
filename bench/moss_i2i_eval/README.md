@@ -1,7 +1,6 @@
 # bench/moss_i2i_eval
 
-Held-out evals for MOSS i2i LoRAs. Moved from `project/finished/moss_lora/src/`
-(2026-10-28). Recipes and results: `docs/moss/methods/i2i.md`, `docs/moss/methods/tone_loss.md`,
+Held-out evals for MOSS i2i LoRAs. Recipes and results: `docs/moss/methods/i2i.md`, `docs/moss/methods/tone_loss.md`,
 `project/finished/moss_lora/{README,colorize_ocr}.md`.
 
 | Script | What it measures |

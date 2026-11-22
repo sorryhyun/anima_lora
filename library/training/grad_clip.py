@@ -5,8 +5,8 @@ micro-batch before it joins the accumulated sum.
 With σ bands, the median clip keeps one window per band of the unit's σ, so a
 draw is capped against draws at a similar noise level (the grad norm is
 U-shaped in σ). Every quantity stays on the card (ring buffers, band lookup,
-median, clip coefficient), so a clip adds no host sync.
-docs/anima/findings/lora_recipe.md.
+median, clip coefficient), so a clip adds no host sync. Recipe:
+``docs/anima/findings/lora_recipe.md``.
 """
 
 from __future__ import annotations

@@ -7,7 +7,7 @@ description: The LoRA-family three-axis routing surface (use_moe_style / route_p
 
 ## Variant matrix
 
-The three axes (`use_moe_style` / `route_per_layer` / `router_source`) are consumed by `lora_anima/config.py::LoRANetworkCfg.from_kwargs` and dispatched by `networks/__init__.py::resolve_network_spec`. Legal values:
+The three axes (`use_moe_style` / `route_per_layer` / `router_source`) are parsed by `lora_anima/config.py::LoRANetworkCfg.from_kwargs` (dispatch to a registry entry: `networks/CLAUDE.md`). Legal values:
 
 | Axis | Values |
 |---|---|
@@ -36,14 +36,12 @@ Pre-plan2 metadata stamps (`ss_use_hydra`, `ss_use_fei_router`) **no longer load
 All live in `networks/lora_modules/`. Stack freely via toggle flags in `configs/methods/lora.toml`.
 
 - **LoRA** (`lora.py::LoRAModule`) — Classic low-rank: `y = x + (x @ down @ up) * scale * multiplier`.
-- **T-LoRA** — Not a separate class. A `_timestep_mask` buffer on `LoRAModule` (registered in `base.py`) is rebound to a shared live-updated mask by `lora_anima/network.py::LoRANetwork.set_timestep_mask`. Effective rank varies with denoising step via a power-law schedule. **Training-only** — inference runs full rank at every t (baking into DiT is bit-equivalent). See `docs/anima/methods/timestep_mask.md`.
+- **T-LoRA**: not a separate class but a timestep mask on `LoRAModule` (buffer mechanics: `networks/CLAUDE.md` § Timestep masking). Effective rank varies with denoising step via a power-law schedule. Inference runs full rank at every t by default (`inference.py --lora_timestep_mask` applies the training mask), so baking it into the DiT gives the same output as a default render. See `docs/anima/methods/timestep_mask.md`.
 - **HydraLoRA** (`hydra.py`) — MoE-style multi-head routing: shared `lora_down` + per-expert `lora_up_i` heads, layer-local router on the adapted Linear's input (`router_source="input"`) or σ-features / FEI features (`"sigma"` / `"fei"`). With `route_per_layer=False` the per-layer router drops out for a network-level `GlobalRouter` fed σ-features, FEI, or pooled cross-attn text (`router_source="crossattn_emb"`). Requires `cache_llm_adapter_outputs=true`. Produces a `*_moe.safetensors` sibling for router-live inference. See `docs/anima/methods/hydra-lora.md`.
-
-> **ReFT was removed from the live tree on 2026-06-08** and downgraded to a bench probe — module, configs, docs and a re-integration map live in `_archive/bench/reft/` (`INTEGRATION.md` + `impl/`).
 
 ## GlobalRouter (network-level routing)
 
-`lora_anima/routers.py::GlobalRouter` (re-exported from `network.py` for back-compat) — `Linear(F_in → H) → ReLU → Linear(H → E) → softmax/τ`. Built when `cfg.route_per_layer=False` and `cfg.use_moe_style != False`. Final layer is zero-init so step-0 gates are uniform; warmup is the symmetry-breaker. Under `router_source="crossattn_emb"` the router is built with `apply_layer_norm=True` and `input_dim=CROSSATTN_EMB_DIM`; its `forward` RMS-pools a raw `(B, L, D)` text tensor over the sequence axis and LayerNorms (parameterless) before the MLP — no extra state_dict keys, on/off is deterministic from `router_source`.
+`lora_anima/routers.py::GlobalRouter`: `Linear(F_in → H) → ReLU → Linear(H → E) → softmax/τ`. Built when `cfg.route_per_layer=False` and `cfg.use_moe_style != False`. Final layer is zero-init so step-0 gates are uniform; warmup is the symmetry-breaker. Under `router_source="crossattn_emb"` the router is built with `apply_layer_norm=True` and `input_dim=CROSSATTN_EMB_DIM`; its `forward` RMS-pools a raw `(B, L, D)` text tensor over the sequence axis and LayerNorms (parameterless) before the MLP — no extra state_dict keys, on/off is deterministic from `router_source`.
 
 Hook site: `LoRANetwork.set_fei(z_t)` runs the FEI computation (via `library/runtime/fei.py`) and the router once, then writes the resulting `(B, num_experts)` tensor by reference into each routing-aware module's `_routing_weights` buffer. One Python-level write propagates to every adapted Linear that step — hence the failure mode to watch for: **router collapse takes every layer down together**.
 

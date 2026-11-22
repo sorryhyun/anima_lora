@@ -115,7 +115,7 @@ and the nearest-2x upsample written as GatherND over index tables ⌊i/2⌋, ⌊
   The weights it replaces are matched by value against v4_preview (min cos 0.987), so the HF fp16
   export was made from an earlier student. Output: `output/webgpu_int8/onnx_dyn_int8_f32/`
   (`dit_int8_mm32*`). The first upload, `dit_int8_dyn` with fp16 MatMulNBits
-  (`onnx_dyn_int8/`, sidecar 2,372,323,328 B), is still on HF.
+  (`onnx_dyn_int8/`, sidecar 2,372,323,328 B), was later deleted from HF (v4 below).
 
 ### v4 (2026-11-13)
 

@@ -9,8 +9,7 @@ encoder's nearest-aspect bucket, runs a single forward, and saves
 the image when omitted). Skips already-cached entries (idempotent).
 
 Wrapped by ``make preprocess-pe`` (reads ``post_image_dataset/resized/``,
-writes ``post_image_dataset/lora/``). The same sidecars are consumed by
-IP-Adapter -- it shares the cache directory.
+writes ``post_image_dataset/lora/``). CMMD validation reads the ``pe`` sidecars.
 
 The cache key matches what the encoder produces at training time:
 ``encode_pe_from_imageminus1to1(bundle, x, same_bucket=True)`` -> ``[T_pe, d_enc]``.
@@ -25,8 +24,7 @@ Centroid sidecar
 Pass ``--centroid`` to also emit ``anima_pe_centroid_{encoder}.safetensors``
 (dataset-mean of mean-over-patch-tokens pooled features, ``[D]`` fp32) after
 the cache pass. Pass ``--centroid_only`` to skip encoding entirely and just
-pool existing caches under ``--cache_dir``. Consumed by IP-Adapter
-(``ip_centroid_path``) for mean-centering.
+pool existing caches under ``--cache_dir``.
 """
 
 import argparse
@@ -105,8 +103,8 @@ def main() -> None:
         action="store_true",
         help=(
             "After the cache pass, stream-pool all '_anima_{encoder}.safetensors' "
-            "files under --cache_dir and emit a dataset-mean centroid sidecar "
-            "consumed by IP-Adapter. Requires --cache_dir."
+            "files under --cache_dir and emit a dataset-mean centroid sidecar. "
+            "Requires --cache_dir."
         ),
     )
     parser.add_argument(
@@ -124,8 +122,7 @@ def main() -> None:
         default=None,
         help=(
             "Output path for the centroid sidecar. Defaults to "
-            "post_image_dataset/ip_adapter/anima_pe_centroid_{encoder}.safetensors "
-            "(separate from the shared PE cache dir so LoRA stays untouched)."
+            "post_image_dataset/ip_adapter/anima_pe_centroid_{encoder}.safetensors."
         ),
     )
     parser.add_argument(

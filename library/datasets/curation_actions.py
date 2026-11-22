@@ -11,8 +11,6 @@ image under ``image_dataset/`` stays where it is. The resize stage reads that
 ledger as extra ``--skip`` (``ResizeRequest.excluded_dir``), which is the one
 place an excluded image could come back, and every later stage walks the
 resized tree — so the image never trains. :func:`restore_rels` reverses it.
-
-A ``post_image_dataset/moved/`` tree (pre-0.6) is inert.
 """
 
 from __future__ import annotations

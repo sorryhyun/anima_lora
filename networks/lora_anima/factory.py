@@ -515,8 +515,8 @@ def create_network_from_weights(
     spec = NETWORK_REGISTRY["hydra" if has_hydra else "lora"]
     module_class = spec.module_class
 
-    # Legacy σ-router refusal: the additive-bias sigma_mlp design is gone (σ is
-    # now a direct concat into a wider router); .sigma_mlp.* can't be reshaped.
+    # Legacy σ-router refusal: .sigma_mlp.* weights (additive-bias σ design) have
+    # no mapping onto the router that takes σ as a concatenated input.
     _legacy_sigma_keys = [k for k in weights_sd if ".sigma_mlp." in k]
     if _legacy_sigma_keys:
         raise RuntimeError(

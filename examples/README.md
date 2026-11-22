@@ -4,7 +4,7 @@ Runnable scripts showing the Anima programmatic API for embedders — driving
 the pipeline from `import anima_lora` instead of `make` targets. Each script is
 self-contained.
 
-After `uv sync` (which installs this repo editable), the front-door package is
+After `make sync` (which installs this repo editable), the front-door package is
 importable from anywhere:
 
 ```python
@@ -47,7 +47,7 @@ drives diffusers; `12` (MOSS-Image) and the building blocks (`04`–`06`) import
 ## Setup
 
 ```bash
-uv sync
+make sync
 hf auth login
 make download-models      # DiT, text encoder, VAE, …
 # `02 --train` also needs the training cache:

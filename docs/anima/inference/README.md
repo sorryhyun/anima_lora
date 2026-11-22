@@ -4,7 +4,7 @@ Training-free runtime methods — sampler acceleration, sampler-boundary correct
 
 Spectrum, CNS and DAVE run on MOSS-Image too; their docs are in [`../../inference/`](../../inference/README.md) and the rows below link there.
 
-The DiT operates on 5D latents `(B, C, T=1, H, W)`; sampler-boundary plug-ins here receive 5D — match `ndim` against any 4D reference latent they blend against (see root `CLAUDE.md` §"The DiT operates on 5D latents").
+The DiT operates on 5D latents `(B, C, T=1, H, W)`; sampler-boundary plug-ins here receive 5D, so match `ndim` against any 4D reference latent they blend against (root `CLAUDE.md`, Anima Invariants).
 
 ## Acceleration
 
@@ -12,7 +12,7 @@ The DiT operates on 5D latents `(B, C, T=1, H, W)`; sampler-boundary plug-ins he
 |-----|-----------|------|---------------------|
 | [spectrum.md](../../inference/spectrum.md) | Chebyshev feature forecasting — cached steps skip all blocks; `final_layer` pre-hook captures outputs. | `--spectrum` | Structure walkthrough in `../structure/spectrum.md`. |
 | [spd.md](spd.md) | Spectral Progressive Diffusion — early steps at low res, spectral noise-expansion handoff to full res. Runner in `networks/spd.py`. | `--spd` | v0 = Euler-only, no SMC/Spectrum compose; single-late `0.5→1.0 @ σ0.7` default. `_archive/spd/bench/plan.md` Phase 3, `_archive/proposals/spd_finetune_lora.md` (Case B). |
-| [foveated.md](foveated.md) | Deferred-foveated merge — full grid above σ_c, then fovea tokens 1:1 + 2×2 periphery token groups merged (endogenous `combo` mask). Identity-preserving, ×1.37 e2e. Runner in `networks/foveated.py`. Line ARCHIVED 2026-07-03 (periphery blur constitutive — P4t; runner stays, off by default). | `--fovea_sigma_c 0.75` | Euler-only; σ_c=0.75 and the final bicubic readout are load-bearing; frac floor 0.25. Foveated-Spectrum compose CLOSED by P3, tail un-merge by P4t (`_archive/bench/foveated/`) — don't re-propose. |
+| [foveated.md](foveated.md) | Deferred-foveated merge — full grid above σ_c, then fovea tokens 1:1 + 2×2 periphery token groups merged (endogenous `combo` mask). Identity-preserving, ×1.37 e2e. Runner in `networks/foveated.py`. Archived line (the periphery blur is constitutive); the runner stays, off by default. | `--fovea_sigma_c 0.75` | Euler-only; σ_c=0.75 and the final bicubic readout are load-bearing; frac floor 0.25. Foveated-Spectrum compose CLOSED by P3, tail un-merge by P4t (`_archive/bench/foveated/`) — don't re-propose. |
 
 ## Decode
 
@@ -24,10 +24,10 @@ The DiT operates on 5D latents `(B, C, T=1, H, W)`; sampler-boundary plug-ins he
 
 | Doc | What it is | Flag | Load-bearing gotcha |
 |-----|-----------|------|---------------------|
-| [smc_cfg.md](smc_cfg.md) | α-adaptive sliding-mode CFG correction in velocity space (λ=5, α=0.2). | `--smc_cfg` | Paper's fixed k was ~14× off; ships `sign()` only (tanh ε removed). |
+| [smc_cfg.md](smc_cfg.md) | α-adaptive sliding-mode CFG correction in velocity space (λ=5, α=0.2). | `--smc_cfg` | Paper's fixed k was ~14× off; ships `sign()` only. |
 | [cns.md](../../inference/cns.md) | SDE noise recolorer — per-step injected noise is `sqrt(1−γ)`-shaped toward unresolved freq bands, RMS-renormalized (zero-sum). | `--sampler er_sde --cns auto` | **er_sde-only** (no-op on euler/lcm); faithful to paper Alg. 1. |
 | [mod-guidance.md](mod-guidance.md) | Text-conditioned AdaLN via a learned `pooled_text_proj` MLP, distilled once (`project/finished/mod_guidance/`). | `make test MOD=1` | Global-tone lever, not a content lever (σ-FiLM probe was a geometric ceiling). |
-| [fsg.md](fsg.md) | Foresight Guidance — pre-step latent calibration: at scheduled mid-σ steps run K forward(cond)–backward(uncond) fixed-point iterations to pull `x_t` onto the golden path, then denoise from `x̂_t`. Production stack rides the CFG++ substrate (`--cfgpp`, λ=1.5); composes with `--spectrum`. | `make test FSG=1` | Line CLOSED 2026-07-12 (bench archived; feature stays). Mid-σ band only (default `[0.59,0.75]` @28-step er_sde) — σ≈0.94 diverges. `3·K` extra forwards/step ≈1.8× NFE; matched-NFE A/B never run → not "free quality". Still ignored under `--spd`. |
+| [fsg.md](fsg.md) | Foresight Guidance — pre-step latent calibration: at scheduled mid-σ steps run K forward(cond)–backward(uncond) fixed-point iterations to pull `x_t` onto the golden path, then denoise from `x̂_t`. Production stack rides the CFG++ substrate (`--cfgpp`, λ=1.5); composes with `--spectrum`. | `make test FSG=1` | Closed line; the feature stays. Mid-σ band only (default `[0.59,0.75]` @28-step er_sde) — σ≈0.94 diverges. `3·K` extra forwards/step ≈1.8× NFE; matched-NFE A/B never run → not "free quality". Still ignored under `--spd`. |
 
 ## Representation edits
 
@@ -51,6 +51,6 @@ Infrastructure, not a sampler method — how to *run* inference, not what it doe
 | Doc | What it is | Gotcha |
 |-----|-----------|--------|
 | [../methods/cjk_vocab_pack.md](../methods/cjk_vocab_pack.md) | CJK vocab pack — extra T5-side rows for JA / KO / ZH prompt spans (`--vocab_pack` / base.toml `vocab_pack`; `--no_vocab_pack` forces off). A text-encoder asset, not a sampler method: tokenizer re-route + `llm_adapter.embed` hook pair. | EN prompts are unchanged either way. |
-| [invert.md](invert.md) | Embedding inversion — optimize a text embedding to match a target image through the frozen DiT (full and K-slot reference). Line fully archived 2026-07-04 (probe + bench + proposals → `_archive/`). | Postfix slot-collapse: `anima_postfix.safetensors` is effectively K=1; per-image tail inversion never produced meaningful reconstruction lift. |
+| [invert.md](invert.md) | Embedding inversion — optimize a text embedding to match a target image through the frozen DiT (full and K-slot reference). Archived line (`_archive/`). | Postfix slot-collapse: `anima_postfix.safetensors` is effectively K=1; per-image tail inversion never produced meaningful reconstruction lift. |
 
 User-facing flag reference: [`../guidelines/inference.md`](../guidelines/inference.md).

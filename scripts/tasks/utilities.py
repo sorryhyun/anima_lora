@@ -108,11 +108,11 @@ def cmd_sync(extra):
 
 
 def cmd_vendor_sync(extra):
-    """Refresh custom_nodes/*/_vendor/ trees from the live library.* sources.
+    """Refresh the custom nodes' ``_vendor/`` trees from the live library.* sources.
 
-    Run before bumping a custom-node version / publishing — the bundled
-    vendor copies (tagger + directedit) are how the ComfyUI nodes import
-    their inference subset when not running inside the anima_lora repo.
+    The vendor copies are how the ComfyUI nodes (DirectEdit, trainer, Adapter,
+    Spectrum, pixel decoder) import their inference subset when not running
+    inside the anima_lora repo. Targets: ``scripts/release/sync_vendor.py``.
     """
     run([PY, "scripts/release/sync_vendor.py", *extra])
 

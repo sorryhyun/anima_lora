@@ -4,8 +4,8 @@ The merged output is a standalone DiT checkpoint (ComfyUI-compatible, `net.`
 prefixed) that reproduces LoRA+base inference without needing the adapter at
 load time.
 
-Supported: plain LoRA, T-LoRA (its timestep mask is training-only; inference
-already runs full rank, so the bake matches it).
+Supported: plain LoRA, T-LoRA (inference runs full rank by default, so the bake
+matches a default render).
 
 Not supported (refuse by default; ``allow_partial=True`` to drop and proceed):
   - HydraLoRA moe     (layer-local router can't be baked under static weights)

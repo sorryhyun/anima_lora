@@ -2,10 +2,9 @@
 
 One node: takes a stock Anima ``MODEL`` + a register ``adapter.safetensors``
 and returns a patched ``MODEL`` a normal KSampler runs with the registers live.
-Two accepted layouts:
+Two accepted layouts (the trainer writes neither; existing checkpoints load here):
 
-* the standalone register method (``train.py --method register`` /
-  ``networks/methods/register.py``) — registers + trained QKV surface;
+* a standalone register checkpoint — registers + trained QKV surface;
 * a LoRA-family checkpoint trained with ``num_registers > 0`` (one top-level
   ``register_tokens`` tensor next to standard ``lora_unet_*`` keys) — this
   node applies BOTH halves: the registers via the eager register forward and
@@ -110,12 +109,11 @@ def _load_adapter(
     """Load a register ``.safetensors`` into a ready-to-apply adapter.
 
     The checkpoint carries the split QKV surface + ``ss_*`` config in the header
-    metadata (written by ``AdapterNetworkBase.save_weights`` / register's
-    ``metadata_fields``).
+    metadata.
 
     Returns ``(register_adapter, lora_sd)`` — ``lora_sd`` is the standard
     ``lora_unet_*`` state dict for a LoRA-family checkpoint (``None`` for the
-    standalone register method, which has no LoRA half).
+    standalone register checkpoint, which has no LoRA half).
     """
     from safetensors import safe_open
 
@@ -137,8 +135,8 @@ def _load_adapter(
 
     lora_sd = None
     if "ss_target_blocks" in meta:
-        # Standalone register method (`--method register`): registers + a
-        # trained QKV surface, keys `register` + `qkv.{bi}.*`.
+        # Standalone register checkpoint: registers + a trained QKV surface,
+        # keys `register` + `qkv.{bi}.*`.
         config = {
             "num_registers": int(meta["ss_num_registers"]),
             "arm": meta.get("ss_arm", "B"),

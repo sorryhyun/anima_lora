@@ -46,10 +46,10 @@ def linear(seed=0):
 
 
 @pytest.mark.core
-def test_default_plan_is_stream_at_budget_03_swap_0():
+def test_default_plan_is_stream_at_budget_04_swap_20():
     req = TrainRequest()
     assert (req.int8, req.ema_card, req.stream) == ("stream", True, "fp32")
-    assert (req.blocks_to_swap, req.activation_memory_budget) == (0, 0.3)
+    assert (req.blocks_to_swap, req.activation_memory_budget) == (20, 0.4)
     check_plan(req)
 
 

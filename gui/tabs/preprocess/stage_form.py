@@ -155,7 +155,8 @@ def is_visible(field: dict, stage_id: str | None = None) -> bool:
     """Whether a schema field is the form's to show. Bound fields (dataset
     roots, ⚙ Settings values, report / mask tails) are filled by ``build_argv``
     from the trainer's roots; ``auto`` fields (``--device``) are never sent;
-    a ``PANEL_FIELDS`` dest (``overridable``) is bound *and* shown; the
+    a ``PANEL_FIELDS`` dest (``overridable``) or a :data:`SHOWN_BOUND` one is
+    bound *and* shown; the
     trainer-owned dests (:data:`TRAINER_FIELDS`) are filled by the chain."""
     dest = field["dest"]
     if field.get("auto") or dest in _RUN_BAR_FIELDS:

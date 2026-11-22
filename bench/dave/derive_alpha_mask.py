@@ -4,8 +4,8 @@
 Desk exercise, no GPU. Reads the Phase-0 ``per_block.npz`` (the (S, L) matrices
 of DC cross-seed similarity, AC cross-seed similarity and DC power ratio) and
 turns it into a per-block attenuation *weight* ``w(l) ∈ {0, 1}`` — a **flat
-statistical pool**, matching the real paper's A.1.1 block-selection rule
-(arXiv 2606.06813), not the earlier power-weighted gate:
+statistical pool**, the paper's A.1.1 block-selection rule (arXiv 2606.06813)
+with one Anima-specific term:
 
     member(l) = (DC_sim(l) ≥ dc_thresh)        # paper: cross-seed DC lock ≥ 0.99
                 AND (DC_sim(l) − AC_sim(l) > gap_eps)   # Anima fix: drop block 0
@@ -15,29 +15,27 @@ statistical pool**, matching the real paper's A.1.1 block-selection rule
 Each factor maps to a documented selection criterion:
 
   * **DC_sim ≥ 0.99** is the paper's statistical pool (App. A.1.1: pairwise
-    cross-seed cosine of the DC, BH-FDR-tested, threshold 0.99). Flat membership,
-    *not* power-weighted — the old ``power·gap`` weight peaked on blocks 19–27,
-    i.e. it concentrated the lever on the artifact-source content blocks.
+    cross-seed cosine of the DC, BH-FDR-tested, threshold 0.99). Flat membership: a ``power·gap`` weight peaks on blocks
+    19–27, the artifact-source content blocks.
   * **gap > gap_eps** is the Anima-specific correction the paper's rule lacks:
     block 0 has DC_sim ≈ 0.998 (would pass the paper's threshold) but its **AC is
     also seed-locked** (gap ≈ 0.017), so attenuating it unlocks nothing. The gap
     term drops it; on SD3 the paper keeps block 0, but its AC is not locked there.
   * **l ≤ block_cap** is the paper's "exclude final-stage blocks" (A.1.1: those
     blocks have *limited impact on diversity* and are dropped from the pool). On
-    Anima they are worse than useless — attenuating 19–27 imprints a patch-grid
-    **dot** artifact straight onto ``final_layer`` (Phase 2c). The cap is the
-    primary, paper-endorsed dot fix.
+    Anima, attenuating 19–27 imprints a patch-grid **dot** artifact straight onto
+    ``final_layer`` (Phase 2c).
 
 All similarities are averaged over the early σ window (first ⌊S/3⌋ steps, the
-probe's verdict window). On the shipped probe this yields **blocks 8–18**.
+probe's verdict window). The shipped mask pools **blocks 8–18**.
 
 At inference ``--dave`` reads this ``weight`` vector and forms the per-block DC
 attenuation factor ``(1 − α_l) = strength · w(l)`` (``--dave_strength`` is the
 live knob), so every pooled block attenuates uniformly by ``strength`` and
 out-of-pool blocks stay exact no-ops.
 
-    uv run python bench/dave/derive_alpha_mask.py            # latest run → shipped npz
-    uv run python bench/dave/derive_alpha_mask.py --probe bench/dave/results/<ts>/per_block.npz
+    .venv/bin/python bench/dave/derive_alpha_mask.py            # latest run → shipped npz
+    .venv/bin/python bench/dave/derive_alpha_mask.py --probe bench/dave/results/<ts>/per_block.npz
 """
 
 from __future__ import annotations

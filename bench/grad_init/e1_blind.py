@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """E1 — blind A/B of the ``lora_down`` seed arms on GENERAL prompts.
 
-The member-caption read (``e1_read.py``) shows every arm landing a *different*
-image (arm-vs-arm PE cos 0.89–0.95 on a 0.73 floor) with CMMD below the
-real-vs-real noise floor for all of them — "the seed picks a mode" is visible,
-"which mode is better" is not. This renders the same arm checkpoints on a
+Renders the arm checkpoints ``e1_read.py`` reads on member captions on a
 12-row general prompt set (``@aak`` trigger, SFW-leaning, same shape as the
 unmask eval rows) and composes them into the blind-pairs protocol
 (``project/finished/cjk_aware_anima/probes/blind_pairs.py``), one DIRECT pairing per

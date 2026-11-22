@@ -23,7 +23,7 @@ python -m anima_daemon status     # health + resolved base_url + stale_code
 curl -s 127.0.0.1:8765/health     # {"ok":true,"pid":…,"active_job":…,"paused":…}
 ```
 
-**Submit → wait → read the result**, without writing any Python:
+Submit, wait and read the result from the command line:
 
 ```bash
 python tasks.py daemon-run bench/memorization/probe.py --n 5   # attach + stream
@@ -425,9 +425,6 @@ holds a model (`tests/test_daemon.py` enforces the imports).
   `make daemon-wait JOB=<id>`).
 - **SSE responses are one-per-connection** (`Connection: close`); the socket
   closing is the client's EOF signal.
-- **Agent-launched GPU work must go through the daemon.** A GPU process started
-  from an agent's background shell gets SIGKILLed by the harness sandbox after
-  ~1 min with no trace.
 
 ## MCP bridge (`mcp.py`)
 

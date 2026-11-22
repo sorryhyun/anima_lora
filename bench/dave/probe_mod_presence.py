@@ -1,14 +1,9 @@
 """Same-seed MOD-on vs MOD-off block-output DC diff — is the Phase-4 MOD arm
 (quality-prompt delta, w=3) actually perturbing the forward, or a numeric no-op?
 
-Sanity companion to the Phase-4 compose probe (README § Phase 4): the 4-arm
-lock stats showed mod ≡ vanilla, which is consistent with BOTH "MOD is a
-common-mode re-aim invisible to cross-seed similarity" and the mundane "MOD
-never actually did anything". This same-seed cross-arm diff separates them.
-Verdict 2026-06-11: MOD is present — relΔDC 0.6–4% per block at every step
-(cos 0.9994–0.99999, |ΔDC| 45–67), blocks 0–7 shifting MORE than the steering
-window because the base proj(main) t_emb injection reaches all blocks. So the
-lock-invariance in Phase 4 is genuine common-mode behavior, not absence.
+Sanity companion to the Phase-4 compose probe (README § Phase 4). Cross-seed
+lock stats cannot tell a common-mode MOD shift from no shift at all; this
+same-seed cross-arm diff of each block's output DC can.
 
 Mirrors the probe arms: OFF = no head injection at all (enable flag off, no
 steering); ON = head loaded (proj(main) into t_emb) + quality steering delta.

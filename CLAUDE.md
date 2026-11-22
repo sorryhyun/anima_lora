@@ -43,6 +43,8 @@ make download-models                  # Anima first-run set (DiT, Qwen3-0.6B TE,
 ComfyUI included, about 5% of a training step), or `fa2-sm120-fp32div`, which adds the
 comfy-kitchen int8 fp32-division wheel. A bare `uv sync` reverts both to the stock wheels.
 
+Adding a dependency: `uv add --no-sync`, then `make sync` (same after a pin bump).
+
 Run Python as `.venv/bin/python` (or `uv run --no-sync`); a bare `uv run` re-resolves and
 can fail on the torch index split. Weights are rows in the model catalog
 (`library/downloads.py`; `make download-list`).
@@ -52,14 +54,11 @@ can fail on the torch index split. Weights are rows in the model catalog
 - **`tasks.py` is the source of truth** for every `make` target (the `Makefile` only
   forwards); bodies live in `scripts/tasks/` and `scripts/experimental_tasks/` (`exp-*`,
   may break or be removed). `make help` lists them all.
-- **Agent-launched GPU work goes through the daemon** (auto-starts on first submit): a
-  GPU process started from a Claude Code background Bash is SIGKILLed by the harness
-  sandbox after ~1 min, no trace. `make daemon-run ARGS="[--stall-timeout S] <script.py>
-  [flags]"` (daemon-run's own flags go *before* the script path); `make run-status`
-  follows a run's `progress.jsonl`. Submit with `--queue`, then wait with `make
-  daemon-wait JOB=<id>` in a background Bash (`run_in_background`) — not a Monitor
-  loop, and never by parsing `daemon-status` (it lists unfinished jobs only; `rc=-` =
-  not finished). Everything else: `daemon` skill.
+- **Agent-launched GPU work goes through the daemon**: a GPU process started from a
+  Claude Code background Bash is SIGKILLed by the harness sandbox after ~1 min, no trace.
+  Load the `daemon` skill before any GPU launch: it holds the submit / wait / read loop.
+- What GPU work to queue unasked, run names, and how a result is read: the
+  `experiment-planning` skill.
 - **Use torch.compile wherever it can pay.** Any job that runs the DiT over more than a
   handful of images (training, batch renders, bench render loops, `make gen`, A/B sweeps)
   compiles the blocks (`torch_compile` in training, `--compile_blocks` /
@@ -89,58 +88,24 @@ can fail on the torch index split. Weights are rows in the model catalog
 ## MOSS-Image line (primary)
 
 MOSS-Image (OpenMOSS, Apache-2.0): a 5B single-stream DiT (42 blocks) on a frozen
-Qwen3.5-9B text encoder and the frozen FLUX.2 VAE. Code map, module roles and the full
-"what does not carry over from Anima" table: **`library/moss/CLAUDE.md`**. User doc:
+Qwen3.5-9B text encoder and the frozen FLUX.2 VAE. **Read `library/moss/CLAUDE.md` before
+working on the line**: code map, running it (GUI, CLI, i2i), cache and LoRA paths, the int8
+DiT and TE defaults, and the full "what does not carry over from Anima" table. User doc:
 `docs/moss/README.md` (GUI walkthrough: `docs/guidelines/moss-guidebook.md`).
 
-Running it:
+Invariants that differ from Anima:
 
-- `make gui` with the Model switch on MOSS-Image (`make gui-moss` opens the same panel in its own
-  window) submits cache / train / test as daemon jobs. From the CLI the same jobs are
-  `make daemon-run ARGS="--stall-timeout 900 scripts/moss/{cache,train,generate,tune_swap}.py …"`.
-- **Every flag and default is defined once** in `library/moss/requests.py` (torch-free
-  request dataclasses). `--config <file.toml>` takes a flat TOML of field names; order is
-  field default → `--config` → CLI. Shipped defaults: `configs/moss/{cache,lora}.toml`.
-  None of Anima's `base → preset → method` chain, `make lora` or `masked_loss` applies.
-- **i2i**: `make i2i-stage TASK=<task>` → `make i2i-preprocess TASK=<task> MODEL=moss`
-  → train / generate with `configs/moss/i2i/<task>/{cache,train,generate}.toml`. Tasks,
-  ref flags (`ref_timestep` / `ref_isolate` are stamped in the LoRA) and status:
-  `docs/moss/methods/i2i.md`.
-- Caches land in `post_image_dataset/moss[/<set>]` (flat, two files per image), LoRAs in
-  `output/ckpt_moss/` (i2i: `output/ckpt_moss_i2i/`).
-
-Invariants that bite:
-
-- **Never pad the TE.** Each prompt is encoded alone at its true length (Qwen3.5's GDN
-  layers misbehave on padding, and RoPE places the image at frame position = text
-  length); `forward_batched` masks padded keys instead.
-- **Latents are 4D packed `(B, 128, H/16, W/16)`**, normalised by the VAE's BatchNorm
-  buffers — no frame axis. Image sides are multiples of 16 at native aspect.
+- **Never pad the TE.** Each prompt is encoded alone at its true length;
+  `forward_batched` masks padded keys instead.
+- **Latents are 4D packed `(B, 128, H/16, W/16)`**, no frame axis; image sides are
+  multiples of 16 at native aspect.
+- **Every flag and default is defined once** in `library/moss/requests.py`; `--config`
+  takes a flat TOML. None of Anima's `base → preset → method` chain, `make lora` or
+  `masked_loss` applies.
+- **Cache, train and generate with the same `text_encoder`, caption format and prompt
+  tail** — TE caches re-encode when one changes.
 - **Sampler knobs come from the reference pipeline** (`pipeline_moss_image.py` in the
-  model folder): CFG 3, the uncond branch skips block 22, shift 5 snapped to the training
-  σ grid, timestep input `1000·σ`. Read the pipeline before changing one; `model.py`'s
-  unbatched forward stays op-for-op with it.
-- **The default TE is INT8** (`moss_te_int8`; `fp8` / `bf16` selectable). TE caches stamp
-  `encoder`, `caption_format` (`layout_json` by default, via
-  `anime_tools.captions.layout_json`) and `prompt_tail` (`sure` by default: `\n</think>\n\nSure,`
-  after the template; the i2i configs pin `off`) and re-encode when one changes — **cache,
-  train and generate with the same `text_encoder`, caption/prompt format and tail** (generate's
-  `prompt_tail auto` follows the LoRA's stamp).
-- **Generation defaults to the int8 DiT** (`int8 on`, `stream fp32`, t2i and i2i), 11–15 s
-  per 1024² render against 22 s on bf16; it refuses LoHa and block swap.
-- **Training defaults to an int8 DiT base** (`int8 = stream`, GPTQ file `moss_dit_int8`,
-  fp32 stream, swap 0, budget 0.3, EMA on the card; `library/moss/dit_int8/`). It refuses
-  LoHa. `configs/moss/lora_bf16.toml` is the bf16 plan. i2i trains on int8 `stream` (sanitize's bf16
-  `train.toml` is the old v3 recipe); superseded i2i configs are in `_archive/configs/moss_i2i/`.
-  Block swap runs on it and trades VRAM, not speed. Two LoRAs have completed on it: ama mitsuki, 848 steps (`docs/moss/optimization/int8.md`), and swap_text i2i, 3,000 steps (`docs/moss/methods/i2i.md`).
-- Adapters live in `library/moss/lora.py`, held outside the blocks (the block swapper
-  moves every `.weight` under a block); `networks/` is bound to Anima module names.
-- Decode with the DiT off the card — the fp32 VAE decode at ~2 MP does not fit beside it.
-
-Research log (finished 2026-10-28): `project/finished/moss_lora/README.md` (settled logs in
-`done/`, parked ones in `_archive/moss_lora/`); A/B and i2i eval scripts: `bench/moss_ab/`,
-`bench/moss_i2i_eval/`; findings: `docs/moss/findings/`. ComfyUI: the MOSS Toolkit and
-the Spectrum pack's **KSampler (Spectrum for MOSS)** (`custom-nodes` skill).
+  model folder); read it before changing one.
 
 ## Shared infrastructure
 
@@ -168,13 +133,11 @@ masking and grouping live in the sibling repo **https://github.com/sorryhyun/ani
 (checkout `../anime_tools`). Dependency direction is **trainer → `anime_tools`, never the
 reverse** (`tests/test_curation_boundary.py`). It is a **git dependency pinned by release
 tag** (`pyproject.toml`) — an edit in `../anime_tools` is invisible to `make` targets and
-daemon jobs until a tag is cut and the pin moves. Wrappers in `scripts/tasks/` build a
-request, never spell a flag.
+daemon jobs until a tag is cut and the pin moves. Request API and pin procedure:
+`anime-tools` skill.
 
-The trainer GUI does not curate: its anime_tools tab embeds the package's web panel,
-which curates in `workspace/` and exports captions / masks / the revised master (never
-images). Order: Export → preprocess. Exclusions are unioned into `ResizeRequest.skip`
-(`library/datasets/curation_actions.py`).
+The GUI's anime_tools tab: `gui/CLAUDE.md`. Curation exclusions are unioned into
+`ResizeRequest.skip` (`library/datasets/curation_actions.py`).
 
 ### Captions
 
@@ -184,9 +147,8 @@ a caption** (`caption.split(",")` corrupts clauses) — use
 `anime_tools.captions.position_clauses` (`parse_caption` / `compose_caption`). The same
 tag captions feed MOSS, mapped onto its layout-JSON prompt at cache time.
 
-`make caption-autotag` / `caption-position` are dry-run by default (`ARGS="--apply"`
-writes); `make caption-full` writes by default (`ARGS="--dry_run"` plans). After any of
-them, re-cache the TE (`make preprocess-te` for Anima, the MOSS `cache` job).
+After any caption target (`captions` skill), re-cache the TE (`make preprocess-te` for
+Anima, the MOSS `cache` job).
 
 ### i2i staging
 
@@ -198,9 +160,7 @@ them, re-cache the TE (`make preprocess-te` for Anima, the MOSS `cache` job).
 
 PySide6 under `gui/` (`make gui`; `make gui-moss` / `gui-qwen` open the line windows,
 `gui/lines/`). Rules and recipes: `gui/CLAUDE.md` and the `gui-changes` skill.
-ComfyUI (`../comfy/`), SAM3 etc. live in the parent directory. ComfyUI nodes mostly live
-in standalone repos symlinked into `../comfy/custom_nodes/` — edit the source repo, not
-the symlink. `_vendor/` subsets: **regenerate with `make vendor-sync`, never `cp` by
+ComfyUI (`../comfy/`), SAM3 etc. live in the parent directory. `_vendor/` subsets: **regenerate with `make vendor-sync`, never `cp` by
 hand**, and before every node publish. Repo map: **`custom-nodes` skill**.
 
 ## Anima line (experimental)
@@ -216,10 +176,9 @@ routing axes: `lora-routing` skill).
 - Training: `train.py --method <name> --preset <name>` via `make lora [PRESET=…]`
   (`configs/presets.toml`), `make lora-gui GUI_PRESETS=<variant>`
   (`configs/gui-methods/`). Config chain `base.toml → presets.toml[<preset>] →
-  methods/<method>.toml → CLI`; **method wins over preset**. `configs/base.toml` is
-  overwritten by `make update`; `configs/preprocess.toml` is user-owned. `masked_loss`
-  (off) is the one masking switch — a mask tree on disk never enables it. Details:
-  **`configs/CLAUDE.md`**; `make print-config METHOD=… PRESET=…` dumps the merged chain.
+  methods/<method>.toml → CLI`; **method wins over preset**. Ownership of the TOMLs,
+  `masked_loss` and the rest: **`configs/CLAUDE.md`**; `make print-config METHOD=…
+  PRESET=…` dumps the merged chain.
   Train targets run through the daemon (attach by default); `--queue` detaches,
   `--inline` bypasses it; `ANIMA_ACCELERATE_LAUNCH=1` wraps in `accelerate launch`
   for multi-GPU (forces inline).
@@ -259,10 +218,8 @@ routing axes: `lora-routing` skill).
   `unsqueeze(2)` in, `squeeze(2)` out — never `squeeze()` / `squeeze(0)` (hits batch at
   B=1). `vae.decode_to_pixels` returns 5D for a 5D latent; sampler-boundary plug-ins
   receive 5D while reference latents are often 4D (match ndim first).
-- **Free-fit native-shape bucketing** is the only resize mode: native aspect, token count
-  inside its edge tier's band (`EDGE_TOKEN_BANDS`, edges 512…1536). Requires
-  `compile_dynamic_seq` (auto-on with `torch_compile`). On-disk caches decide which
-  buckets exist; `--target_res` is preprocess-only. **`bucketing` skill.**
+- **Free-fit native-shape bucketing** is the only resize mode (native aspect, a token band
+  per edge tier); bands, the compile coupling and `--target_res`: **`bucketing` skill**.
 - **Lazy loading**: TE → cache → free → VAE → cache → free → DiT → adapter → train.
 - **compile after apply**: `compile_blocks()` runs after `network.apply_to` +
   `load_weights`. Use `library/runtime/harness.py::build_anima` rather than open-coding
@@ -282,11 +239,10 @@ routing axes: `lora-routing` skill).
 `scripts/preprocess/`. Resize is idempotent and size-aware; after a `target_res` tier
 change run `make preprocess-reconcile` (`ARGS="--delete"` to act). Caches in
 `post_image_dataset/lora/`: `{stem}_{WxH}_anima.npz`, `{stem}_anima_te.safetensors`,
-`{stem}_anima_pe.safetensors`. TE caching reads **only** the revised caption beside the
-resized image (`post_image_dataset/resized/**/{stem}.txt`), no fallback to the
-`image_dataset/` master, and a missing sidecar encodes an empty caption — so a master
-hand-edit reaches training only through a caption stage, and resize + `preprocess-te`
-alone caches empty prompts. TE caches invalidate on caption mtime only.
+`{stem}_anima_pe.safetensors`. `make preprocess-te` runs the caption step first when any caption knob is on (it
+mirrors each master caption into `post_image_dataset/resized/` and applies the rewrites)
+and encodes from there; with every knob off it encodes the `image_dataset/` masters.
+TE caches invalidate on caption mtime only (`captions` skill).
 
 ### Methods
 
@@ -302,25 +258,24 @@ CNS and DAVE, which also run on MOSS: `docs/inference/`. Channel scaling (on by 
 | **Soft Tokens** — per-layer × per-t soft text tokens | shipped config uses `softrank` (code default `infonce`). `configs/methods/soft_tokens.toml` |
 | **DirectEdit** — inversion + edit-conditioning swap | collapses if ψ_src is off-manifold; check with `exp-test-directedit-dry`. `docs/anima/experimental/directedit_editing_v3.md` |
 
-## Papers and gates
+## Papers
 
 - **Read a paper from its PDF, never through WebFetch** or the `web-fetch` agent: `curl` the PDF
   (arXiv: `https://arxiv.org/pdf/<id>`) into the scratchpad and read it with `pdftotext -layout`.
   Tables, equations and appendices carry the answer; a fetched summary drops them. Follow-up
   questions are answered from the PDF too.
-- **A gate passes when its evidence does.** If every metric and the renders favour the arm, it
-  passed, however small the gap. Criteria are fixed before the result is read, and no threshold
-  goes on a quantity that is small by construction (a one-step x̂₀ gap at low σ, where x_t already
-  holds the image).
 
 ## Projects, docs, history
 
+- What each kind of text holds: a `README.md` guides a first-time reader or indexes its
+  folder (a line's `project/<line>/README.md` also holds that line's rules); a comment says
+  why the code is written that way; a docstring says what the file or function does. Rules
+  for working here live in the `CLAUDE.md` files and the skills.
 - Active research lines: each directory under `project/` is one. **A line's
   live work can sit on its own branch** — run `git branch -a` and check before editing a
   `project/<line>/`.
-- A run's settings are written once, in its config header (`<handle>_mmdd_hhmm.toml`); plans,
-  reports, READMEs and memory name the config file and do not repeat them (`experiment-planning`
-  and `report-writing` skills).
+- A run's settings live in its config header; plans, reports, READMEs and memory name the config
+  file (`experiment-planning` and `report-writing` skills).
 - Finished lines: `project/finished/` (code search skips most of it); retired lines and
   benches: the gitignored `_archive/`. Proposals: `docs/{moss,anima}/proposal/`.
 - Docs: one folder per line (`docs/moss/`, `docs/anima/`); docs shared across lines

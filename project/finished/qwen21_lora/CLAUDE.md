@@ -1,12 +1,7 @@
 # CLAUDE.md — `project/finished/qwen21_lora/`
 
-**This line is not Anima.** Its code lives in `library/qwen21/` — **read
-`library/qwen21/CLAUDE.md` first**: the root `CLAUDE.md` invariants (5D latents, max-padded
-text, free-fit bucketing) are wrong here.
+The Qwen-Image-2.1 research home. Code: `library/qwen21/` (read `library/qwen21/CLAUDE.md`
+first); running cache / train / A/B generation: the `qwen21` skill.
 
-This directory is the research home: `src/` holds the one-off scripts (`activation_sweep`,
-`backward_smoke`, `smoke_t2i`, `bench_accel`) on top of `library.qwen21`; caching, training and A/B generation
-are `scripts/qwen21/{cache,train,generate}.py`. GPU work goes through the daemon, as everywhere in
-this repo.
-
-State and measured numbers: `README.md`.
+`src/` holds the one-off scripts (`activation_sweep`, `backward_smoke`, `smoke_t2i`,
+`bench_accel`) on top of `library.qwen21`. State and measured numbers: `README.md`.

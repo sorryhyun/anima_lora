@@ -38,10 +38,12 @@ Inputs:
 - `text` — caption for the image.
 - `rank` — LoRA rank (`network_dim`); alpha is tied to it.
 - `epochs` — number of training epochs.
-- `gpu` — hardware tier:
-  - `8GB`  → `[low_vram]` preset (gradient checkpointing + unsloth offload)
-  - `16GB` → `[default]` preset + `blocks_to_swap=12`
-  - `high` → `[32gb]` preset (no swap, no checkpointing)
+- `gpu` — hardware tier, picks a `configs/presets.toml` section:
+  - `8GB`  → `[low_vram]` (gradient checkpointing + unsloth offload)
+  - `16GB` → `[default]` (no memory-saving tricks)
+
+  `blocks_to_swap` and the other few-image defaults come from `node_defaults.toml`
+  (`blocks_to_swap = 0`), which sits above the preset.
 
 Output:
 - `model` — the chosen base checkpoint loaded and patched with the freshly
@@ -73,7 +75,7 @@ Saves to
 
 ## Out of scope
 
-- Directory-of-images datasets and method/preset/warm-start overrides (the old
-  "Advanced" node) — use the GUI or CLI (`make lora-gui`) for those.
+- Directory-of-images datasets and method/preset/warm-start overrides: use the GUI
+  or CLI (`make lora-gui`) for those.
 - Baking the trained LoRA into DiT weights as a standalone checkpoint
   (see `scripts/toolkits/merge_to_dit.py` for the CLI equivalent).

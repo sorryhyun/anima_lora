@@ -39,7 +39,8 @@ preprocess.toml is read *first*, so a legacy copy of any of these keys still in
 **`target_res` and `mask_dir` are dual-use**: `load_method_preset` seeds both from
 preprocess.toml at lowest priority (preset / method / CLI still override).
 
-- `target_res` is **inert at train time** (seeded for the snapshot only).
+- `target_res` is **inert at train time** (seeded for the snapshot only; how training gets
+  its buckets: `bucketing` skill).
 - **`mask_dir` is load-bearing.** It is the single mask-root knob for `make mask` /
   `make mask-clean`, `make preprocess-reconcile`, the GUI mask counter/overlay, the turbo
   loop, and training — where it reaches every subset that doesn't name its own `mask_dir`
@@ -50,8 +51,8 @@ Two gates keep a mask tree from enabling masking by itself:
 - training gates `mask_dir` on **the directory existing** (`resolve_configured_mask_dir`),
   so a maskless checkout falls back to the legacy `masks/{merged,sam}` auto-resolution
   instead of enabling masked loss over an empty tree;
-- **`masked_loss` (off by default since v2) is the one switch** — when it is off,
-  `train.py` strips `mask_dir` from every subset and logs one line.
+- **`masked_loss` (off by default) is the one switch**: when it is off, training
+  (`library/anima/trainer/data.py`) ignores `mask_dir` on every subset and logs one line.
 
 The rest of the **shared** path contract (`resized_image_dir`, `lora_cache_dir`, model
 paths) stays in `base.toml` because the dataset blueprint interpolates
@@ -66,8 +67,8 @@ Sections `[default]`, `[low_vram]` (also Windows 8GB), `[graft]`, `[half]`, `[qu
 
 Read by `train.py` (`lora`, `soft_tokens`), each holding rank + routing knobs +
 opinionated LR/epochs/output_name. The default `lora.toml` is plain LoRA
-(weight-SVD `down_init`), with REPA off since 2026-11-06 and T-LoRA commented out; Hydra routing is opt-in via the three-axis
-surface (`lora-routing` skill).
+(weight-SVD `down_init`), with REPA off and T-LoRA commented out; Hydra routing is opt-in
+via the three-axis surface (`lora-routing` skill).
 
 `turbo.toml` uses a bespoke sectioned schema read only by `scripts/distill_turbo/`;
 don't `print-config METHOD=turbo`.
@@ -96,8 +97,8 @@ One file per variant, no comment-toggle blocks. Selected via `--methods_subdir g
 **Hardware composes via preset** — the GUI's Hardware dropdown picks a
 `presets.toml` section tagged `[<name>.gui] group="hardware"` (display metadata, stripped
 from the merge like `[variant]`). So variant files must **NOT** pin
-`gradient_checkpointing` / `unsloth_offload_checkpointing` — method wins over preset, so
-pinning silently defeats the picker. Pinned by a test in `tests/test_config.py`.
+`gradient_checkpointing` / `unsloth_offload_checkpointing`: a pinned value outranks the picked
+preset and silently defeats the picker. Pinned by a test in `tests/test_config.py`.
 
 Data-scope is plain flat keys (`sample_ratio`, `artists_shard` — defaults in `base.toml`;
 `sample_ratio=1.0` is inert so per-subset ratios stay authoritative), surfaced as GUI form
@@ -105,9 +106,8 @@ fields; the `[half]` / `[quarter]` presets are CLI shorthand for the same key.
 
 ## `moss/` — not the merge chain
 
-`configs/moss/lora.toml` / `lora_bf16.toml` / `lora_trigger_registers.toml` / `selfdistill.toml` / `cache.toml` and `i2i/<task>/` are flat tables of
-`library.moss.requests` field names, read by `scripts/moss/*.py --config` (`Request.load_config` in
-`library/lines/requests.py`): field default → TOML → CLI. None of the chain above applies.
+Flat request TOMLs read by `scripts/moss/*.py --config`; none of the chain above applies.
+Semantics: `library/moss/CLAUDE.md`.
 
 ## Subset knobs
 

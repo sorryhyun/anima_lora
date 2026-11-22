@@ -73,17 +73,18 @@ became the default re-encodes on the next `cache` run unless that run passes
   LoRA moves line work and palette toward the set; character identity holds, including
   characters the set does not contain.
 - **Memory**: the default plan is the int8 base (`--int8 stream`, GPTQ forward copies,
-  `--stream fp32`), `--blocks_to_swap 0`, `--activation_memory_budget 0.3`, `--ema_card`,
-  no checkpointing: 1.05 s/step at a 12.88 GB peak on 1024² samples, plus 4.4 GiB of pinned
-  host memory. Below 16 GB run budget 0.1 (1.07 s/step, 10.78 GB). The file downloads on
-  first use, or via `make download-model ARGS=moss-dit-int8`. One LoRA has completed on this
-  plan (848 steps): `docs/moss/optimization/int8.md`. What each part of the plan buys:
+  `--stream fp32`), `--blocks_to_swap 20`, `--activation_memory_budget 0.4`, `--ema_card`,
+  no checkpointing (`configs/moss/lora.toml`). Swap 0 at budget 0.3 measured 1.05 s/step at a
+  12.88 GB peak on 1024² samples, plus 4.4 GiB of pinned host memory. Below 16 GB run budget 0.1 (1.07 s/step, 10.78 GB). The file downloads on
+  first use, or via `make download-model ARGS=moss-dit-int8`. Two LoRAs have completed on this
+  plan: ama mitsuki, 848 steps (`docs/moss/optimization/int8.md`), and swap_text i2i, 3,000
+  steps (`docs/moss/methods/i2i.md`). What each part of the plan buys:
   `docs/moss/optimization/training_step.md`.
-- **bf16 plan** (`--config configs/moss/lora_bf16.toml`): needed for `--algo loha` and the
-  i2i configs, since the int8 base refuses LoHa and the i2i task configs ship on bf16 (one
-  swap_text run has finished on the int8 base: `docs/moss/methods/i2i.md`).
+- **bf16 plan** (`--config configs/moss/lora_bf16.toml`): needed for `--algo loha`, which the
+  int8 base refuses. The i2i configs train on the int8 base except `sanitize`, whose bf16
+  `train.toml` (swap 38 / budget 0.175) is the v3 recipe.
   `--blocks_to_swap 36`, `--activation_memory_budget 0.5`, `--swap_h2d_only`: 1.66 s/step at
-  1024². The i2i configs run swap 38 / budget 0.175. Budget, swap and i2i measurements and
+  1024². Budget, swap and i2i measurements and
   the plan table: guidebook §4.2. `--swap_h2d_only` is 8% faster than the classic swap at 40
   (4.69 vs 5.09 s/step on gen 4 x16). `tune_swap.py` times each swap count on the cache's
   largest sample on this plan (about 4 min) and prints the flags to train with.

@@ -1,14 +1,7 @@
 """Typed requests for the MOSS-Image jobs: caching, generation, LoRA training.
 
-Torch-free, so a GUI form can be built from these without importing torch. Each
-field carries its CLI help in ``metadata``, so the sidecar CLIs (``scripts/moss/``)
-read one definition:
-
-    req = GenerateRequest(prompt="…", steps=30)
-    argv = req.to_argv()                  # → daemon job argv
-    req = GenerateRequest.from_argv(argv) # ← sidecar CLI
-
-``to_argv`` writes only fields that differ from their defaults.
+Torch-free, for the GUI forms and the sidecar CLIs (``scripts/moss/``); the argv
+round-trip and ``--config`` layering are ``library.lines.requests.Request``.
 
 Model directory: ``--model_dir`` if given, else ``ANIMA_MOSS_MODEL_DIR`` (env or
 ``.env``), else ``models/moss_image`` under the repo home. It holds one diffusers
@@ -1142,19 +1135,17 @@ class TrainRequest(Request):
         "Turn it on with --no-compile, or for that peak",
     )
     activation_memory_budget: float = _f(
-        0.3,
+        0.4,
         "cap on the compiled blocks' saved-for-backward set (Inductor's min-cut "
         "partitioner recomputes the rest); applies with --compile and "
         "--no-grad_checkpointing, ignored otherwise. On the int8 plan 0.3 runs 1.05 "
-        "s/step at 12.9 GB and 0.1 runs 1.07 at 10.8 GB; 0.4 can OOM on 16 GB. Below "
-        "16 GB take 0.1. At 0.05 FA2's output no longer fits and attention is "
-        "recomputed (1.16 s/step, 9.98 GB). The bf16 plan runs 0.5 at swap 36. i2i samples carry reference "
-        "tokens: the i2i configs run 0.175 at swap 38 with --swap_h2d_only (~9%% "
-        "faster than 0.15 at swap 28, where 0.2 OOMs)",
+        "s/step at 12.9 GB and 0.1 runs 1.07 at 10.8 GB, both at swap 0, where 0.4 can "
+        "OOM on 16 GB; the default 0.4 runs at swap 20. Below 16 GB take 0.1. At 0.05 FA2's output no longer fits and attention is "
+        "recomputed (1.16 s/step, 9.98 GB). The bf16 plan runs 0.5 at swap 36",
         advanced=True,
     )
     blocks_to_swap: int = _f(
-        0,
+        20,
         "DiT blocks to swap to CPU (-1 = size from free VRAM). On the int8 plan this "
         "trades VRAM, not speed: swap 20 at budget 0.1 peaks at 8.67 GB against "
         "10.78 GB at about the same s/step, up to 36; from 38 the int8 blocks (0.106 GB) "

@@ -148,7 +148,7 @@ make download-model ARGS=moss-sft
 
 ### 4.2 显存方案（16 GB）
 
-默认：梯度检查点（`grad_checkpointing`）关闭，`compile` 开启，**高级** 中 `int8 stream` 配合 GPTQ 文件（DiT 的块权重以 int8 运行，文件首次使用时下载）、`stream fp32`（块的其余部分以 fp32 运行）、`blocks_to_swap 0`（所有块都留在显卡上）、`activation_memory_budget 0.3`（前向结果中为反向保留的比例，其余重新计算）、`ema_card` 开启以及 `expandable_segments` 开启（序列长度变化时避免 CUDA 显存池碎片化）。
+默认：梯度检查点（`grad_checkpointing`）关闭，`compile` 开启，**高级** 中 `int8 stream` 配合 GPTQ 文件（DiT 的块权重以 int8 运行，文件首次使用时下载）、`stream fp32`（块的其余部分以 fp32 运行）、`blocks_to_swap 20`（20 个块放在内存中，按需传到显卡）、`activation_memory_budget 0.4`（前向结果中为反向保留的比例，其余重新计算）、`ema_card` 开启以及 `expandable_segments` 开启（序列长度变化时避免 CUDA 显存池碎片化）。
 
 该方案在 1024² 样本上约为 1.1 s/step，峰值 13 GB，并且还会锁定 4.4 GiB 系统内存。它比 bf16 方案更快也更准确：bf16 方案在相同峰值下为 1.6 s/step，预测误差在测试的所有 σ 上也更高（σ = 0.5 时 1.93% 对 1.62%，[精度](../moss/optimization/int8.md#accuracy)）。budget 每提高 0.1，峰值约增加 1 GB，每步快 0.01–0.02 s。显存低于 16 GB 的显卡请用 0.1（1.07 s/step，10.78 GB）；0.4 在 16 GB 上也可能显存不足。0.05 时峰值降到 9.98 GB，但需要重新计算 attention，速度降为 1.16 s/step。目前只用它完整训练过一个 LoRA（[详情](../moss/optimization/int8.md)）。
 
@@ -161,7 +161,7 @@ make download-model ARGS=moss-sft
 | 留更多余量 | swap 24，budget 0.2 | 1.78 | 2.26 GiB |
 | 检查点 | 梯度检查点开启，swap 0 | 2.09 | 1.60 GiB |
 
-bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，秩 32）在 caststation 数据集上为 1.66 s/step，最大样本（图像 4.2k + 文本 0.4k token）剩余 0.85 GB。budget 超过约 0.45 后再提高也没有帮助（0.3：2.05 s/step），swap 28–36 速度相同。i2i 样本还带有参考图，因此 i2i 任务配置使用 swap 38、budget 0.175：swap 28 时 budget 0.2 会显存不足，而 swap 38 能为更高的 budget 腾出空间；在约 8.3k 联合 token（sanitize）下为 3.79 s/step，swap 28 / budget 0.15 则为 4.17 s/step。`swap_h2d_only`（默认开启，只在有块被换出时起作用，可用 `--no-swap_h2d_only` 关闭）会在 RAM 中为每个被换出的块保留一份锁页副本（最多 8.8 GB），这样换出只需复制到显卡，无需再复制回来。结果和显存相同；swap 38 以内速度相同，swap 40 时快 8%。
+bf16 方案（swap 36，budget 0.5，`swap_h2d_only`，`expandable_segments`，秩 32）在 caststation 数据集上为 1.66 s/step，最大样本（图像 4.2k + 文本 0.4k token）剩余 0.85 GB。budget 超过约 0.45 后再提高也没有帮助（0.3：2.05 s/step），swap 28–36 速度相同。i2i 样本还带有参考图，因此 sanitize 的配置使用 swap 38、budget 0.175：swap 28 时 budget 0.2 会显存不足，而 swap 38 能为更高的 budget 腾出空间；在约 8.3k 联合 token（sanitize）下为 3.79 s/step，swap 28 / budget 0.15 则为 4.17 s/step。`swap_h2d_only`（默认开启，只在有块被换出时起作用，可用 `--no-swap_h2d_only` 关闭）会在 RAM 中为每个被换出的块保留一份锁页副本（最多 8.8 GB），这样换出只需复制到显卡，无需再复制回来。结果和显存相同；swap 38 以内速度相同，swap 40 时快 8%。
 
 表格测试条件：合成 1024² 图像 + 300 个文本 token（共约 4.4k token），LoRA 秩除非该行另有说明均为 16，RTX 5070 Ti。秩 32 的行在约 4.5k 联合 token（图像 4096 + 文本 455）下运行，峰值 reserved 约 13.1 GB；秩 16、budget 0.1 为 1.82 s/step，剩余约 2.0 GB。真实样本最多约 4.9k token，标注越长显存占用越多，`swap 24` 在相同速度下留出了这部分余量。
 

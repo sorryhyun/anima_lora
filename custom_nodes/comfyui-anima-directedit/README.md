@@ -43,7 +43,7 @@ Drop `custom_nodes/comfyui-anima-directedit/` into your ComfyUI `custom_nodes/`.
 
 The node works in two install shapes:
 
-1. **Inside the anima_lora repo** (dev / monorepo). It imports the live `library.inference.directedit` etc., so edits in the parent repo are picked up immediately.
+1. **Inside the anima_lora repo** (dev / monorepo). It imports the live `library.inference.editing.directedit` etc., so edits in the parent repo are picked up immediately.
 2. **Standalone** (just this directory dropped into a vanilla ComfyUI `custom_nodes/`). It falls back to a bundled inference subset under `_vendor/` — no need to clone the parent repo or run `uv sync`. Pip deps are minimal (`torch`, `numpy`, `pillow`, `tqdm`), all already present in any ComfyUI install.
 
 ### For maintainers — keeping the vendor copy fresh
@@ -51,7 +51,7 @@ The node works in two install shapes:
 The `_vendor/` tree is generated from the live anima_lora source. Regenerate it before bumping the node version:
 
 ```bash
-python scripts/release/sync_vendor.py     # from the anima_lora repo root
+make vendor-sync     # from the anima_lora repo root (runs scripts/release/sync_vendor.py)
 ```
 
 ## Inputs

@@ -4,8 +4,7 @@
 Orchestrates ``_archive/proposals/memorization_lowsigma_reweight.md`` Phase 0: retrain
 the banked known-overfit recipe (``bench_sincos_half_plain`` — sincos, 167-member
 half shard, 4 epochs, dim16/α90, AUC 0.82) with the online Δ-gap tracker ON, then
-judge it with the FROZEN existing instruments — nothing new is built to score
-this (the proposal is explicitly not an eval proposal):
+judge it with the existing instruments, unchanged:
 
   G1  ``loss_gap.py`` member-vs-holdout AUC: banked 0.82 → gate **≤ 0.65**.
   SANITY  the online per-item Δ-EMA ranking (``<ckpt>_memgap.json``) must
@@ -25,10 +24,10 @@ Arms:
 
 Usage (GPU must be free — one ~670-step training run + one probe pass)::
 
-    uv run python bench/memorization/reweight_bench.py --arm reweight
-    uv run python bench/memorization/reweight_bench.py --arm measure
+    .venv/bin/python bench/memorization/reweight_bench.py --arm reweight
+    .venv/bin/python bench/memorization/reweight_bench.py --arm measure
     # re-score an existing checkpoint without retraining:
-    uv run python bench/memorization/reweight_bench.py --skip_train \
+    .venv/bin/python bench/memorization/reweight_bench.py --skip_train \
         --adapter output/ckpt/bench_sincos_half_rw_reweight.safetensors
 
 Envelope lands in ``bench/memorization/results/<ts>-reweight_<arm>[_<label>]/``.
@@ -56,12 +55,11 @@ BANKED_AUC_FALLBACK = 0.822
 
 # The banked overfit recipe — mirrors output/ckpt/bench_sincos_half_plain
 # .snapshot.toml. Everything else (down_init=weight_svd, REPA, caption_dropout
-# 0.1) comes from configs/methods/lora.toml — but that file's comment-toggle
-# defaults MUTATE over time (the 2026-07-06 state drifted to lr 2e-5 + the
-# active T-LoRA mask, which killed the overfit and invalidated the first
-# Phase-0 run), so every knob the banked snapshot disagrees with today's TOML
-# on is pinned here explicitly. sample_ratio is pinned on CLI because it is not
-# in tracked config (docs/anima/experimental/soup.md).
+# 0.1) comes from configs/methods/lora.toml, whose comment-toggle defaults
+# drift (a drifted lr plus an active T-LoRA mask kills the overfit), so every
+# knob the banked snapshot disagrees with the current TOML on is pinned here.
+# sample_ratio is pinned on CLI because it is not in tracked config
+# (docs/anima/experimental/soup.md).
 RECIPE = [
     "--method",
     "lora",

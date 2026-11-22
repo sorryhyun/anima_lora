@@ -2,7 +2,7 @@
 
 A single, deliberately small node: feed it one IMAGE + a caption, pick the base
 Anima checkpoint, a rank, an epoch count and a GPU tier, and on launch it trains
-a T-LoRA + OrthoLoRA against that one image/prompt pair.
+a T-LoRA (``configs/gui-methods/tlora.toml``) against that one image/prompt pair.
 
 Design notes:
 
@@ -141,12 +141,10 @@ def _resolve_daemon_client():
     The trainer node is self-contained: it talks to a running Anima daemon over
     localhost HTTP through the pure-stdlib client vendored under ``_vendor/``
     (kept verbatim-in-sync with the live ``anima_daemon/client.py`` by
-    ``scripts/release/sync_vendor.py``). We import it via a *relative* import so we
-    never bind a generic top-level name — an old live-first probe that did
-    ``import anima_daemon.client`` against a ``../..`` it assumed was the repo
-    (which is ComfyUI's root in a standalone install) could poison
-    ``sys.modules`` with an unrelated on-path package and break the vendor
-    fallback (``ModuleNotFoundError``).
+    ``scripts/release/sync_vendor.py``). The import is relative: an absolute
+    ``import anima_daemon.client`` resolves against ``sys.path``, which in a
+    standalone install can bind an unrelated on-path package and break the
+    vendor import (``ModuleNotFoundError``).
 
     The client never *starts* a daemon — it only talks to one. Its
     ``config.discover_pidfile`` finds a running daemon's pidfile (the per-user
@@ -511,7 +509,7 @@ def _fold_inv_scale(lora_sd: dict) -> dict:
 
 
 class AnimaLoRATrainer:
-    """Train an Anima LoRA (T-LoRA + OrthoLoRA) from one image + caption.
+    """Train an Anima T-LoRA from one image + caption.
 
     Loads the chosen base checkpoint itself after training and returns a patched
     MODEL — use it exactly like the output of an Anima Adapter Loader.
@@ -575,7 +573,7 @@ class AnimaLoRATrainer:
                         "tooltip": "Learning rate (network learning_rate).",
                     },
                 ),
-                "gpu": (["8GB", "16GB", "high"], {"default": "16GB"}),
+                "gpu": (["8GB", "16GB"], {"default": "16GB"}),
             },
             "optional": {
                 "mask": (
@@ -662,7 +660,7 @@ class AnimaLoRATrainer:
 
 
 class AnimaLoRATrainerFolder:
-    """Train an Anima LoRA (T-LoRA + OrthoLoRA) from a folder of images + captions.
+    """Train an Anima T-LoRA from a folder of images + captions.
 
     Like ``AnimaLoRATrainer`` but reads its dataset from a directory of images
     each paired with a same-stem ``.txt`` caption sidecar, instead of a single
@@ -732,7 +730,7 @@ class AnimaLoRATrainerFolder:
                         "tooltip": "Learning rate (network learning_rate).",
                     },
                 ),
-                "gpu": (["8GB", "16GB", "high"], {"default": "16GB"}),
+                "gpu": (["8GB", "16GB"], {"default": "16GB"}),
             },
             "optional": {
                 "mask_dir": (

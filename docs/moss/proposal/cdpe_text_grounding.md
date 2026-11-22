@@ -137,7 +137,7 @@ inference mismatch. This applies to every prompt that carries image positions:
   4. **jitter**: the same offsets permuted across items;
   5. **equal-norm random** offsets.
 - The jitter and random arms are required. Position probes on MOSS sit on a floor of
-  about 1e-4…1e-3 (`project_moss_patching_floor`).
+  about 1e-4…1e-3 (`docs/moss/findings/text_stream_page_state.md`).
 - Read:
   - OCR v6 hit rate inside the named box, and how far each item's centroid is from its box;
   - the grounded tokens' attention mass on their box, in a few blocks;

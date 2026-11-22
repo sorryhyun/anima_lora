@@ -32,7 +32,7 @@ family by construction.
 
 Usage (from anima_lora/)::
 
-    uv run python bench/memorization/generalize.py \
+    .venv/bin/python bench/memorization/generalize.py \
         --adapters output/ckpt/bench_sincos_half_plain.safetensors \
                    output/ckpt/bench_sincos_half_uncondpoolft.safetensors \
         [--with_base] [--num_prompts 24] [--num_refs 96] [--label ...]

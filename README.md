@@ -119,11 +119,11 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ### Manual (from a clone)
 
 ```bash
+make sync                                                  # uv sync with the torch stack picked from the GPU (below)
 uv sync                                                    # CUDA (default, every platform)
 uv sync --no-group cuda-windows --group rocm-windows       # Windows AMD only
 uv sync --no-default-groups --group torch-213              # older torch (or torch-212)
 uv sync --no-default-groups --group fa2-sm120              # RTX 50-series only: patched FlashAttention in the venv
-make sync                                                  # same, with the torch stack picked from the GPU (below)
 
 hf auth login             # or sign in from the GUI
 make download-models      # DiT, TE, VAE, PE-Spatial, CJK vocab pack, tagger, tag DB → models/

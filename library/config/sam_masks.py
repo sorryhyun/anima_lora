@@ -1,11 +1,10 @@
 """The SAM mask stage's region list, as the trainer spells it.
 
-anime_tools 0.6.4 replaced ``SamMaskRequest``'s ``prompts`` (masked out) /
-``focus_prompts`` (kept) / ``prompt_embed`` with one ``masks`` list of
-``ROLE:KIND:VALUE`` specs (``keep|ignore`` × ``text|soft``). A
-``configs/sam_mask.yaml`` or a saved ``[[variant.stages.masks_sam]]`` card written
-before then still carries the old pair; this module reads it into the new list.
-Torch-free — the GUI imports it (lazily; ``anime_tools.downloads`` is the cost).
+``SamMaskRequest`` takes one ``masks`` list of ``ROLE:KIND:VALUE`` specs
+(``keep|ignore`` × ``text|soft``). A ``configs/sam_mask.yaml`` or a saved
+``[[variant.stages.masks_sam]]`` card may instead carry the older ``prompts`` (masked
+out) / ``focus_prompts`` (kept) / ``prompt_embed`` keys; this module reads those into
+the list. Torch-free — the GUI imports it (lazily; ``anime_tools.downloads`` is the cost).
 """
 
 from __future__ import annotations

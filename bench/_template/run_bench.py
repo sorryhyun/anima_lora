@@ -3,10 +3,9 @@
 
 Shows the full contract from `bench/README.md` in one runnable file:
 
-  1. sys.path bootstrap (bench/ is not an installed package)
-  2. CLI surface via `bench._anima` (`add_model_args` + `add_common_args`)
-  3. model build via `build_anima` (the compile-after-apply harness)
-  4. result envelope via `bench._common` (`make_run_dir` + `write_result`)
+  1. CLI surface via `bench._anima` (`add_model_args` + `add_common_args`)
+  2. model build via `build_anima` (the compile-after-apply harness)
+  3. result envelope via `bench._common` (`make_run_dir` + `write_result`)
 
 The placeholder measurement — DiT load wall-clock, parameter count, and peak
 VRAM after build — is real enough to run end-to-end with nothing but the DiT
@@ -17,8 +16,8 @@ bar — see CONTRIBUTING.md).
 
 Usage::
 
-    uv run python bench/_template/run_bench.py [--label smoke] [--compile]
-    uv run python bench/_template/run_bench.py --adapter output/ckpt/my_lora.safetensors
+    .venv/bin/python bench/_template/run_bench.py [--label smoke] [--compile]
+    .venv/bin/python bench/_template/run_bench.py --adapter output/ckpt/my_lora.safetensors
 """
 
 from __future__ import annotations

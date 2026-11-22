@@ -18,7 +18,7 @@ whose value is λ·LPIPS and whose gradient into the DiT is λ·g. λ is either 
 
 Memory: the VAE backward (2.5 GB at the default window) runs while the DiT's graph is alive.
 At the default preset a 1024-tier step already holds 14.3 GB of a 16 GB card, so the term
-needs ``gradient_checkpointing`` there (smoke of 2026-11-21).
+needs ``gradient_checkpointing`` there.
 
 Switched on by ``--pixel_lpips_ratio`` or ``--pixel_lpips_weight`` > 0
 (``resolve_adapters``); the composer's ``pixel_lpips`` entry adds the term as it comes.

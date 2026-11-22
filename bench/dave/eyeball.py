@@ -5,8 +5,8 @@ Not a metrics bench: just generates the `make test` prompt under a few DAVE
 configs (the model is loaded once and shared) and dumps labeled PNGs into
 ``output/tests/dave/`` so the diversity/quality tradeoff can be eyeballed.
 
-    uv run python bench/dave/eyeball.py
-    uv run python bench/dave/eyeball.py --seeds 1000 1001 1002
+    .venv/bin/python bench/dave/eyeball.py
+    .venv/bin/python bench/dave/eyeball.py --seeds 1000 1001 1002
 """
 
 from __future__ import annotations
@@ -31,13 +31,12 @@ from bench._anima import DEFAULT_PROMPT
 
 # (label, dave-on, strength, block_lo, block_hi, tau). block_hi=-1 → last block.
 # tau>0 = DAVE paper's early-step cutoff (overrides the σ window); 0 = full schedule.
-# The shipped mask is now the flat statistical pool (blocks 8–18, final-stage 19–27
-# baked to 0), so block_lo/hi=-1 already excludes the dot blocks. These configs
-# validate the production defaults and probe the headroom the cap opened up.
+# The shipped mask is the flat statistical pool (blocks 8–18, final-stage 19–27
+# baked to 0), so block_lo/hi=-1 already excludes the dot blocks.
 CONFIGS = [
     # Tighter early-window (first ~10% of steps only), flat pool 8–18. Gentle vs hot
     # dose: does τ0.10 hold diversity with less text/hand cost, and does s0.80 stay
-    # coherent once the window is this tight? (baseline/default already characterized.)
+    # coherent once the window is this tight?
     ("tau0.10_s0.30", True, 0.30, 0, -1, 0.10),
     ("tau0.10_s0.80", True, 0.80, 0, -1, 0.10),
 ]

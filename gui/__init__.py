@@ -2,7 +2,8 @@
 
 Subpackages: ``core`` (Qt-free paths / config / validation / discovery / submit
 plan), ``jobs`` (daemon client, observer mixin, progress, process kill),
-``dialogs``, ``widgets``, ``tabs``, ``i18n``, ``explanations``, ``qwen21``.
+``dialogs``, ``widgets``, ``tabs``, ``i18n``, ``explanations``, ``lines`` (the
+sidecar-line window) and its lines ``moss`` / ``qwen21``.
 
 The package root re-exports the commonly used names (``from gui import <name>``)
 lazily, so importing a ``gui.core`` module never pulls in PySide6.

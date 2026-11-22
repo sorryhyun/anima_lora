@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 """DAVE Phase 3 — analytic dot-predictor: per-block patch-grid imprint probe.
 
-The shipped mask excludes blocks 19–27 with a hand-set ``block ≤ 18`` cap to kill
-the patch-grid **dot** artifact (the single most critical DAVE degradation). The
-cap is validated by eyeball and endorsed by the paper ("exclude final-stage
-blocks"), but it is *guessed*, not *measured*. This probe measures it directly, so
-the cap becomes a number read off Anima rather than a structural assumption.
+Measures, per block, whether attenuating that block alone produces the
+patch-grid **dot** artifact, for comparison against the shipped mask's hand-set
+``block ≤ 18`` cap.
 
 The mechanism (README Phase 2c): subtracting a block's per-channel spatial DC
 makes the next block's LayerNorm/adaLN renormalize and **boost the AC residual**;
@@ -40,9 +38,9 @@ spectrum montage, and ``imprint.npz``.
 
 Usage
 -----
-    uv run python bench/dave/probe_patch_imprint.py                    # all blocks, 3 seeds
-    uv run python bench/dave/probe_patch_imprint.py --seeds 5 --steps 28
-    uv run python bench/dave/probe_patch_imprint.py --blocks 14 18 19 22 --decode 4
+    .venv/bin/python bench/dave/probe_patch_imprint.py                    # all blocks, 3 seeds
+    .venv/bin/python bench/dave/probe_patch_imprint.py --seeds 5 --steps 28
+    .venv/bin/python bench/dave/probe_patch_imprint.py --blocks 14 18 19 22 --decode 4
 """
 
 from __future__ import annotations

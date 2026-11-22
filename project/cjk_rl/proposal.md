@@ -175,8 +175,8 @@ GRPO treats it as a black box.
 
 ## 4. Phases and gates
 
-Criteria are fixed here, before any result. A gate passes when its evidence does (CLAUDE.md
-§ Papers and gates). Every read is the 64-string ruler on `m14v3`, paired over strings
+Criteria are fixed here, before any result. A gate passes when its evidence does (`experiment-planning`
+skill, Gate). Every read is the 64-string ruler on `m14v3`, paired over strings
 against `seed_1008#m14v3`; all 64 strings are held out from the pool. Mid and long strings
 are read apart from short.
 

@@ -148,7 +148,7 @@ make download-model ARGS=moss-sft
 
 ### 4.2 메모리 구성 (16 GB)
 
-기본값: `grad_checkpointing` 끔, `compile` 켬, 그리고 **Advanced** 의 `int8 stream` + GPTQ 파일 (DiT 블록 가중치를 int8로 실행하며, 파일은 처음 사용할 때 내려받음), `stream fp32` (블록의 나머지는 fp32로 실행), `blocks_to_swap 0` (모든 블록을 카드에 둠), `activation_memory_budget 0.3` (forward 결과 중 backward용으로 보관하는 비율, 나머지는 재계산), `ema_card` 켬, `expandable_segments` 켬 (시퀀스 길이가 달라질 때 CUDA 메모리 풀이 조각나지 않게 함).
+기본값: `grad_checkpointing` 끔, `compile` 켬, 그리고 **Advanced** 의 `int8 stream` + GPTQ 파일 (DiT 블록 가중치를 int8로 실행하며, 파일은 처음 사용할 때 내려받음), `stream fp32` (블록의 나머지는 fp32로 실행), `blocks_to_swap 20` (블록 20개를 RAM에 두고 카드로 보내며 실행), `activation_memory_budget 0.4` (forward 결과 중 backward용으로 보관하는 비율, 나머지는 재계산), `ema_card` 켬, `expandable_segments` 켬 (시퀀스 길이가 달라질 때 CUDA 메모리 풀이 조각나지 않게 함).
 
 이 구성은 1024² 샘플에서 step당 약 1.1초, peak 13 GB이며 시스템 메모리 4.4 GiB도 고정(pin)합니다. bf16 구성보다 빠르고 정확합니다. bf16 구성은 같은 peak에서 step당 1.6초이고, 예측 오차도 측정한 모든 σ에서 더 높습니다 (σ = 0.5에서 1.93% 대 1.62%, [정확도](../moss/optimization/int8.md#accuracy)). budget을 0.1 올릴 때마다 peak가 약 1 GB 늘고 step은 0.01–0.02초 빨라집니다. 16 GB 미만 카드에서는 0.1 (step당 1.07초, 10.78 GB)을 쓰세요. 0.4는 16 GB에서도 메모리가 부족할 수 있습니다. 0.05에서는 peak가 9.98 GB로 줄지만 attention을 재계산하게 되어 step이 1.16초로 느려집니다. 이 구성으로 끝까지 학습한 LoRA는 아직 하나뿐입니다 ([자세히](../moss/optimization/int8.md)).
 
@@ -161,7 +161,7 @@ make download-model ARGS=moss-sft
 | 여유 확보 | swap 24, budget 0.2 | 1.78 | 2.26 GiB |
 | 체크포인팅 | `grad_checkpointing` 켬, swap 0 | 2.09 | 1.60 GiB |
 
-bf16 구성(swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, 랭크 32)은 caststation 세트에서 step당 1.66초이며, 가장 큰 샘플(이미지 4.2k + 텍스트 0.4k 토큰)에서 여유 VRAM이 0.85 GB입니다. budget은 약 0.45를 넘으면 더 올려도 도움이 되지 않고(0.3: 2.05 s/step), swap 28–36은 속도가 같습니다. i2i 샘플에는 참조 이미지도 포함되므로 i2i 작업 설정은 swap 38, budget 0.175를 사용합니다. swap 28에서는 budget 0.2에서 메모리가 부족하고, swap 38이면 더 높은 budget을 쓸 여유가 생깁니다. 약 8.3k 결합 토큰(sanitize)에서 swap 38 / budget 0.175는 step당 3.79초로, swap 28 / budget 0.15의 4.17초보다 빠릅니다. `swap_h2d_only`(기본으로 켜져 있고 블록을 스왑할 때만 작동하며 `--no-swap_h2d_only`로 끌 수 있음)는 스왑되는 모든 블록의 page-locked 사본을 RAM에 보관해(최대 8.8 GB) 스왑이 카드로 복사만 하고 되돌려 복사하지 않게 합니다. 결과와 VRAM은 같고, swap 38까지는 속도도 같으며 swap 40에서는 8% 더 빠릅니다.
+bf16 구성(swap 36, budget 0.5, `swap_h2d_only`, `expandable_segments`, 랭크 32)은 caststation 세트에서 step당 1.66초이며, 가장 큰 샘플(이미지 4.2k + 텍스트 0.4k 토큰)에서 여유 VRAM이 0.85 GB입니다. budget은 약 0.45를 넘으면 더 올려도 도움이 되지 않고(0.3: 2.05 s/step), swap 28–36은 속도가 같습니다. i2i 샘플에는 참조 이미지도 포함되므로 sanitize 설정은 swap 38, budget 0.175를 사용합니다. swap 28에서는 budget 0.2에서 메모리가 부족하고, swap 38이면 더 높은 budget을 쓸 여유가 생깁니다. 약 8.3k 결합 토큰(sanitize)에서 swap 38 / budget 0.175는 step당 3.79초로, swap 28 / budget 0.15의 4.17초보다 빠릅니다. `swap_h2d_only`(기본으로 켜져 있고 블록을 스왑할 때만 작동하며 `--no-swap_h2d_only`로 끌 수 있음)는 스왑되는 모든 블록의 page-locked 사본을 RAM에 보관해(최대 8.8 GB) 스왑이 카드로 복사만 하고 되돌려 복사하지 않게 합니다. 결과와 VRAM은 같고, swap 38까지는 속도도 같으며 swap 40에서는 8% 더 빠릅니다.
 
 표: 합성 1024² 이미지 + 텍스트 300 토큰(합계 약 4.4k 토큰), LoRA 랭크는 행에 따로 적지 않으면 16, RTX 5070 Ti 기준입니다. 랭크 32 행은 약 4.5k 토큰(이미지 4096 + 텍스트 455)에서 돌렸고 최대 reserved는 약 13.1 GB였습니다. 랭크 16에 budget 0.1은 1.82 s/step, 여유 약 2.0 GB였습니다. 실제 샘플은 최대 약 4.9k 토큰까지 나왔고, 캡션이 길수록 메모리를 더 쓰는데, `swap 24` 는 같은 속도로 그만큼의 여유를 남깁니다.
 

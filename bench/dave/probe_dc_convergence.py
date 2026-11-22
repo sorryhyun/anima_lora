@@ -4,8 +4,8 @@
 DAVE (DC Attenuation for diVersity Enhancement, ICML'26, training-free) claims
 that the *spatial average* (DC component) of intermediate Transformer-block
 features `h^l` converges across seeds early in generation, pinning the global
-layout and collapsing same-prompt diversity. Before building the intervention on
-Anima, this read-only probe tests whether that diagnosis holds here.
+layout and collapsing same-prompt diversity. This read-only probe tests that
+diagnosis on Anima.
 
 What it does
 ------------
@@ -28,7 +28,7 @@ restricted to the **DC-heavy blocks** (block-averaging smears the bimodal
 per-block power structure — see the power-ratio heatmap).
 
 If DC sim ≈ AC sim even in DC-heavy blocks, the seeds don't diversify via the AC
-and attenuating the DC won't help — we stop before building the intervention.
+and attenuating the DC won't help.
 
 Read-only: post-hooks only, eager 5D forwards, compile off. Outputs a
 ``result.json``, three PNGs, and a ``per_block.npz`` of the (S,L) matrices.
@@ -49,13 +49,13 @@ state, not the mechanical subtraction DAVE itself applies.
 
 Usage
 -----
-    uv run python bench/dave/probe_dc_convergence.py --seeds 8 --steps 24 --cfg 4.0
-    uv run python bench/dave/probe_dc_convergence.py --seeds 12 --label teddy \
+    .venv/bin/python bench/dave/probe_dc_convergence.py --seeds 8 --steps 24 --cfg 4.0
+    .venv/bin/python bench/dave/probe_dc_convergence.py --seeds 12 --label teddy \
         --prompt "a girl in a plain dress next to a white teddy bear"
     # compose arms (same seeds, then diff the result.json / per_block.npz):
-    uv run python bench/dave/probe_dc_convergence.py --lora latest --label base
-    uv run python bench/dave/probe_dc_convergence.py --lora latest --mod auto
-    uv run python bench/dave/probe_dc_convergence.py --lora latest --mod auto --dave auto
+    .venv/bin/python bench/dave/probe_dc_convergence.py --lora latest --label base
+    .venv/bin/python bench/dave/probe_dc_convergence.py --lora latest --mod auto
+    .venv/bin/python bench/dave/probe_dc_convergence.py --lora latest --mod auto --dave auto
 """
 
 from __future__ import annotations

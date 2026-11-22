@@ -8,9 +8,6 @@ Three phases: encode every prompt with the text encoder block-swapped on, drop
 it, denoise with the transformer, then take the transformer off the card and
 decode. Latents are held between phases because the VAE wants several GB to
 itself at 1024.
-
-    make daemon-run ARGS="scripts/qwen21/generate.py \
-        --lora output/qwen21/qwen21_lora.safetensors"
 """
 
 from __future__ import annotations

@@ -203,7 +203,7 @@ COMMANDS = {
     "gen": (
         inference.cmd_gen,
         "Batch generation via the daemon (attach-by-default): queues behind a "
-        "live train run instead of OOM-colliding, survives the terminal, and "
+        "live train run, survives the terminal, and "
         "lands a result manifest in the job record. Same argv/env levers as "
         "'test' (NOLORA/SPECTRUM/MOD/DAVE/FSG). --queue detaches; --inline "
         "bypasses the daemon. Target adapters/prompts/seeds via ARGS.",
@@ -307,16 +307,15 @@ COMMANDS = {
         curate.cmd_curate_group,
         "Group dataset images by PE-Spatial visual similarity (per-artist "
         "connected-components) → workspace/groups/groups.json. The GUI "
-        'Dataset tab reads it to filter by group. ARGS="--threshold 0.95".',
+        'Dataset tab reads it to filter by group. ARGS="--match-frac-min 0.4".',
     ),
     # ── Anima Tagger ──────────────────────────────────────────────────
     "tagger": (
         tagger.cmd_tagger,
         "Build the Anima Tagger vocab/manifest (build_vocab; needs "
         "CAPTION_CORPUS_DIR in .env), or any other CLI mode via "
-        'ARGS="--mode predict|scan_role_markers|derive_groups". PE-head '
-        "training was archived 2026-08-27 — sidecar training runs via "
-        "daemon-run -m anime_tools.tagger.cli.train_sidecar.",
+        'ARGS="--mode predict|scan_role_markers|derive_groups". Sidecar head '
+        "training runs via daemon-run -m anime_tools.tagger.cli.train_sidecar.",
     ),
     "test-tagger": (
         tagger.cmd_test_tagger,
@@ -448,7 +447,7 @@ COMMANDS = {
     ),
     "vendor-sync": (
         utilities.cmd_vendor_sync,
-        "Refresh custom_nodes/*/_vendor/ from live library/* (run before publishing nodes)",
+        "Refresh the custom nodes' _vendor/ trees from live library/*",
     ),
     # ── Experimental ──────────────────────────────────────────────────
     # May produce broken output, change without notice, or be removed.
@@ -465,7 +464,8 @@ COMMANDS = {
     "exp-test-directedit": (
         exp_inference.cmd_test_directedit,
         "[experimental] DirectEdit on a random source image. PROMPT='...' supplies the edit "
-        "instruction (appended to the Anima Tagger source caption). REF_IMAGE=path overrides the "
+        "instruction (the target caption is derived from it and the Anima Tagger source "
+        "caption). REF_IMAGE=path overrides the "
         "random pick. Usage: exp-test-directedit [ref_image] [extra...]",
     ),
     "exp-turbo-pref": (
@@ -475,8 +475,8 @@ COMMANDS = {
     ),
     "exp-test-directedit-dry": (
         exp_inference.cmd_test_directedit_dry,
-        "[experimental] DirectEdit functional check: random source image + random crossattn "
-        "embed (no TE, no captioner); ψ_tar == ψ_src so output should reconstruct the source. "
+        "[experimental] DirectEdit functional check: random source image + its cached crossattn "
+        "variants (no TE, no captioner); ψ_tar == ψ_src so output should reconstruct the source. "
         "REF_IMAGE=path overrides the random pick. Usage: exp-test-directedit-dry [ref_image] [extra...]",
     ),
 }

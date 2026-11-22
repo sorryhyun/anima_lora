@@ -291,8 +291,8 @@ def clause_offsets(
         flush=True,
     )
     if not full:
-        # clause_hw is on in the shipped recipe: a cache without position clauses
-        # (layout_json captions, tag bags with no clause) trains as before.
+        # clause_hw is on in the shipped recipe, so a cache without position clauses
+        # (layout_json captions, tag bags with no clause) is not an error.
         print("clause_hw / text_box_hw: no full caption moves a token", flush=True)
     return out
 
@@ -568,7 +568,7 @@ def run_metadata(
         meta["clause_hw"] = req.clause_hw
         if req.clause_centres:
             meta["clause_centres"] = "sam3_mask"
-        # Absent in LoRAs trained before 2026-11-20, whose headers moved.
+        # A clause_hw LoRA without this key moved its headers.
         meta["clause_header"] = req.clause_header
     if req.text_box_hw:
         meta["text_box_hw"] = req.text_box_hw

@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 class StepExpertLoRAModule(BaseLoRAModule):
     """Shared-A, dual(-K)-B-head LoRA with hard step-index head selection.
 
-    ``forward`` reads ``self._step`` (set by the network's
-    ``set_step_index`` / coordinator's ``set_student_step``) and routes through
+    ``forward`` reads ``self._step`` (set by ``set_step``, which the network's
+    ``set_step_index`` calls each denoise step) and routes through
     ``self.lora_ups[self._step]``; ``lora_down`` is shared across heads.
     Linear-only. No ``merge_to`` / ``fuse_weight`` — K per-step heads can't
     fold into one static DiT weight, so ``make merge`` refuses per-step-expert

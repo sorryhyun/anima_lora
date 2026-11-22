@@ -114,7 +114,7 @@ def run_training(preset: str, extra_argv: list[str]) -> None:
     # driven by our list, not the process sys.argv.
     args = read_config_from_file(args, parser, argv=argv)
     if args.attn_mode == "sdpa":
-        args.attn_mode = "torch"  # backward compatibility
+        args.attn_mode = "torch"  # "sdpa" is an alias of "torch"
     AnimaTrainer().train(args)
 
 

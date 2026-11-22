@@ -30,9 +30,8 @@ leaves two files per image in one flat folder.
         metadata: width, height, target, ref_scale, ref_aspect, condition,
                   condition_mtime
 
-``W×H`` is the pixel size the latent was encoded at. Text is never padded: the
-DiT slices each context to its true length and the image's rope frame coordinate
-equals that length, so a padded cache would train an offset inference never sees.
+``W×H`` is the pixel size the latent was encoded at. Text is stored at its true
+length, never padded (the image's RoPE frame coordinate equals that length).
 
 Invalidation: a TE file is current while its ``caption_sha256``, truncation
 length, ``encoder``, ``token_split``, ``prompt_tail``, (under ``layout_json``)
@@ -60,10 +59,6 @@ A stem that appears in several subfolders is prefixed with its relative folder
 (``sub__dir__stem``). A caption in the Anima resized tree with no PNG beside it
 pairs with its ``image_dataset/`` original, minus the excluded ones
 (``scan.original_tree``).
-
-    make daemon-run ARGS="scripts/moss/cache.py \\
-        --src 'post_image_dataset/resized/channel_(caststation)' \\
-        --out 'post_image_dataset/moss/channel_(caststation)'"
 """
 
 from __future__ import annotations

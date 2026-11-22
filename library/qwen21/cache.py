@@ -14,15 +14,11 @@ Nothing is cropped and nothing is padded:
 
 - Each image keeps its native aspect ratio at ~``resolution``^2 pixels
   (:func:`target_size`).
-- Text length stays at its natural value per caption. The model's rope gives the
-  image block a frame position equal to the text length, so padding during
-  training would teach the adapter an offset that inference never reproduces.
+- Text length stays at its natural value per caption (rope gives the image block
+  a frame position equal to the text length).
 
 The joint sequence therefore varies per sample, which is why ``train.py``
 compiles the blocks dynamically.
-
-    make daemon-run ARGS="scripts/qwen21/cache.py \
-        --src 'post_image_dataset/resized/channel_(caststation)'"
 """
 
 from __future__ import annotations

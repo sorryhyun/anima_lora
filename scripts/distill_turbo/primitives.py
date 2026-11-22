@@ -27,11 +27,9 @@ def schedule_lrs(total_steps: int, lr: float, shape: str) -> list[float]:
 def make_scheduler(opt, total_steps: int, lr: float, shape: str = "cosine"):
     """Linear warmup (:func:`scheduler_warmup_steps`) → cosine to ``0.1·lr``, or
     constant at ``lr`` (``shape="constant"``).
-
-    Without a student EMA, constant rendered worse than cosine; constant is for
-    EMA runs.
     """
     warmup_steps = scheduler_warmup_steps(total_steps)
+    # Constant is for EMA runs: without a student EMA it rendered worse than cosine.
     if shape == "constant":
         from torch.optim.lr_scheduler import ConstantLR, LinearLR, SequentialLR
 

@@ -1,15 +1,7 @@
 """Typed requests for the Qwen-Image-2.1 jobs: caching, LoRA training, generation.
 
-Torch-free on purpose: the GUI builds its forms from these dataclasses and must
-not pull torch in at launch. Each field carries its CLI help in ``metadata``, so
-the sidecar CLIs (``scripts/qwen21/``) and the GUI read one definition:
-
-    req = TrainRequest(cache="…", epochs=4)
-    argv = req.to_argv()                 # → daemon job argv
-    req = TrainRequest.from_argv(argv)   # ← sidecar CLI
-
-``to_argv`` writes only fields that differ from their defaults, so a job record
-reads as the choices that were made.
+Torch-free, for the GUI forms and the sidecar CLIs (``scripts/qwen21/``); the argv
+round-trip is ``library.lines.requests.Request``.
 
 Model directory: ``--model_dir`` if given, else ``ANIMA_QWEN21_MODEL_DIR`` (env or
 ``.env``), else ``models/qwen_image_2.1`` under the repo home — the diffusers

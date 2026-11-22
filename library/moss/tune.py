@@ -12,8 +12,6 @@ allows, recompiles, and times ``steps`` training steps on the largest sample.
 An OOM retries one budget step lower. The sweep stops ``patience`` arms past
 the fastest so far. The recommendation is the least swap within
 ``tolerance`` of the fastest arm that still leaves ``margin_gb`` free.
-
-    make daemon-run ARGS="scripts/moss/tune_swap.py --cache post_image_dataset/moss/<set>"
 """
 
 from __future__ import annotations

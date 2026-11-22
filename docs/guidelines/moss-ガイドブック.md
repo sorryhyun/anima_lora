@@ -148,7 +148,7 @@ make download-model ARGS=moss-sft
 
 ### 4.2 メモリ構成（16 GB）
 
-デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `int8 stream` と GPTQ ファイル（DiT のブロック重みを int8 で実行。ファイルは初回使用時にダウンロード）、`stream fp32`（ブロックの残りは fp32 で実行）、`blocks_to_swap 0`（全ブロックをカードに置く）、`activation_memory_budget 0.3`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`ema_card` オン、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
+デフォルト: `grad_checkpointing` オフ、`compile` オン、**Advanced** の `int8 stream` と GPTQ ファイル（DiT のブロック重みを int8 で実行。ファイルは初回使用時にダウンロード）、`stream fp32`（ブロックの残りは fp32 で実行）、`blocks_to_swap 20`（20 ブロックを RAM に置き、カードへ転送しながら実行）、`activation_memory_budget 0.4`（forward の結果のうち backward 用に保持する割合。残りは再計算）、`ema_card` オン、`expandable_segments` オン（シーケンス長が変わっても CUDA メモリプールが断片化しないようにする）。
 
 この構成は 1024² のサンプルで 1 step あたり約 1.1 秒、ピーク 13 GB で、システムメモリも 4.4 GiB 固定（pin）します。bf16 構成より速く、正確です。bf16 構成は同じピークで 1 step あたり 1.6 秒で、予測誤差も測定したすべての σ で高くなります（σ = 0.5 で 1.93% 対 1.62%、[精度](../moss/optimization/int8.md#accuracy)）。budget を 0.1 上げるごとにピークが約 1 GB 増え、step は 0.01–0.02 秒速くなります。16 GB 未満のカードでは 0.1（1 step あたり 1.07 秒、10.78 GB）を使ってください。0.4 は 16 GB でもメモリ不足になることがあります。0.05 ではピークが 9.98 GB に下がりますが、attention を再計算するため step は 1.16 秒に遅くなります。この構成で最後まで学習した LoRA はまだ 1 つだけです（[詳細](../moss/optimization/int8.md)）。
 
@@ -161,7 +161,7 @@ make download-model ARGS=moss-sft
 | 余裕あり | swap 24、budget 0.2 | 1.78 | 2.26 GiB |
 | チェックポイント | `grad_checkpointing` オン、swap 0 | 2.09 | 1.60 GiB |
 
-bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、ランク 32）は、caststation セットで 1 step あたり 1.66 秒、最大のサンプル（画像 4.2k + テキスト 0.4k トークン）で空き 0.85 GB です。budget は約 0.45 を超えると上げても効果がなく（0.3: 2.05 s/step）、swap 28～36 は速度が同じです。i2i のサンプルは参照画像も含むため、i2i のタスク設定では swap 38、budget 0.175 を使います。swap 28 では budget 0.2 でメモリ不足になり、swap 38 にすると高い budget の余地ができます。約 8.3k の結合トークン（sanitize）で、swap 38 / budget 0.175 は 1 step あたり 3.79 秒で、swap 28 / budget 0.15 の 4.17 秒より速くなります。`swap_h2d_only`（デフォルトでオン、ブロックをスワップするときだけ働き、`--no-swap_h2d_only` でオフにできる）はスワップされる全ブロックの page-locked コピーを RAM に保持し（最大 8.8 GB）、スワップがカードへのコピーだけで済み、戻しのコピーが発生しないようにします。結果と VRAM は同じで、swap 38 までは速度も同じ、swap 40 では 8% 速くなります。
+bf16 構成（swap 36、budget 0.5、`swap_h2d_only`、`expandable_segments`、ランク 32）は、caststation セットで 1 step あたり 1.66 秒、最大のサンプル（画像 4.2k + テキスト 0.4k トークン）で空き 0.85 GB です。budget は約 0.45 を超えると上げても効果がなく（0.3: 2.05 s/step）、swap 28～36 は速度が同じです。i2i のサンプルは参照画像も含むため、sanitize の設定では swap 38、budget 0.175 を使います。swap 28 では budget 0.2 でメモリ不足になり、swap 38 にすると高い budget の余地ができます。約 8.3k の結合トークン（sanitize）で、swap 38 / budget 0.175 は 1 step あたり 3.79 秒で、swap 28 / budget 0.15 の 4.17 秒より速くなります。`swap_h2d_only`（デフォルトでオン、ブロックをスワップするときだけ働き、`--no-swap_h2d_only` でオフにできる）はスワップされる全ブロックの page-locked コピーを RAM に保持し（最大 8.8 GB）、スワップがカードへのコピーだけで済み、戻しのコピーが発生しないようにします。結果と VRAM は同じで、swap 38 までは速度も同じ、swap 40 では 8% 速くなります。
 
 表の条件: 合成 1024² 画像 + テキスト 300 トークン（合計約 4.4k トークン）、LoRA ランクは行に明記がなければ 16、RTX 5070 Ti。ランク 32 の行は約 4.5k トークン（画像 4096 + テキスト 455）で測定し、ピーク reserved は約 13.1 GB でした。ランク 16、budget 0.1 では 1.82 s/step、空き約 2.0 GB でした。実際のサンプルは最大約 4.9k トークンで、キャプションが長いほどメモリを使いますが、`swap 24` なら同じ速度でその分の余裕が残ります。
 

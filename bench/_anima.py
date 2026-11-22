@@ -2,25 +2,15 @@
 
 `bench/_common.py` owns the result envelope. This module owns the
 *bench-facing* CLI surface (`add_common_args`) and re-exports the run
-harness that now lives in `library/`:
+harness from `library/`:
 
 - ``build_anima`` / ``AnimaBundle`` → ``library.runtime.harness`` (the
   DiT + adapter loader with the compile-after-apply ordering).
 - ``discover_bucketed_samples`` → ``library.io.cache`` (next to the other
   cache-discovery helpers).
 
-They were promoted out of bench so ``bench`` / ``scripts`` / ``preprocess``
-and the low-level probes share one harness instead of copying it. The
-re-exports here keep ``from bench._anima import build_anima, …`` working.
-
-The compile-after-apply ordering is the load-bearing invariant:
-``torch.compile`` traces the adapter's monkey-patched forward, so
-``compile_blocks`` MUST run after ``network.apply_to`` + ``load_weights``.
-See ``library.runtime.harness`` for the full sequence.
-
-It also owns the canonical defaults — the DiT/VAE/text-encoder paths (resolved
-through ``default_checkpoints``) and the standard test prompt/neg — so benches
-reference one source of truth instead of re-hardcoding path strings.
+It also owns the bench defaults: the DiT/VAE/text-encoder paths (resolved
+through ``default_checkpoints``) and the standard test prompt/neg.
 
 Usage::
 
@@ -42,8 +32,8 @@ Usage::
 
 All helpers are opt-in. A bench that doesn't load the DiT (e.g. an
 analytical simulator) simply doesn't import this module. A bench that
-needs two DiTs (e.g. ``bench/fm_vr_headroom``) calls ``build_anima``
-twice with explicit ``dit_path=`` overrides.
+needs two DiTs calls ``build_anima`` twice with explicit ``dit_path=``
+overrides.
 """
 
 from __future__ import annotations
@@ -54,10 +44,8 @@ import torch
 
 from anima_lora import default_checkpoints
 
-# Re-exports — the harness moved into library/ (see module docstring). Imported
-# here so existing `from bench._anima import build_anima` call sites don't churn.
-# The cache-discovery family lives in library.io.cache; bench probes reach for it
-# through here rather than re-compiling their own `*_anima.npz` regexes.
+# Re-exports: bench scripts import `build_anima` and the library.io.cache
+# discovery helpers from here (noqa F401 keeps ruff from stripping them).
 from library.io.cache import (  # noqa: F401
     LatentCacheFile,
     discover_bucketed_samples,
