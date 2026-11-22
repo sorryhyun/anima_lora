@@ -37,6 +37,7 @@ columns; it imports the loss, window, discriminator and sheet helpers from the l
 | `experiments/lpips_grad_probe.py` | ∂LPIPS/∂v through a head (row-space projection) against the VAE decode of a token window: cosines, a step check, floor and bf16-VAE references, backward cost | `reports/lpips_grad_2026_11_21.md` |
 | `lora_ab.py` | a LoRA A/B's renders at the `make test` recipe: labelled pair sheets, blind sets in the `anima-blind-pairs` layout, median ‖dW‖ per file | `reports/lpips_lora_2026_11_21.md` |
 | `experiments/x2_overfit.py` | can the ×2 stage fit N train windows, per arm (depth, width, frozen base) | `archive/x2_arm_a_2026_11_19.md` (local) |
+| `sheet_texture.py` | on a `p3_generated.py` run's sheets (CPU): each head's high-pass amplitude as a share of the VAE column's and its 16-px / 8-px stamp, colour / mono medians; `--pairs A B` writes head-only pair sheets; `--x2` reads a `p3_generated.py --x2` run (32-px / 16-px stamp, against the ResShift column) | `reports/x1_dino_2026_11_22.md`, `reports/x2_dino_2026_11_23.md` |
 | `x2_pair.py` | one column of two runs' sheets as an `A \| B` sheet per image (CPU) | `archive/x2_critic_2026_11_20.md` (local) |
 | `x2_flex.py` | builds the ×2 set `post_image_dataset/x2flex/` and its manifest (CPU) | `archive/x2_arm_b_2026_11_20.md` (local) |
 | `x2_masters.py` | real 2× targets from the masters: supply manifest and the alignment check (`_masters.target_2x`; CPU) | `archive/x2_arm_b_2026_11_20.md` (local) |

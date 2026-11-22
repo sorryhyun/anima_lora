@@ -1,0 +1,18 @@
+# The LPIPS control of x2dv3s_1123_0025: x2bll_1122_1629 (x2 B only from the x1 base, no GAN)
+#   with rollouts 12000 -> 2000 (one cosine cycle over 2,000) and eval_every 1000 -> 500, nothing
+#   else changed. `dino` names the network of the read's dino column only; no DINO term.
+#   The other training keys are configs/pixel_head/x2.toml's.
+# Design, question, read, bars: the header of x2dv3s_1123_0025.toml.
+# Cost: 2,000 rollouts at 0.78 s (x2bll_1122_1629), about 30 minutes with the evals.
+
+output_name = "x2lp_1123_0025"
+init = "output/pixel_head/x1ll_1122_1000/head.safetensors"
+rollouts = 2000
+lr = 5e-5
+eval_every = 500
+pegan_ratio = 0.0
+pegan_start = 0
+
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"   # the read's column
+
+seed = 0

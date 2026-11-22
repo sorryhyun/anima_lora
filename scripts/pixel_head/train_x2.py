@@ -3,7 +3,8 @@
 
 A frozen Anima DiT gives the features; the head (a released ×1 head plus a second 2×
 stage, or a ×2 file to continue from) is trained against the real 2× image with the
-recipe loss + LPIPS + the tone term, and from ``pegan_start`` the PE-Spatial GAN term.
+recipe loss + LPIPS (or the DINO feature term) + the tone term, and from ``pegan_start``
+the PE-Spatial GAN term.
 Algorithm: ``project/pixel_decoder/README.md``; runs: ``project/pixel_decoder/reports/``.
 
 Every flag is an :class:`X2TrainRequest` field; ``--config <file.toml>`` takes a flat TOML
@@ -24,6 +25,7 @@ import json
 import os
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,6 +62,14 @@ class X2TrainRequest(Request):
     pegan_start: int = 1000
     pegan_lambda_max: float = 1.0
     pegan_crop: int = 512
+    # DINOv3 repo, ViT or ConvNeXt (gated on the Hub), of the DINO term and of the
+    # read's dino column; "" = neither
+    dino: str = ""
+    lambda_dino: float = 0.0  # DINO feature term's weight
+    dino_tiles: int = 4  # 224-px tiles per update
+    # > 0: lambda_dino is set over the first 8 rollouts to the gradient norm of LPIPS
+    # at this weight
+    dino_match_lpips: float = 0.0
     seed: int = 0
     # the discriminator
     pegan_layers: str = "3,7,11"  # PE blocks tapped, 0-based
@@ -76,7 +86,7 @@ class X2TrainRequest(Request):
     vae: str = _CKPTS.vae
     stream: str = "fp32"  # fp32 | bf16
     attn_mode: str = "flash"
-    compile: bool = True  # DiT blocks, head and LPIPS (the PE tower runs eager)
+    compile: bool = True  # DiT blocks, head, LPIPS, the DINO term, the disc's tower
     device: str = "cuda"
 
 
@@ -92,6 +102,7 @@ def run(req: X2TrainRequest) -> Path:
         resolve_pixel_head_path,
     )
     from library.anima.pixel_head_train import (
+        DinoFeat,
         DiTRollout,
         Lpips,
         PEDisc,
@@ -102,7 +113,6 @@ def run(req: X2TrainRequest) -> Path:
         pair_sheet,
         pick_window,
         psnr,
-        real_x2,
         save_x2_head,
         tone_stats,
     )
@@ -111,6 +121,9 @@ def run(req: X2TrainRequest) -> Path:
 
     cfg = X2TrainConfig(
         **{f.name: getattr(req, f.name) for f in dataclasses.fields(X2TrainConfig)}
+    )
+    assert req.dino or not (cfg.lambda_dino or cfg.dino_match_lpips), (
+        "lambda_dino / dino_match_lpips need --dino"
     )
     device = torch.device(req.device)
     torch.manual_seed(req.seed)
@@ -133,6 +146,25 @@ def run(req: X2TrainRequest) -> Path:
     # --- models: VAE + frozen DiT ---
     vae, anima, _ = load_models(req, device, seq_bands)
     rollout = DiTRollout(anima, vae, device, seed=req.seed)
+
+    def feats(item, idx: int, sigma: float):
+        """(features, x_t patches) of one DiT forward. The target is the real 2× image,
+        so VAE(x̂0) is not decoded."""
+        f, lat, _ = rollout.forward(*rollout.load(item), idx, sigma)
+        return f, lat
+
+    def decode_x2(item) -> np.ndarray:
+        """The real 2× image file as uint8 (H, W, 3); runs in the prefetch thread."""
+        from PIL import Image
+
+        return np.array(Image.open(item.x2).convert("RGB"))
+
+    def real2(item, px: np.ndarray, f: torch.Tensor) -> torch.Tensor:
+        """``decode_x2``'s pixels on the device in [-1, 1], checked against the grid."""
+        t = torch.from_numpy(px).permute(2, 0, 1).to(device).float() / 127.5 - 1
+        want = (2 * PATCH * f.shape[0], 2 * PATCH * f.shape[1])
+        assert tuple(t.shape[-2:]) == want, (item.stem, tuple(t.shape), want)
+        return t
 
     # --- head ---
     if req.resume:
@@ -160,16 +192,18 @@ def run(req: X2TrainRequest) -> Path:
             lr=req.pegan_lr,
             r_weight=req.pegan_r,
             r_sigma=req.pegan_r_sigma,
+            compile=req.compile,  # one crop size: a graph per batch size (1 and 2)
         )
-    trainer = X2Trainer(head, cfg, lpips=lp, disc=disc, compile=req.compile)
+    dn = DinoFeat(device, req.dino, compile=req.compile) if req.dino else None
+    trainer = X2Trainer(head, cfg, lpips=lp, disc=disc, compile=req.compile, dino=dn)
 
     # --- held-out: whole-image features and the real 2× image, kept on the CPU ---
     held = []  # (item, set, f, x_t patches, real 2×)
     for j, (item, key) in enumerate(
         [(it, "test") for it in test] + [(it, "text") for it in text]
     ):
-        f, lat, img = rollout(item, 10_000 + j, sig_eval)
-        ref = real_x2(item, img)
+        f, lat = feats(item, 10_000 + j, sig_eval)
+        ref = real2(item, decode_x2(item), f)
         held.append(
             (item, key, f.to("cpu", torch.bfloat16), lat.cpu(), ref.to("cpu").half())
         )
@@ -181,31 +215,46 @@ def run(req: X2TrainRequest) -> Path:
             x2 = head(f.to(device).float(), lat.to(device), 2)
         return x2.float().clamp(-1, 1)
 
-    def read() -> list[dict]:
-        """Per held-out image: ×2 output against the real 2× image."""
+    def null_of(x2: torch.Tensor, ref: torch.Tensor, j: int) -> torch.Tensor:
+        """The real image plus the head's residual with its pixels permuted: a residual
+        of the same norm (before the clamp) and no structure."""
+        g = torch.Generator(device="cpu").manual_seed(20_000 + j)
+        perm = torch.randperm(ref.shape[-2] * ref.shape[-1], generator=g).to(device)
+        res = (x2 - ref).flatten(1)[:, perm].view_as(ref)
+        return (ref + res).clamp(-1, 1)
+
+    def read(nulls: bool = False) -> list[dict]:
+        """Per held-out image: ×2 output against the real 2× image; ``nulls`` adds the
+        permuted-residual null of each feature distance."""
         head.eval()
         rows = []
-        for item, key, f, lat, ref in held:
+        for j, (item, key, f, lat, ref) in enumerate(held):
             x2, ref = predict(f, lat), ref.to(device).float()
             luma, dark = tone_stats(x2, ref)
-            rows.append(
-                {
-                    "stem": item.stem,
-                    "set": key,
-                    "kind": item.kind,
-                    "psnr": psnr(x2, ref),
-                    "lpips": lp.image(x2, ref),
-                    "luma": luma,
-                    "dark": dark,
-                }
-            )
+            row = {
+                "stem": item.stem,
+                "set": key,
+                "kind": item.kind,
+                "psnr": psnr(x2, ref),
+                "lpips": lp.image(x2, ref),
+                "luma": luma,
+                "dark": dark,
+            }
+            if dn is not None:
+                row["dino"] = dn.image(x2, ref)
+            if nulls:
+                null = null_of(x2, ref, j)
+                row["lpips_null"] = lp.image(null, ref)
+                if dn is not None:
+                    row["dino_null"] = dn.image(null, ref)
+            rows.append(row)
         head.train()
         return rows
 
     def by_set(rows: list[dict]) -> dict[str, float | None]:
         out = {}
         for st in sets:
-            for col in ("psnr", "lpips", "luma", "dark"):
+            for col in (k for k in rows[0] if k not in ("stem", "set", "kind")):
                 v = [r[col] for r in rows if r["set"] == st and r[col] is not None]
                 out[f"{st}_{col}"] = float(np.mean(v)) if v else None
         return out
@@ -213,7 +262,8 @@ def run(req: X2TrainRequest) -> Path:
     def fmt(ev) -> str:
         return "  ".join(
             f"{st} {ev[f'{st}_psnr']:.2f} dB lpips {ev[f'{st}_lpips']:.4f} "
-            f"dark {ev[f'{st}_dark'] or 0:+.2f}"
+            + (f"dino {1e3 * ev[f'{st}_dino']:.3f}e-3 " if dn is not None else "")
+            + f"dark {ev[f'{st}_dark'] or 0:+.2f}"
             for st in sets
         )
 
@@ -228,16 +278,28 @@ def run(req: X2TrainRequest) -> Path:
     done = 0
     torch.cuda.reset_peak_memory_stats()
     t0 = time.perf_counter()
+
+    def draw():
+        """The next train item with its 2× image decoding in the background: a 4 MP
+        PNG on the main thread leaves the card idle once per rollout."""
+        nonlocal order
+        if not order:
+            order = train[:]
+            order_rng.shuffle(order)
+        item = order.pop()
+        return item, pool.submit(decode_x2, item)
+
+    pool = ThreadPoolExecutor(1)
+    ahead = draw()
     with run_scope(sink, final_step=lambda: done):
         for r in range(cfg.rollouts):
-            if not order:
-                order = train[:]
-                order_rng.shuffle(order)
-            item = order.pop()
+            item, px = ahead
+            if r + 1 < cfg.rollouts:
+                ahead = draw()
             sg = sig_lo if sig_hi == sig_lo else sig_rng.uniform(sig_lo, sig_hi)
-            f, lat, img = rollout(item, r, sg)
+            f, lat = feats(item, r, sg)
             win = pick_window(*f.shape[:2], cfg.window, cfg.margin, win_rng)
-            trainer.push(f, lat, real_x2(item, img), win)
+            trainer.push(f, lat, real2(item, px.result(), f), win)
             if r == cfg.pegan_start and disc is not None:
                 print(f"  PE-GAN term on from rollout {r}", flush=True)
             for k, v in trainer.update(r).items():
@@ -265,7 +327,7 @@ def run(req: X2TrainRequest) -> Path:
     sec_per_rollout = (time.perf_counter() - t0) / max(1, cfg.rollouts)
 
     # --- read: rows, sheets, the file ---
-    rows = read()
+    rows = read(nulls=True)
     head.eval()
     counters: dict[str, int] = {}
     sheets = []
@@ -282,26 +344,32 @@ def run(req: X2TrainRequest) -> Path:
         pair_sheet(cols, out_dir / f"{stem}_crop.png", at=(cx, cy, req.crop))
         sheets += [f"{stem}_full.png", f"{stem}_crop.png"]
     head_path = out_dir / "head_x2.safetensors"
-    save_x2_head(
-        head,
-        head_path,
-        {
-            "sigma": req.sigma,
-            "stream": req.stream,
-            "source": Path(src).name,
-            "x2_target": "real",
-            "pegan_ratio": req.pegan_ratio,
-            "pegan_start": req.pegan_start,
-            "rollouts": req.rollouts,
-            "run": req.output_name,
-        },
-    )
+    stamp = {
+        "sigma": req.sigma,
+        "stream": req.stream,
+        "source": Path(src).name,
+        "x2_target": "real",
+        "pegan_ratio": req.pegan_ratio,
+        "pegan_start": req.pegan_start,
+        "rollouts": req.rollouts,
+        "run": req.output_name,
+    }
+    if trainer.lam_dino > 0:
+        stamp |= {
+            "dino": req.dino,
+            "lambda_dino": trainer.lam_dino,  # as trained with, after the weight rule
+            "dino_tiles": req.dino_tiles,
+            "dino_match_lpips": req.dino_match_lpips,
+        }
+    save_x2_head(head, head_path, stamp)
     result = {
         "request": dataclasses.asdict(req),
         "n_train": len(train),
         "patch": PATCH,
         "sec_per_rollout": sec_per_rollout,
         "peak_vram_gb": torch.cuda.max_memory_allocated() / 1e9,
+        "lambda_dino": trainer.lam_dino,
+        "dino_match": trainer.dino_log,
         "final": by_set(rows),
         "eval_history": history,
         "per_image": rows,

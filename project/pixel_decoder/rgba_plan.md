@@ -70,6 +70,13 @@ Crawling and filtering are the user's and are not planned here. R0 and R1 ran 20
 - Local weights for the post-hoc matting baselines: none (the BiRefNet cache folder holds no
   snapshot).
 
+- Refine arm `rgbarf_1122_2110` (a full-resolution refine stage, reverted): held-out L1 and the
+  render patches level with `rgbar2_1122_1550` (flat mid tiles over 8 renders 573 against 598,
+  held-out white foreground 0.0460 against 0.0432); the same patches in the same places
+  ([report](reports/rgba_refine_2026_11_22.md)).
+- The user (2026-11-22): "refine 쪽 자체 코드 변경을 그냥 revert하자 rgba에는 좀 더 길게 돌릴
+  계획으로".
+
 ### Interpretation
 
 - R1 leaves two things open: fine strokes and translucency off the fit images (R2). On the fit
@@ -82,6 +89,8 @@ Crawling and filtering are the user's and are not planned here. R0 and R1 ran 20
 - With the background known, alpha is the only unknown: the semi-transparent foreground colour
   that `plan.md` lists as out of the head's reach follows from C, α and B. On a light colour B is
   read from the pixels the head calls background.
+- Refine left the patches where they were: the per-cell decision in white-on-white regions is
+  wrong, not the seams between cells. Length next (R3), data after it if the patches stay.
 - A foreground of the background's colour has no pixel evidence. There the head can only use what
   the feature
   knows about the object, which is also where it could beat a colour or flood rule.
@@ -207,7 +216,17 @@ Interpretation:
 
 Facts (as set):
 
-- R2's config with rollouts 1,000 → 12,000, nothing else changed; at most about 2 h 15 min.
+- R2's config with rollouts 1,000 → 12,000, nothing else changed (no refine stage); about
+  1 h 50 min at R2's 0.55 s a rollout, plus reads.
+- A head file every 3,000 rollouts (`train_alpha.py` writes only the last today: code to write).
+- Read per file, against R2 at 1,000:
+  1. held-out L1 on white foreground and background-like foreground (`other`: 0.0432 / 0.0400),
+     holes (0.1209), transition (0.2104);
+  2. the 8 working renders through `render_alpha.py`'s count, flat mid 8 × 8 tiles (598) and
+     interior mid share, with the composite and alpha sheets of oldman s1 and bicycle s1;
+  3. the `other_white_fg` sheet.
+- What each answer leads to: patches fall with length → the length is the fix, the ship read
+  follows. Patches level from 3,000 on → data: white-on-white cutouts before more length.
 - A seed twin for the spread, with the held-out noise seed fixed apart from `seed` first (today
   `--seed` moves both).
 - Ship read on the second set below, against the best post-hoc baseline, blind. The user decides.
@@ -248,7 +267,9 @@ Ship set, seeds 7, 8, read by no arm before R3:
   `scripts/pixel_head/{cache_alpha,train_alpha,_alpha_data,_alpha_cache,_alpha_read}.py`,
   `tests/test_pixel_alpha.py`. The channel
   count goes into the vendored `pixel_head.py` at the ship step.
-- `p3_generated.py`: a prompt-set switch and the alpha read.
+- `p3_generated.py`: a prompt-set switch and the alpha read; `render_alpha.py` (scratchpad,
+  2026-11-22) is the read to fold in, with its patch count.
+- `train_alpha.py`: a head file every N rollouts.
 - Decode, catalog, node and docs only after the ship read.
 
 ## Not in this plan

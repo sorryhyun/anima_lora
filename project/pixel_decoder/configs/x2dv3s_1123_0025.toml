@@ -1,0 +1,57 @@
+# The DINOv3 ViT-S/16 tile term in LPIPS's place on the x2 B-only recipe: x2lp_1123_0025 with
+#   lambda_lpips 0.1 -> 0 and dino_match_lpips 0 -> 0.1 (the DINO term on, its weight by the
+#   rule), nothing else changed. Same init (x1ll_1122_1000, a new second stage), data, sigma
+#   range, seed, LR 5e-5, 2,000 rollouts; the replay draws are the control's
+#   (tests/test_pixel_dino.py). Step 2 of project/pixel_decoder/lpips_alternatives.md, Plan.
+# The term is x1dv3s_1122_2240's (DinoFeat: 4 random 224-px tiles per update, blocks 3 / 6 / 9 /
+#   12, L2-normalised per token, MSE), on the 768-px loss window of the x2 output against the
+#   real 2x image. One 224-px tile is 7 DiT tokens across at x2.
+# Changes with the network and is not separated:
+#   - the pixels a step reads: LPIPS the whole window (589,824 px), DINO 4 x 224 px (200,704 px);
+#   - the weight. LPIPS is fixed at 0.1. lambda_dino is set over the first 8 rollouts (inside
+#     the 200-step warmup) so that the term's gradient norm over the head equals that of
+#     0.1 x LPIPS on the same windows, then fixed.
+# Shared by both arms and not tested: the x1 base under the second stage was trained with LPIPS.
+# The user (2026-11-23): "lpips vs dinov3 하고 있는데 내생각에 x2 2k 정도 돌리는게 제일 보기 좋지
+#   않을까? 이게 성능을 확실히 보기 좋으니까".
+# Question: on the x2 recipe at 2,000 rollouts, does the head trained with the DINOv3-S term
+#   read better than the LPIPS one? Better or level on the user's read, with the fixed pattern
+#   no worse -> the term is the candidate for the x2 recipe (a full-length B run and the GAN
+#   finetune from it, on the user's word). Pattern worse (the 32-px stamp up, a grid visible)
+#   -> x2 keeps LPIPS; the term stays an x1 question.
+# Records it rests on:
+#   - x2bll_1122_1629 at 2,000 of 12,000 rollouts: test / text 29.64 / 25.37 dB, LPIPS 0.194 /
+#     0.192; at 12,000: 30.55 / 26.16, 0.137 / 0.134 (its result.json).
+#   - x1dv3s_1122_2240 against x1lp_1122_2240 (reports/x1_dino_2026_11_22.md): text / manga LPIPS
+#     lower on the DINO arm, dB 0.1 - 0.2 lower, the 16-px stamp on generated renders 0.62 / 1.33
+#     against 0.43 / 0.97. The permuted-residual null there: DINO 3.69e-4 against 1.73e-4 of the
+#     head, LPIPS 0.302 against 0.079. The x2 residual is larger (30 dB against 34), so both
+#     nulls are read again at this run's final eval.
+#   - x2_plan.md, "A fixed pattern after the GAN finetune": the stamp and seam measures, and the
+#     B-only parent's values.
+# Read: both heads at 2,000 rollouts. (1) Held-out test 12 / text 5 against the real 2x image:
+#   dB, LPIPS, the DINO distance, each distance's null. Each arm has its own distance in its
+#   loss: the other arm's distance and dB are the columns not won by construction. (2) The
+#   32-px stamp and the seam on the end sheets: bench/pixel_readout/experiments/x2_stamp_phase.py
+#   --no_phase, the control as --parent (x2sp_1123_0025). (3) Generated, P3's 16 prompts x
+#   seeds 0, 1, base 28 steps CFG 4: bench/pixel_readout/p3_generated.py --x2 with both heads
+#   (x2dv3sb28_1123_0025), the stamp on those renders, and pairwise sheets control | arm, head
+#   columns only, labelled; the user's read decides.
+# Bars: spread unknown (no seed twin of an x2 B run).
+# Cost: 2,000 rollouts, about 30 minutes with the evals; the render read about 10.
+
+output_name = "x2dv3s_1123_0025"
+init = "output/pixel_head/x1ll_1122_1000/head.safetensors"
+rollouts = 2000
+lr = 5e-5
+eval_every = 500
+pegan_ratio = 0.0
+pegan_start = 0
+lambda_lpips = 0.0
+
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 0.0                      # set by the rule
+dino_tiles = 4
+dino_match_lpips = 0.1
+
+seed = 0

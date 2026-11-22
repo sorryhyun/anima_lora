@@ -2,7 +2,8 @@
 
 Shared with ×1 (``library/anima/pixel_head_train_x1.py``) and the bench:
 :class:`DiTRollout`, :func:`attach_adapter`, :func:`compile_dit`, :func:`rec_loss`,
-:class:`Lpips`, :class:`PEDisc`, :func:`cosine_lr` and the read helpers.
+:class:`Lpips`, :class:`DinoFeat`, :class:`PEDisc`, :func:`cosine_lr` and the read
+helpers.
 
 ``scripts/pixel_head/train_x2.py`` composes the ×2 recipe. The recipe (``project/pixel_decoder/README.md``): a frozen Anima DiT is run once per
 rollout on a noised cached latent at a decode point σ; the head reads the feature before
@@ -16,8 +17,9 @@ Pieces, in the order a rollout uses them:
 - :func:`load_x2flex` / :class:`X2Item` — the manifest rows, by split.
 - :class:`DiTRollout` — (item, σ) → (features, x_t patches, VAE(x̂0)).
 - :func:`pick_window` / :class:`Window` — the loss window and its margins.
-- :func:`rec_loss`, :func:`dc_loss`, :class:`Lpips`, :class:`PEDisc` — the loss terms.
-- :class:`X2Trainer` — replay buffer, schedule, the PE-GAN weight rule and its start.
+- :func:`rec_loss`, :func:`dc_loss`, :class:`Lpips`, :class:`DinoFeat`, :class:`PEDisc` —
+  the loss terms.
+- :class:`X2Trainer` — replay buffer, schedule, the DINO and PE-GAN weight rules.
 - :func:`psnr`, :func:`tone_stats`, :func:`densest_window`, :func:`pair_sheet` — the read.
 - :func:`save_x2_head` — the file :func:`library.anima.pixel_head.load_pixel_head` reads.
 """
@@ -91,14 +93,6 @@ def load_image(path: str | Path, device="cpu") -> torch.Tensor:
 
     px = np.array(Image.open(path).convert("RGB"))
     return torch.from_numpy(px).permute(2, 0, 1).to(device).float() / 127.5 - 1
-
-
-def real_x2(item: X2Item, like: torch.Tensor) -> torch.Tensor:
-    """The item's real 2× image on ``like``'s device; ``like`` is its ×1 image (3, H, W)."""
-    t = load_image(item.x2, like.device)
-    want = (2 * like.shape[-2], 2 * like.shape[-1])
-    assert tuple(t.shape[-2:]) == want, (item.stem, tuple(t.shape), tuple(like.shape))
-    return t
 
 
 # --------------------------------------------------------------------------- rollout
@@ -297,6 +291,119 @@ class Lpips:
         return tot / (h * w)
 
 
+class DinoFeat:
+    """Frozen DINOv3 feature distance on 224-px tiles: the perceptual term of ViTok-v2
+    (arXiv:2605.05331 §2.4, App. E), which takes the place of LPIPS there.
+
+    Tiles from the same place of two (3, H, W) images in [-1, 1] go through the tower as
+    one batch; the features of ``layers`` are L2-normalised per position and compared by
+    MSE, averaged over the layers. A tile's place is drawn per pixel, so the tower's grid
+    falls anywhere on the image's.
+
+    A ViT (the paper's ViT-S/16) gives the patch tokens after each block of ``layers``
+    (default: blocks 3 / 6 / 9 / 12). A ConvNeXt gives its stage maps (default: all four,
+    4 / 8 / 16 / 32 px per position); MSE over elements weighs a stage by 1 / its width,
+    so the narrow early stages count most."""
+
+    TILE = 224
+
+    def __init__(
+        self,
+        device,
+        repo: str = "",
+        layers: tuple[int, ...] | None = None,
+        compile: bool = False,
+        net: nn.Module | None = None,
+    ):
+        if net is None:
+            from transformers import AutoModel
+
+            net = AutoModel.from_pretrained(repo)
+        self.net = net.to(device).eval().requires_grad_(False)
+        cfg = self.net.config
+        self.convnext = cfg.model_type == "dinov3_convnext"
+        if self.convnext:
+            depth, self.patch, self.skip = len(cfg.hidden_sizes), 32, 0
+            layers = layers or tuple(range(depth))
+        else:
+            depth, self.patch = cfg.num_hidden_layers, cfg.patch_size
+            self.skip = (
+                1 + cfg.num_register_tokens
+            )  # CLS and registers lead the sequence
+            layers = layers or (2, 5, 8, 11)
+        assert max(layers) < depth, (layers, depth)
+        self.layers = tuple(layers)
+        # ImageNet statistics, the LVD-1689M files' preprocessing
+        self.mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        self.std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+        self._train = torch.compile(self._dist) if compile else self._dist
+
+    def _dist(self, x: torch.Tensor) -> torch.Tensor:
+        """(2n, 3, t, t) in [-1, 1], the first n one image's tiles and the last n the
+        other's at the same places → the distance."""
+        x = ((x + 1) / 2 - self.mean) / self.std
+        hs = self.net(pixel_values=x, output_hidden_states=True).hidden_states
+        n = x.shape[0] // 2
+        tot = x.new_zeros((), dtype=torch.float32)
+        for i in self.layers:  # hs[0] is the input side, hs[i + 1] layer i's output
+            if self.convnext:  # a stage map (2n, C, h, w)
+                t = F.normalize(hs[i + 1].float(), dim=1)
+            else:  # (2n, tokens, C)
+                t = F.normalize(hs[i + 1][:, self.skip :].float(), dim=-1)
+            tot = tot + F.mse_loss(t[:n], t[n:])
+        return tot / len(self.layers)
+
+    def _run(self, x: torch.Tensor, compiled: bool = False) -> torch.Tensor:
+        cuda = x.device.type == "cuda"
+        with torch.autocast(x.device.type, dtype=torch.bfloat16, enabled=cuda):
+            return (self._train if compiled else self._dist)(x).float()
+
+    def _side(self, h: int, w: int) -> int:
+        return min(
+            self.TILE, h // self.patch * self.patch, w // self.patch * self.patch
+        )
+
+    def term(
+        self,
+        a: torch.Tensor,
+        b: torch.Tensor,
+        rng: random.Random,
+        n: int = 4,
+        compiled: bool = True,
+    ) -> torch.Tensor:
+        """The training term on one (3, H, W) pair: ``n`` tiles at places drawn from
+        ``rng``. The gradient reaches ``a`` only when ``b`` carries none."""
+        h, w = a.shape[-2:]
+        t = self._side(h, w)
+        at = [(rng.randint(0, h - t), rng.randint(0, w - t)) for _ in range(n)]
+        x = torch.stack(
+            [im[:, y : y + t, x0 : x0 + t].float() for im in (a, b) for y, x0 in at]
+        )
+        return self._run(x, compiled)
+
+    @torch.no_grad()
+    def image(self, a: torch.Tensor, b: torch.Tensor, batch: int = 8) -> float:
+        """Whole-image distance: the mean over a grid of tiles covering the image, the
+        last row and column moved inward to end at the border."""
+        h, w = a.shape[-2:]
+        t = self._side(h, w)
+        ys = sorted({*range(0, h - t + 1, t), h - t})
+        xs = sorted({*range(0, w - t + 1, t), w - t})
+        at = [(y, x0) for y in ys for x0 in xs]
+        tot = 0.0
+        for i in range(0, len(at), batch):
+            part = at[i : i + batch]
+            x = torch.stack(
+                [
+                    im[:, y : y + t, x0 : x0 + t].float()
+                    for im in (a, b)
+                    for y, x0 in part
+                ]
+            )
+            tot += self._run(x).item() * len(part)
+        return tot / len(at)
+
+
 # --------------------------------------------------------------------------- PE-GAN
 
 
@@ -487,12 +594,22 @@ class X2TrainConfig:
     lambda_dc: float = 1.0
     dc_block: int = 32  # ×2 px
     # PE-GAN: once per rollout the term's weight is set so its gradient norm over the
-    # head is `pegan_ratio` times that of rec2 + λ_lpips·LPIPS + λ_dc·dc. 0 = no term.
+    # head is `pegan_ratio` times that of rec2 + λ_lpips·LPIPS + λ_dc·dc (+ λ_dino·DINO).
+    # 0 = no term.
     pegan_ratio: float = 2.0
     pegan_start: int = 1000  # first rollout with the term and the discriminator
     pegan_lambda_max: float = 1.0
     pegan_crop: int = 512  # ×2 px, a multiple of 16
+    # DINO feature term (DinoFeat) on the loss window, in LPIPS's place or beside it
+    lambda_dino: float = 0.0
+    dino_tiles: int = 4  # 224-px tiles per update
+    # > 0: lambda_dino is set over the first DINO_MATCH_N rollouts, so that the term's
+    # gradient norm over the head is that of LPIPS at this weight
+    dino_match_lpips: float = 0.0
     seed: int = 0
+
+
+DINO_MATCH_N = 8  # rollouts the DINO weight rule reads (λ_lpips was sized on 8)
 
 
 def cosine_lr(step: int, total: int, warmup: int) -> float:
@@ -509,7 +626,8 @@ class X2Trainer:
 
     ``push`` adds a rollout's window; ``update(r)`` runs rollout ``r``'s ``opt_steps``
     updates, each on one random replay window, and returns the last step's terms. The
-    head runs at ``scale=2`` only: a file of this recipe carries no trained ×1 output."""
+    head runs at ``scale=2`` only: a file of this recipe carries no trained ×1 output.
+    ``dino_log`` holds the DINO weight rule's norms."""
 
     def __init__(
         self,
@@ -518,8 +636,15 @@ class X2Trainer:
         lpips: Lpips | None = None,
         disc: PEDisc | None = None,
         compile: bool = False,
+        dino: DinoFeat | None = None,
     ):
         assert cfg.lambda_lpips == 0 or lpips is not None, "lambda_lpips needs Lpips"
+        assert (
+            cfg.lambda_dino == 0 and cfg.dino_match_lpips == 0
+        ) or dino is not None, "the DINO term needs a DinoFeat"
+        assert cfg.dino_match_lpips == 0 or lpips is not None, (
+            "dino_match_lpips reads LPIPS's gradient"
+        )
         assert cfg.pegan_ratio == 0 or disc is not None, "pegan_ratio needs a PEDisc"
         assert cfg.pegan_crop % 16 == 0, "pegan_crop: a multiple of 16"
         self.head, self.cfg, self.lpips, self.disc = head, cfg, lpips, disc
@@ -534,6 +659,14 @@ class X2Trainer:
         self._crop_rng = random.Random(cfg.seed + 9)
         self.lam_pegan = 0.0
         self.gan_live = False
+        self.dino = dino
+        self.lam_dino = cfg.lambda_dino
+        self.dino_log: dict[str, float] = {}
+        self._match_left = DINO_MATCH_N if cfg.dino_match_lpips > 0 else 0
+        self._match_sum = {"rec2": 0.0, "dc": 0.0, "lpips": 0.0, "dino": 0.0}
+        # the DINO term's own streams: the replay draws are those of an LPIPS run
+        self._dino_rng = random.Random(cfg.seed + 11)  # the tiles of an update
+        self._match_rng = random.Random(cfg.seed + 12)  # the weight rule's tiles
 
     def push(self, f, lat, target2, win: Window) -> None:
         """A rollout's features, x_t patches (whole grids) and the real 2× image."""
@@ -546,6 +679,39 @@ class X2Trainer:
                 win.mar,
             )
         )
+        if self._match_left > 0:
+            self._match_dino(self.replay[-1])
+
+    def _match_dino(self, sample) -> None:
+        """One window of the DINO weight rule, eager: λ_dino = dino_match_lpips ·
+        Σ‖∇ LPIPS‖ / Σ‖∇ DINO‖ over the head, the sums over the windows read so far. The
+        regression's and the tone term's norms are read for the record."""
+        bf, blat, b2, mar = sample
+        cfg = self.cfg
+        params = [q for q in self.head.parameters() if q.requires_grad]
+        with torch.autocast(bf.device.type, dtype=torch.bfloat16):
+            x2 = self.head(bf, blat, 2)
+        p2, t2 = crop_margin(x2, mar, 2 * PATCH), b2.float()
+        terms = {
+            "rec2": rec_loss(p2, t2)[0],
+            "dc": dc_loss(p2, t2, cfg.dc_block),
+            "lpips": self.lpips.term(p2, t2, False),
+            "dino": self.dino.term(p2, t2, self._match_rng, cfg.dino_tiles, False),
+        }
+        for k, term in terms.items():
+            gs = torch.autograd.grad(
+                term, params, retain_graph=k != "dino", allow_unused=True
+            )
+            self._match_sum[k] += float(_grad_norm(gs))
+        self._match_left -= 1
+        n = DINO_MATCH_N - self._match_left
+        tot = self._match_sum
+        self.lam_dino = cfg.dino_match_lpips * tot["lpips"] / (tot["dino"] + 1e-12)
+        self.dino_log = {
+            "lam_dino": self.lam_dino,
+            "match_n": n,
+            **{f"g_{k}": v / n for k, v in tot.items()},
+        }
 
     def terms(self, sample, compiled: bool = True) -> dict[str, torch.Tensor]:
         """Unweighted loss terms on one replay window."""
@@ -560,6 +726,10 @@ class X2Trainer:
             out["lpips"] = self.lpips.term(p2, t2, compiled)
         if cfg.lambda_dc > 0:
             out["dc"] = dc_loss(p2, t2, cfg.dc_block)
+        if self.lam_dino > 0:
+            out["dino"] = self.dino.term(
+                p2, t2, self._dino_rng, cfg.dino_tiles, compiled
+            )
         if self.gan_live:  # a paired crop: the ×2 output and the real 2× image
             c = cfg.pegan_crop
             h, w = p2.shape[-2:]
@@ -576,6 +746,8 @@ class X2Trainer:
             loss = loss + cfg.lambda_lpips * t["lpips"]
         if "dc" in t:
             loss = loss + cfg.lambda_dc * t["dc"]
+        if "dino" in t:
+            loss = loss + self.lam_dino * t["dino"]
         return loss
 
     def _set_gan_weight(self) -> None:
@@ -610,6 +782,8 @@ class X2Trainer:
             self.opt.step()
             self.step += 1
             log = {k: v.item() for k, v in t.items()}
+            if "dino" in t:
+                log["lam_dino"] = self.lam_dino
             if self.gan_live:
                 log["lam_pegan"] = self.lam_pegan
                 log.update(self.disc.step())  # on this step's paired crop, detached

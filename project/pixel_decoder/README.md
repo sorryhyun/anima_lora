@@ -128,6 +128,11 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   weave on screentone (same record).
 - The same for 3,000 rollouts: 29.86 / 25.48, 0.152 / 0.135. The user's read: "확실히 길게 학습하는게 좋네".
   Claude's read, labelled: parallel stripes (same record).
+- The GAN crop, a 2,000-rollout finetune of the 12,000-rollout B head (30.55 / 26.16, 0.137 /
+  0.134): at 1024 px 29.63 / 25.42, 0.178 / 0.181, 3.73 s per rollout; at 512 px 30.00 / 25.78,
+  0.155 / 0.145, 1.54 s. Stamp rise over the parent on three images: 1024 +0.14 / +0.23 / +0.52,
+  512 +0.02 / +0.05 / +0.21; on the two grainy originals the stamp is 1.59 / 1.89 at 1024 and
+  1.59 / 1.75 at 512. The user: "512가 훨씬 낫다" ([record](x2_plan.md)).
 - The discriminator's margin on held-out heads is 6.33 against a null of 0.05
   ([record](archive/x2_disc_probes_2026_11_21.md), local). In training it stays at 5.9 – 7.3 after
   its rise ([record](reports/x2_full_run_deploy_2026_11_21.md)).
@@ -190,8 +195,10 @@ The user's calls on how this line is run and recorded.
 
 ### Runs
 
-- A new GAN arm takes the PE term on a 1024² crop with the PE tower eager, not 512 and not a
-  compiled tower.
+- A GAN arm takes the PE term on a 512² crop, not 1024 (the user, 2026-11-22: "512가 훨씬 낫다고
+  적어두자").
+- The PE tower is compiled on ×2 (one crop size) and eager on the ×1 term (the whole image, a
+  shape per image).
 - The Hub ×2 file stays as it is until the user has read the new head's renders.
 - The start eval is off by default (`start_eval`; `--no_start_eval` on
   `experiments/convnext_head.py`).

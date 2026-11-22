@@ -1,4 +1,4 @@
-# Plan (2026-11-19, updated 2026-11-22)
+# Plan (2026-11-19, updated 2026-11-23)
 
 What is ahead on the pixel decoder: the ×1 recipe as confirmed, the GAN finish (confirmed
 to sharpen, shipped as the sharp file), the P5 topics and what is open. Records in use are in `reports/`, finished
@@ -10,6 +10,32 @@ ones in `archive/` (local; an index in each `README.md`):
 - the ×1 batch `1121_2230` and `x1ll_1122_1000` `reports/x1_recipe_2026_11_22.md`;
 - pixel losses into v `reports/lpips_grad_2026_11_21.md`, `reports/lpips_lora_2026_11_21.md`;
 - ×2: `x2_plan.md`.
+
+## LPIPS → DINO
+
+### Facts
+
+- The user (2026-11-23, after `x2dv3sw_1123_0718` against `x2lp_1123_0025`):
+  "내가 보기엔 dino가 나아. 특히 스크린톤에서 패턴을 유지하면서 색 변조가 없었다는게 인상적이네. dino로 전면 교체하는걸로 하자."
+- The perceptual term of the head's training becomes the DINOv3 ViT-S/16 tile term (`DinoFeat`)
+  in LPIPS's place. Records: `lpips_alternatives.md`, `reports/x1_dino_2026_11_22.md`,
+  `reports/x2_dino_2026_11_23.md`.
+- Where LPIPS is set today, none changed yet: `configs/pixel_head/base_x1.toml` and `x1.toml`
+  (0.05), `configs/pixel_head/x2.toml` (0.1), `scripts/pixel_head/train_alpha.py` (0.05 on the
+  alpha; no DINO term in that trainer), the LoRA term `library/training/pixel_lpips.py`.
+- Weights run so far: ×1 λ 331.6 (the rule, beside LPIPS 0.05), ×2 λ 245.2 (fixed, read on a
+  trained head). On ×2 the rule's own value, read on the untrained second stage, was 4.5× too
+  low.
+
+### To do
+
+1. ×2 first: `x2.toml` to the DINO term at a fixed λ, then the full-length B run from the ×1
+   base and the GAN finetune from it (`x2_plan.md`).
+2. ×1: the base recipe with the DINO term at 12,000 rollouts, read against `x1ll_1122_1000`;
+   the GAN finish from it.
+3. The read columns keep LPIPS beside the DINO distance, so new runs stay comparable with the
+   old tables.
+4. RGBA and the LoRA term: the user's word on whether "전면" covers them; each needs code.
 
 ## State
 
@@ -268,6 +294,12 @@ anime-segmentation) on hair-edge sheets.
 
 The GAN finish above is done (sharp). Behind it: a ResShift 1-step refiner from the
 head's output, read against the GAN arm.
+
+The network behind the perceptual term (LPIPS-VGG against a DINOv3 tile term, on the ×1 base
+recipe at 1,000 rollouts): `lpips_alternatives.md`, runs `x1dv3s_1122_2240` / `x1lp_1122_2240`,
+done (`reports/x1_dino_2026_11_22.md`). Of the two DINOv3 networks the user took ViT-S/16
+(2026-11-23), and after the ×2 comparison (`reports/x2_dino_2026_11_23.md`) the DINO term
+replaces LPIPS: "LPIPS → DINO" at the top of this file.
 
 ### Pixel losses through the head, into the DiT
 

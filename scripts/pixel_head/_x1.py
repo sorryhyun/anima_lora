@@ -62,6 +62,21 @@ class X1Request(Request):
     warmup: int = _f(200, "opt steps")
     lambda_lpips: float = _f(0.05, "LPIPS weight on the :real points")
     lpips_crop: int = _f(512, "LPIPS window, px; 0 = the whole image")
+    dino: str = _f(
+        "",
+        "DINOv3 repo, ViT or ConvNeXt (gated on the Hub), of the DINO term and of the "
+        "read's dino_* columns; empty = neither",
+    )
+    dino_read: str = _f(
+        "", "DINOv3 repo of the read's dino_* columns alone; empty = dino's"
+    )
+    lambda_dino: float = _f(0.0, "DINO feature term's weight on the :real points")
+    dino_tiles: int = _f(4, "224-px tiles per update")
+    dino_match_lpips: float = _f(
+        0.0,
+        "> 0: lambda_dino is set over the first 8 :real rollouts to the gradient norm "
+        "of LPIPS at this weight",
+    )
     seed: int = _f(0, "also moves the held-out noise")
     # the read
     eval_every: int = _f(1000, "rollouts")
@@ -73,7 +88,9 @@ class X1Request(Request):
     text_encoder: str = _f(_CKPTS.text_encoder, "encodes page_caption")
     stream: str = _f("fp32", "DiT residual stream", choices=("fp32", "bf16"))
     attn_mode: str = _f("flash", "DiT attention")
-    compile: bool = _f(True, "DiT blocks, head and LPIPS (the PE tower runs eager)")
+    compile: bool = _f(
+        True, "DiT blocks, head, LPIPS and the DINO term (the PE tower runs eager)"
+    )
     device: str = _f("cuda", "torch device")
 
 
@@ -88,6 +105,7 @@ def run(req: X1Request) -> Path:
         load_pixel_head,
     )
     from library.anima.pixel_head_train import (
+        DinoFeat,
         Lpips,
         PEDisc,
         densest_window,
@@ -122,6 +140,9 @@ def run(req: X1Request) -> Path:
     )
     assert cfg.pegan_ratio == 0 or any(p.target == "real" for p in train_points), (
         "pegan_ratio needs a :real point: the original image is the term's real"
+    )
+    assert req.dino or not (cfg.lambda_dino or cfg.dino_match_lpips), (
+        "lambda_dino / dino_match_lpips need --dino"
     )
     device = torch.device(req.device)
     torch.manual_seed(req.seed)
@@ -185,7 +206,13 @@ def run(req: X1Request) -> Path:
     disc = None
     if cfg.pegan_ratio > 0:
         disc = PEDisc(device, lr=req.pegan_lr)  # the tower runs eager at any size
-    trainer = X1Trainer(head, cfg, lpips=lp, disc=disc, compile=req.compile)
+    dn_term = DinoFeat(device, req.dino, compile=req.compile) if req.dino else None
+    trainer = X1Trainer(
+        head, cfg, lpips=lp, disc=disc, compile=req.compile, dino=dn_term
+    )
+    # the read's meter: the term's network unless another is named
+    read_repo = req.dino_read or req.dino
+    dn = dn_term if read_repo == req.dino else DinoFeat(device, read_repo)
 
     # --- held-out: features once, on the CPU; built at the first read ---
     held_items = (
@@ -231,14 +258,23 @@ def run(req: X1Request) -> Path:
             pred = head(f, lat)
         return pred.float().clamp(-1, 1)
 
+    def null_of(pred: torch.Tensor, o: torch.Tensor, j: int) -> torch.Tensor:
+        """The original plus the head's residual with its pixels permuted: a residual
+        of the same norm (before the clamp) and no structure."""
+        g = torch.Generator(device="cpu").manual_seed(20_000 + j)
+        perm = torch.randperm(o.shape[-2] * o.shape[-1], generator=g).to(device)
+        res = (pred - o).flatten(1)[:, perm].view_as(o)
+        return (o + res).clamp(-1, 1)
+
     def read(refs: bool = False) -> list[dict]:
         """Per held-out image and point: the head against VAE(x0), VAE(x̂0) and the
-        original; ``refs`` adds the VAE's own columns against the original."""
+        original; ``refs`` adds the VAE's own columns against the original and the
+        permuted-residual null of each feature distance."""
         if not held:
             build_held()
         head.eval()
         rows = []
-        for item, key, pt, f, lat, tgts, orig in held:
+        for j, (item, key, pt, f, lat, tgts, orig) in enumerate(held):
             pred, o = predict(f, lat), orig.to(device).float()
             tgt, hat = (tgts[k].to(device).float() for k in ("x0", "xhat0"))
             row = {
@@ -253,7 +289,17 @@ def run(req: X1Request) -> Path:
                 "psnr_head_vs_orig": psnr(pred, o),
                 "lpips_head_vs_orig": lp.image(pred, o),
             }
+            if dn is not None:
+                row["dino_head_vs_orig"] = dn.image(pred, o)
             if refs:
+                null = null_of(pred, o, j)
+                row["lpips_null_vs_orig"] = lp.image(null, o)
+                if dn is not None:
+                    row |= {
+                        "dino_vae_vs_orig": dn.image(tgt, o),
+                        "dino_vaehat_vs_orig": dn.image(hat, o),
+                        "dino_null_vs_orig": dn.image(null, o),
+                    }
                 row |= {
                     "psnr_vae_xhat0": psnr(hat, tgt),
                     "psnr_vae_vs_orig": psnr(tgt, o),
@@ -267,7 +313,7 @@ def run(req: X1Request) -> Path:
         return rows
 
     def by_set(rows: list[dict]) -> dict[str, float]:
-        cols = [k for k in rows[0] if k.startswith(("psnr_", "lpips_"))]
+        cols = [k for k in rows[0] if k.startswith(("psnr_", "lpips_", "dino_"))]
         return {
             f"{st}_{col}": float(np.mean([r[col] for r in rows if r["set"] == st]))
             for st in sets
@@ -279,7 +325,12 @@ def run(req: X1Request) -> Path:
             f"{st} {ev[f'{st}_psnr_head']:.2f} "
             f"(x̂0 {ev[f'{st}_psnr_head_xhat0']:.2f}, "
             f"orig {ev[f'{st}_psnr_head_vs_orig']:.2f} "
-            f"lpips {ev[f'{st}_lpips_head_vs_orig']:.4f})"
+            f"lpips {ev[f'{st}_lpips_head_vs_orig']:.4f}"
+            + (
+                f" dino {1e3 * ev[f'{st}_dino_head_vs_orig']:.3f}e-3)"
+                if dn is not None
+                else ")"
+            )
             for st in sets
         )
 
@@ -325,6 +376,8 @@ def run(req: X1Request) -> Path:
                 meters = dict(trainer.gan_log)
                 if trainer.lpips_ema is not None:
                     meters["lpips"] = trainer.lpips_ema
+                if trainer.dino_ema is not None:
+                    meters |= {"dino": trainer.dino_ema, "lam_dino": trainer.lam_dino}
                 print(
                     f"  rollout {done}/{cfg.rollouts}  loss {ema['loss']:.4f}  "
                     f"psnr~{10 * math.log10(4 / ema['mse']):.2f}  "
@@ -367,6 +420,14 @@ def run(req: X1Request) -> Path:
         "rollouts": req.rollouts,
         "run": req.output_name,
     }
+    if trainer.lam_dino > 0:
+        stamp |= {
+            "dino": req.dino,
+            "dino_read": read_repo,
+            "lambda_dino": trainer.lam_dino,  # as trained with, after the weight rule
+            "dino_tiles": req.dino_tiles,
+            "dino_match_lpips": req.dino_match_lpips,
+        }
     if disc is not None:
         stamp |= {
             "pegan_ratio": cfg.pegan_ratio,
@@ -404,6 +465,8 @@ def run(req: X1Request) -> Path:
         "opt_steps_total": trainer.step,
         "pegan_steps": trainer.gan_steps,
         "pegan_last": trainer.gan_log,
+        "lambda_dino": trainer.lam_dino,
+        "dino_match": trainer.dino_log,
         "sec_per_rollout": sec_per_rollout,
         "peak_vram_gb": torch.cuda.max_memory_allocated() / 1e9,
         "final": by_set(rows),
