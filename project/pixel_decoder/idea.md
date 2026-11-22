@@ -141,5 +141,5 @@ On the head side, from DWD, independent of steps 1 – 3: the cond-only final-st
 then a real-pixel target with LPIPS on the head, then the final-step tail LoRA if the head alone
 stalls.
 
-`lpips` is in the venv (installed for the ×2 work, `bench/pixel_readout/x2_head.py`); nothing
+`lpips` is in the venv (installed for the ×2 work, `bench/pixel_readout/experiments/x2_head.py`); nothing
 in `library/` uses it yet.

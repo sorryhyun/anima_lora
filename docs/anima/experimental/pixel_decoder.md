@@ -6,8 +6,9 @@ directly, so sampling ends without a VAE decode. The form follows FastFrames (ar
 
 This page covers the structure, the training and where the line stands. Usage (`PIXEL=1`,
 `--decoder pixel_head`, the ComfyUI nodes) is in [../inference/pixel_head.md](../inference/pixel_head.md).
-Records: `project/pixel_decoder/`; training code: `bench/pixel_readout/` (×2:
-`scripts/pixel_head/train_x2.py` on `library/anima/pixel_head_train.py`); the module:
+Records: `project/pixel_decoder/`; training code: `scripts/pixel_head/` (`base_x1.py`,
+`train_x1.py`, `train_x2.py`) on `library/anima/pixel_head_train_x1.py` and
+`pixel_head_train.py`; evals and earlier arms: `bench/pixel_readout/`; the module:
 `library/anima/pixel_head.py`.
 
 ## Where it reads

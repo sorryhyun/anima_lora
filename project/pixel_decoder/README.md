@@ -12,11 +12,13 @@ turbo), sharpness from a pixel loss on the head alone, and decode memory on MOSS
   P5 topics and the open items. P1 – P4: `reports/phases_p1_p4_2026_11_19.md`.
 - [x2_plan.md](x2_plan.md) — the ×2 output topic of P5: pointers to the reports of everything that ran, the current state, the sequence after the ×1 head is fixed (B only, then a short GAN finish), next arms, open items.
 - [reports/](reports/) — one report per run or probe, indexed in its `README.md`.
-- [deploy/](deploy/) — the Hub card and NOTICE of `sorryhyun/anima-pixel-decoder` (private);
+- The card and NOTICE live on the Hub only (`sorryhyun/anima-pixel-decoder`; edit from the Hub's copy);
   the card's sample images are local (`bench/pixel_readout/results/card_samples_1119/`) and on the Hub.
-- Code and per-run records: `bench/pixel_readout/` (`linear_probe.py` P1, `convnext_head.py`
-  head training, `e2e_speed.py`, `render_sheets.py`, `tone_probe.py`; ×2 training is
-  `scripts/pixel_head/train_x2.py` on `library/anima/pixel_head_train.py`; the finished probes
+- Code and per-run records: training is `scripts/pixel_head/` (`base_x1.py`, `train_x1.py`,
+  `train_x2.py`) on `library/anima/pixel_head_train_x1.py` and `pixel_head_train.py`;
+  `bench/pixel_readout/` holds the reads (`e2e_speed.py`, `render_sheets.py`, `tone_probe.py`) and,
+  in `experiments/`, the earlier arms (`linear_probe.py` P1, `convnext_head.py`, `x2_head.py`);
+  the finished probes
   (`rollout_profile.py`, `ceiling_probe.py`, `overfit_probe.py`, `grad_probe.py`, `feat_probe.py`) are in
   `_archive/bench/pixel_readout/` (local);
   its `README.md` maps the scripts; run records are in `reports/`). Results:

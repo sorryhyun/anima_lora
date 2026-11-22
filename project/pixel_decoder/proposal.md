@@ -25,7 +25,7 @@ costs to keep one per model.
 
 ### Facts
 
-Probe 1, `readout_1118_2219` (`bench/pixel_readout/linear_probe.py`, results
+Probe 1, `readout_1118_2219` (`bench/pixel_readout/experiments/linear_probe.py`, results
 `bench/pixel_readout/results/20261118-2221-readout_1118_2219/` (local)):
 
 - anima-base, features = the input of `final_layer.linear` (LayerNorm + adaLN-modulated,
@@ -33,8 +33,8 @@ Probe 1, `readout_1118_2219` (`bench/pixel_readout/linear_probe.py`, results
   real latents with their cached captions, one forward per image.
 - Readout: per-token linear 2048 → 768 (16×16×3) plus bias, ridge least squares (λ 1e-6 × mean
   diag) on 256 images; target = bf16 VAE decode of the clean latent.
-- Test: 30 images from 8 artists held out of the fit (audirenze, asou_(asabu202), gin00, kimoshi,
-  dorontabi, butterchalk, fizz_(pixiv34498626), sushispin).
+- Test: 30 images from 8 artists held out of the fit (names in the local
+  `output/pixel_head/x1_split.json`).
 
 | Test PSNR vs VAE decode | dB |
 |---|---|

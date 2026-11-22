@@ -17,8 +17,9 @@ holds what is ahead; everything that ran is in `reports/` (index: `reports/READM
   `x2gftw_1121_2300` / `x2gftl_1121_2300` `x2_tile_gft_2026_11_22.md`.
 
 Code: `scripts/pixel_head/train_x2.py` on `library/anima/pixel_head_train.py` (training of the
-settled recipe), `bench/pixel_readout/x2_head.py` (the earlier arms and the whole-image reads),
-`x2_overfit.py` (fit probe), `x2_masters.py` / `x2_flex.py` (real 2× targets and the set),
+settled recipe), `bench/pixel_readout/experiments/x2_head.py` (the earlier arms and the whole-image
+reads), `bench/pixel_readout/experiments/x2_overfit.py` (fit probe), and in `bench/pixel_readout/`
+`x2_masters.py` / `x2_flex.py` (real 2× targets and the set),
 `x2_pair.py` (pair sheets); results under `bench/pixel_readout/results/` and
 `output/pixel_head/` (local).
 

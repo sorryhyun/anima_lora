@@ -13,7 +13,7 @@ python inference.py … --decoder pixel_head [--pixel_head <file>]
 The weight is the catalog row `anima_pixel_head` (`sorryhyun/anima-pixel-decoder`,
 `models/vae/anima_pixel_head.safetensors`), fetched on first use;
 `make download-model ARGS=anima-pixel-head` fetches it (and the ×2 file) ahead of time. `PIXEL_HEAD=<file>` or
-`--pixel_head` points at another head (a `bench/pixel_readout/` run's `head.safetensors`).
+`--pixel_head` points at another head (a trainer's `output/pixel_head/<run>/head.safetensors`).
 
 ## Where it reads
 
@@ -95,6 +95,6 @@ submodule).
   a merged style LoRA at the base level.
 
 Structure, training and the ×2 work: [../experimental/pixel_decoder.md](../experimental/pixel_decoder.md).
-Training, evals and probes: `bench/pixel_readout/` (×2 training:
-`scripts/pixel_head/train_x2.py`); the project record:
+Training: `scripts/pixel_head/` (`base_x1.py`, `train_x1.py`, `train_x2.py`); evals and
+probes: `bench/pixel_readout/`; the project record:
 `project/pixel_decoder/`.
