@@ -76,7 +76,7 @@ class X2TrainRequest(Request):
     vae: str = _CKPTS.vae
     stream: str = "fp32"  # fp32 | bf16
     attn_mode: str = "flash"
-    compile: bool = True  # DiT blocks, head, LPIPS and the discriminator's tower
+    compile: bool = True  # DiT blocks, head and LPIPS (the PE tower runs eager)
     device: str = "cuda"
 
 
@@ -160,7 +160,6 @@ def run(req: X2TrainRequest) -> Path:
             lr=req.pegan_lr,
             r_weight=req.pegan_r,
             r_sigma=req.pegan_r_sigma,
-            compile=req.compile,
         )
     trainer = X2Trainer(head, cfg, lpips=lp, disc=disc, compile=req.compile)
 
