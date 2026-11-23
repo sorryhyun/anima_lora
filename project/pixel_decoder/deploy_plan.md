@@ -53,4 +53,8 @@ Root after the move: `README.md`, `LICENSE.md`, `NOTICE.md`, `.gitattributes`, `
   the new paths): pushed (`cc80d5a`) and published to the registry, 2026-11-23. The card's spec
   table holds the common spec only; the training target sits in the Base section.
 
-Next: the GAN finish on the new base (`plan.md` To do 2) ships in `x1/` as its own file.
+- `x1/anima_pixel_decoder_sharp.safetensors` = `x1dgan512_1123_1214` (the GAN finish on the
+  base, PE on a 512² crop), with the card's Sharp section and `samples/decoder_sharp_compare.png`
+  (VAE | base | sharp, castle / sakura / manga_page s0 of `x1dgan512b28_1123_1214`): Hub
+  `bde8c5aa`, 2026-11-23. Catalog row `anima_pixel_head_sharp`, never a default. No
+  sheet_texture.py read of this head; the user read the pair sheets.

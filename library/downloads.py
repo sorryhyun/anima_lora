@@ -68,6 +68,8 @@ ANIMA_PIXEL_HEAD_REPO = "sorryhyun/anima-pixel-decoder"
 # rows flatten into ``models/vae/``.
 ANIMA_PIXEL_HEAD_SUBFOLDER = "x1"
 ANIMA_PIXEL_HEAD_FILE = "anima_pixel_decoder_base.safetensors"
+# The base with a GAN finish; never a default, picked with --pixel_head / PIXEL_HEAD=.
+ANIMA_PIXEL_HEAD_SHARP_FILE = "anima_pixel_decoder_sharp.safetensors"
 # The ×2 file (``--pixel_scale 2``): decodes and 2× upscales in one readout, no ×1 output.
 ANIMA_PIXEL_HEAD_X2_SUBFOLDER = "x2"
 ANIMA_PIXEL_HEAD_X2_FILE = "anima_pixel_head_x2.safetensors"
@@ -469,6 +471,18 @@ def anima_catalog() -> tuple[Asset, ...]:
             notes="~95 MB. Reads the DiT's last-step features and writes RGB in "
             "place of the VAE decode; trained on the base DiT at shift-3 Euler "
             "20-50 steps and the 4-step turbo LoRA. Fetched on first use.",
+        ),
+        Asset(
+            id="anima_pixel_head_sharp",
+            pack="anima-pixel-head",
+            title="Anima pixel head sharp (GAN finish)",
+            repo=ANIMA_PIXEL_HEAD_REPO,
+            files=(ANIMA_PIXEL_HEAD_SHARP_FILE,),
+            subfolder=ANIMA_PIXEL_HEAD_SUBFOLDER,
+            dest=models_dir() / kind_dir("vae"),
+            used_by="inference.py --decoder pixel_head --pixel_head <this file> (PIXEL=1 PIXEL_HEAD=…)",
+            notes="~95 MB. The ×1 head with a GAN finish at the base points: sharper "
+            "detail, further from the VAE decode; on the turbo it decodes like the base file.",
         ),
         Asset(
             id="anima_pixel_head_x2",

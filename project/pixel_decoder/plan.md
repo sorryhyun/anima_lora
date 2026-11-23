@@ -39,7 +39,8 @@ ones in `archive/` (local; an index in each `README.md`):
 
 1. ×2 first: the full-length B run from the ×1 base on `configs/pixel_head/x2.toml` (`init` at
    `x1ll_1122_1000`), then the GAN finish from it (`x2_plan.md`).
-2. ×1: the GAN finish from `x1dll_1123_0821` (done and shipped as the base, 2026-11-23; State).
+2. ×1: the GAN finish from `x1dll_1123_0821`: done, `x1dgan512_1123_1214` shipped as
+   `x1/anima_pixel_decoder_sharp` (2026-11-23; State, the ×1 files).
 3. RGBA: R3 runs on the DINO term (`rgba_plan.md`).
 
 ## State
@@ -69,6 +70,7 @@ ones in `archive/` (local; an index in each `README.md`):
   | release | `x1dll_1123_0821` (×1 on the DINO term, 12k) | Hub `x1/anima_pixel_decoder_base.safetensors`, the catalog's default | shipped 2026-11-23 (`deploy_plan.md`) |
   | base (LPIPS) | `x1ll_1122_1000` | the init of the GAN finish, of ×2 and of RGBA | done; local only |
   | old release | `realr_1119_2200` | Hub `x1/anima_pixel_head_old.safetensors` | kept for comparison |
+  | sharp | `x1dgan512_1123_1214` (`x1dll` + a GAN finish, PE on a 512² crop) | Hub `x1/anima_pixel_decoder_sharp.safetensors`, catalog `anima_pixel_head_sharp` | shipped 2026-11-23 (Hub `bde8c5aa`; the user, on the pair sheets: "약간의 패턴이 생기긴 했는데 vae에서의 스크린톤 패턴이랑 구분하기 쉽진 않네 이대로 올리자") |
   | sharp (old) | `x1fgan_1122_1247` (`x1ll` + a GAN finish) | Hub `x1/anima_pixel_head_sharp_old.safetensors` | kept for comparison |
 
 - The Hub ×2 file stays `x2bgan2_1121_1340`, now at `x2/anima_pixel_head_x2.safetensors`.
