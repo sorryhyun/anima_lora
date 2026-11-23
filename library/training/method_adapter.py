@@ -183,12 +183,4 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
         from library.training.xattn_align import XattnAlignMethodAdapter
 
         adapters.append(XattnAlignMethodAdapter())
-    if (
-        float(getattr(args, "pixel_dino_ratio", 0.0) or 0.0) > 0.0
-        or float(getattr(args, "pixel_dino_weight", 0.0) or 0.0) > 0.0
-        or getattr(args, "pixel_dino_measure", False)
-    ):
-        from library.training.pixel_dino import PixelDinoMethodAdapter
-
-        adapters.append(PixelDinoMethodAdapter())
     return adapters

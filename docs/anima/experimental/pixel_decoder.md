@@ -239,8 +239,8 @@ glyphs are slightly soft under zoom. The loss has no perceptual or local-tone te
                        P4 decode points (base range + turbo), release, library/, ComfyUI node
                                                 │
                                                 ▼
-                       P5 (open): ×2 output · pixel losses on the head · losses through the
-                              head into the DiT · RGBA · a head at every step · MOSS
+                       P5 (open): ×2 output · pixel losses on the head · RGBA · a head at
+                              every step · MOSS (losses through the head into the DiT: closed)
 ```
 
 P1–P4 are complete (2026-11-19). Per-phase record: `project/pixel_decoder/archive/phases_p1_p4_2026_11_19.md` (local).

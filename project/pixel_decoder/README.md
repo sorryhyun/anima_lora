@@ -169,6 +169,11 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
 - 0.032 – 0.038 of that gradient lies in the 64 directions that set v; 64 / 2048 = 0.031 (same
   record).
 - One 512² window backward: head 0.019 s / 0.70 GB, bf16 VAE 0.087 s / 2.46 GB (same record).
+- A perceptual term on a LoRA, decoded through the bf16 VAE window: LPIPS and DINOv3 at ratios 0.3
+  and 1.0 each moved their own distance on the training draws by at most 3 %, and the user's blind
+  reads stayed inside the spread (DINO 15 – 15 over two seeds at 0.3, 8 – 8 on one set at 1.0).
+  Closed and out of the code since 2026-11-23
+  ([LPIPS](reports/lpips_lora_2026_11_21.md), [DINO](reports/dino_lora_2026_11_23.md)).
 
 ### Alpha
 

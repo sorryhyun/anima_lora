@@ -8,8 +8,8 @@ ones in `archive/` (local; an index in each `README.md`):
   promotion, node) `archive/p4_wrapup_2026_11_19.md` (local);
 - the release head `realr_1119_2200` `archive/real_target_2026_11_19.md` (local);
 - the ×1 batch `1121_2230` and `x1ll_1122_1000` `reports/x1_recipe_2026_11_22.md`;
-- pixel losses into v `reports/lpips_grad_2026_11_21.md`, `reports/lpips_lora_2026_11_21.md`
-  (the LoRA term is removed since 2026-11-23);
+- pixel losses into v `reports/lpips_grad_2026_11_21.md`, `reports/lpips_lora_2026_11_21.md`,
+  `reports/dino_lora_2026_11_23.md` (closed 2026-11-23, both LoRA terms removed);
 - ×2: `x2_plan.md`.
 
 ## LPIPS → DINO
@@ -321,15 +321,20 @@ replaces LPIPS: "LPIPS → DINO" at the top of this file.
 
 ### Pixel losses through the head, into the DiT
 
-The head as the decode for losses that train the DiT or a LoRA did not pass its gradient probe
-(`reports/lpips_grad_2026_11_21.md`); such a term decodes through the windowed bf16 VAE
-(`library/training/pixel_dino.py` since 2026-11-23, DINOv3 in place of LPIPS). On the LoRA, the
-user's blind read put LPIPS ratio 0.3 ahead and ratio 1.0 behind (`reports/lpips_lora_2026_11_21.md`,
-one seed); DINO at ratio 0.3 over seeds 42 / 43 read level, 15 – 15
-(`reports/dino_lora_2026_11_23.md`). Proposed, not queued: DINO ratio 1.0 at both seeds against
-the same controls and render seeds. Other uses named for it: cjk_rl arm D (its D0 cost probe
-rerun against the VAE-window path), a term for the turbo
-student. Idea: `idea.md`.
+Closed on the user's call (2026-11-23: "dino lpips loss 다 접는걸로 하자").
+
+Facts:
+
+- The head as the decode for losses that train the DiT or a LoRA did not pass its gradient probe
+  (`reports/lpips_grad_2026_11_21.md`); the term decoded through the windowed bf16 VAE.
+- LPIPS on the LoRA, one seed: the user's blind read put ratio 0.3 ahead and ratio 1.0 behind
+  (`reports/lpips_lora_2026_11_21.md`).
+- DINOv3 on the LoRA (`reports/dino_lora_2026_11_23.md`): ratio 0.3 over seeds 42 / 43 read
+  level, 15 – 15; ratio 1.0 read 8 – 8 on seed 42, its seed 43 set not read.
+- Both terms are out of the code (`library/training/pixel_lpips.py` at 9d1240ee^,
+  `library/training/pixel_dino.py` at 1b974d55).
+- Not run: a wider σ gate; the term on the turbo student. cjk_rl arm D's D0 cost probe, if it
+  runs, decodes through the VAE window. Idea: `idea.md`.
 
 ### A head at every step
 
