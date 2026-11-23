@@ -219,6 +219,16 @@ Interpretation:
 - Queued 2026-11-23, shortened on the user's word ("12k는 많고 4k 정도로, 체크포인트는 2k 한번만"):
   `rgbar3_1123_1701`, 4,000 rollouts, a file at 2,000 (`save_every`), behind `x2dgf512_1123_1701`.
   The 12,000 design below stays as written.
+- Done 2026-11-23, rc 0, 2,001 s. Held-out `other`, R2 → R3 4k: white fg 0.0432 → 0.0372,
+  bg-like fg 0.0400 → 0.0333, holes 0.1209 → 0.1303, transition 0.2104 → 0.2219, all 0.0254 →
+  0.0247; `new_bg` all 0.0151 → 0.0169. Renders (`scripts/pixel_head/render_alpha.py`, the 8
+  working renders; local: `output/pixel_head/rgbar3_1123_1701/renders/`), flat mid tiles R2 / 2k /
+  4k: 598 / 69 / 144 (oldman s1 227 / 1 / 65, bicycle s1 191 / 47 / 51, bicycle s0 121 / 21 /
+  24, oldman s0 51 / 0 / 3); interior mid % on maid and glass 0.3 – 0.9 → 1.4 – 2.2 for both
+  files. Claude's read (labelled; oldman s1, bicycle s1 on black + alpha): the robe's patches
+  nearly gone at 2k and partly back at 4k; blocks inside the wheels in all three. Spread unknown.
+- The user (2026-11-23), on these: "중간거가 더 좋다고?? 데이터 병목이네 그럼.. 쩝 일단 알겠다 데이터
+  늘리는걸로 하자". Next: more cutouts (the user crawls and filters, as before); no run queued.
 
 Facts (as set):
 
