@@ -64,8 +64,9 @@ ANIMA_DIT_INT8_FILE = "anima-base-v1.0_int8_gptq.safetensors"
 # Pixel head: decodes the DiT's last features to RGB in place of the VAE
 # (``library/anima/pixel_head.py``, ``inference.py --decoder pixel_head``).
 ANIMA_PIXEL_HEAD_REPO = "sorryhyun/anima-pixel-decoder"
-# The Hub keeps one folder per output scale (``x1/``, ``x2/``, ``multi/``); the
-# rows flatten into ``models/vae/``.
+# The Hub keeps one folder per output scale (``x1/``, ``x2/``, ``multi/``). The ×1 rows land
+# in ``models/pixel_decoder/``, the ×2 row in ``models/vae/``.
+ANIMA_PIXEL_DECODER_DIR = "pixel_decoder"
 ANIMA_PIXEL_HEAD_SUBFOLDER = "x1"
 ANIMA_PIXEL_HEAD_FILE = "anima_pixel_decoder_base.safetensors"
 # The base with a GAN finish; never a default, picked with --pixel_head / PIXEL_HEAD=.
@@ -124,9 +125,9 @@ def default_anima_path(kind: str) -> Path:
 
 
 def default_pixel_head_path() -> Path:
-    """``<models_dir>/vae/anima_pixel_decoder_base.safetensors`` — the ×1 pixel head
-    beside the VAE."""
-    return models_dir() / kind_dir("vae") / ANIMA_PIXEL_HEAD_FILE
+    """``<models_dir>/pixel_decoder/anima_pixel_decoder_base.safetensors`` — the ×1
+    pixel head."""
+    return models_dir() / ANIMA_PIXEL_DECODER_DIR / ANIMA_PIXEL_HEAD_FILE
 
 
 def default_pe_core_path() -> Path:
@@ -466,7 +467,7 @@ def anima_catalog() -> tuple[Asset, ...]:
             repo=ANIMA_PIXEL_HEAD_REPO,
             files=(ANIMA_PIXEL_HEAD_FILE,),
             subfolder=ANIMA_PIXEL_HEAD_SUBFOLDER,
-            dest=models_dir() / kind_dir("vae"),
+            dest=models_dir() / ANIMA_PIXEL_DECODER_DIR,
             used_by="inference.py --decoder pixel_head (PIXEL=1 on test-*)",
             notes="~95 MB. Reads the DiT's last-step features and writes RGB in "
             "place of the VAE decode; trained on the base DiT at shift-3 Euler "
@@ -479,7 +480,7 @@ def anima_catalog() -> tuple[Asset, ...]:
             repo=ANIMA_PIXEL_HEAD_REPO,
             files=(ANIMA_PIXEL_HEAD_SHARP_FILE,),
             subfolder=ANIMA_PIXEL_HEAD_SUBFOLDER,
-            dest=models_dir() / kind_dir("vae"),
+            dest=models_dir() / ANIMA_PIXEL_DECODER_DIR,
             used_by="inference.py --decoder pixel_head --pixel_head <this file> (PIXEL=1 PIXEL_HEAD=…)",
             notes="~95 MB. The ×1 head with a GAN finish at the base points: sharper "
             "detail, further from the VAE decode; on the turbo it decodes like the base file.",

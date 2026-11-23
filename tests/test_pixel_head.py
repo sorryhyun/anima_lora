@@ -37,7 +37,6 @@ def test_load_from_metadata(tmp_path):
         "width": "16",
         "depth": "3",
         "up": "1",
-        "skip": "0",
         "sigma": "0.06-0.13,0.5",
     }
     save_file(
@@ -120,7 +119,7 @@ def _x2_file(tmp_path) -> tuple[PixelHeadX2, object]:
     torch.manual_seed(1)
     head = PixelHeadX2(_head(up=1), depth2=2, width2=4).eval()
     path = tmp_path / "head_x2.safetensors"
-    meta = {"width": "16", "depth": "3", "up": "1", "skip": "0", "x2_depth": "2"}
+    meta = {"width": "16", "depth": "3", "up": "1", "x2_depth": "2"}
     save_file(
         {k: v.contiguous() for k, v in head.state_dict().items()}, str(path), meta
     )
@@ -165,7 +164,7 @@ def test_x2_only_file_decides_scale(tmp_path):
     drop_x1_output(head)
     assert not hasattr(head.base, "out") and not hasattr(head.base, "norm_out")
     path = tmp_path / "head_x2_only.safetensors"
-    meta = {"width": "16", "depth": "3", "up": "1", "skip": "0", "x2_depth": "2"}
+    meta = {"width": "16", "depth": "3", "up": "1", "x2_depth": "2"}
     save_file(
         {k: v.contiguous() for k, v in head.state_dict().items()},
         str(path),
@@ -209,4 +208,6 @@ def test_catalog_row():
     x2 = downloads.by_id()["anima_pixel_head_x2"]
     assert x2.files == (downloads.ANIMA_PIXEL_HEAD_X2_FILE,)
     assert x2.subfolder == "x2"
-    assert x2.repo == asset.repo and x2.dest == asset.dest
+    assert x2.repo == asset.repo
+    assert asset.dest.name == downloads.ANIMA_PIXEL_DECODER_DIR
+    assert downloads.by_id()["anima_pixel_head_sharp"].dest == asset.dest

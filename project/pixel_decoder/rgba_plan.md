@@ -1,7 +1,7 @@
 # RGBA output — plan (rewritten 2026-11-23)
 
 One ×1 head that writes RGB and alpha together, for renders on a white or light simple background.
-State: the code is written to the user's form (2026-11-23); nothing is queued.
+State: R5 `rgbar5_1123_2305` (the first run of the form) running, 2026-11-23.
 The plan before this date (an alpha-only head in a file of its own, steps R0 – R4) is in git up to
 `222d5dd0`; its results are under Records below.
 
@@ -98,8 +98,6 @@ its cache's were never committed. Outputs: `output/pixel_head/<run>/` (local).
   blocks inside the wheels in all four files; in R4 2k the space between the spokes is filled
   almost opaque.
 - The user (2026-11-23), on these: "ㅇㅋ".
-- The ×1 trainer compiles the head once for every image size since the R4 resubmit
-  (`library/anima/pixel_head_compile.py`).
 
 ### Interpretation
 
@@ -120,33 +118,14 @@ its cache's were never committed. Outputs: `output/pixel_head/<run>/` (local).
   the DiT's inputs only (VAE latent of the composite, TE, the cutout), 1,701 train rows, read sets
   `new_bg` and `other` of 16 images × 3 backgrounds. Backgrounds: white, a flat light colour, a
   light affine field with grain, from `image_dataset`'s simple backgrounds.
-- Up to 2026-11-23 the train cutouts were stored as alpha alone. `cache_alpha.py` now stores every
-  cutout with its colour, and a rerun on an old cache rewrites the colourless cutout files only
-  (no latent is re-encoded). R4's cache needs that rerun before R5.
+- Every cutout is stored with its colour (`rgbacache_1123_2254`, 2026-11-23: 551 train cutout files
+  rewritten, no latent re-encoded).
 
 ## Next
 
-### 1. Code (written 2026-11-23)
+### 1. R5 `rgbar5_1123_2305`: the first run of the form (running)
 
-Facts (the user, 2026-11-23: "rgba 픽셀 헤드 코드 수정해줘", "채널 3이나 4 받도록", "스킵리니어
-자체를 없애", "학습코드 짜봐"; then the target above, and "library core 코드인데 … 정리좀 해줘"):
-
-- `PixelHead(channels=3 | 4)`; `load_pixel_head` reads the `channels` stamp. The skip linear is
-  out of the module: a `skip = 1` file no longer loads (one local bench head, `convnext_1119_0835`),
-  the unused `linear.*` weights of older files are dropped at load. All 24 local ×1 / ×2 files and
-  the catalog's decode as before.
-- `library/anima/` holds `pixel_head.py` alone. Training modules: `scripts/pixel_head/train/`
-  (`_common.py`, `_x1_trainer.py`, `_x1_data.py`, `_x2_trainer.py`, `_rgba_trainer.py`, …); the
-  RGBA cache's: `scripts/pixel_head/cache/`; entry points stay in `scripts/pixel_head/`.
-- `train_rgba.py`: init `x1dll_1123_0821`, the target and loss under "The form", `lambda_rgb` 1.0,
-  `lambda_dino` (RGB) and `lambda_dino_alpha` 331.6. The read reports RGB dB against the target;
-  `render_alpha.py` saves the head's RGBA as it is and keeps its RGB dB against the init head.
-  `AlphaHead` and `straight_rgba` are gone; R1 – R4 files no longer load.
-- Open: the ComfyUI node (step 3); the vendored loader there still expects `linear.*` keys.
-
-### 2. A first run of the agreed form (a candidate, not proposed for queueing)
-
-Facts (as a candidate, on the form above):
+Facts (config `configs/rgbar5_1123_2305.toml`):
 
 - Parent `rgbar4_1123_2053` (settings under Records). Changed together, not separated: the output
   form (1 → 4 channels), the RGB term and its DINO term, the init (`x1ll_1122_1000` →
@@ -159,15 +138,15 @@ Facts (as a candidate, on the form above):
   3. RGB dB as the scripts print it: against the target on the read sets, against the init head on
      the 8 renders.
 - Bars: spread unknown (no seed twin). The user's read decides.
-- Cost: about 36 min (R4: 2,075 s) plus one more DINO forward an update.
+- Cost: about 41 min at 1.65 rollouts/s (R4: 2,075 s); one more DINO forward an update.
 
 Interpretation:
 
-- α level with R4 and RGB at the base → that file is the form; the alpha-only code and files go.
+- α level with R4 and RGB at the base → that file is the form; the R1 – R4 files go.
 - α behind R4 → the RGB term's weight, before anything else.
 - RGB off the base → the same weight, the other way.
 
-### 3. After it
+### 2. After it
 
 - Object cutouts into the cache (the user's data), then the same run.
 - The ComfyUI node: a four-channel file returns a four-channel IMAGE; `make vendor-sync` for the

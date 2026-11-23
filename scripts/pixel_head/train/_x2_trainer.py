@@ -296,7 +296,6 @@ def save_x2_head(head: PixelHeadX2, path: str | Path, stamp: dict[str, str]) -> 
         "width": str(b.proj.out_features),
         "depth": str(len(b.blocks) + len(b.up_blocks)),
         "up": str(b.up),
-        "skip": "0",
         "x2_depth": str(len(head.up2_blocks)),
         "scales": ",".join(str(v) for v in head_scales(head)),
         **({"x2_noise": str(head.noise)} if head.noise else {}),

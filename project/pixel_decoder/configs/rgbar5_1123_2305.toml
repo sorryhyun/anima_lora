@@ -1,0 +1,20 @@
+# R5 (rgba_plan.md, Next 2): the first run of the agreed form. One x1 head writing RGB and
+#   2a - 1, whole head trained from x1dll_1123_0821 (the base head), the alpha rows of the output
+#   layer fresh. Target: the cutout's colour where alpha > 0, the composite where alpha = 0.
+# Parent rgbar4_1123_2053. Changed together: output form (1 -> 4 channels), the RGB term and its
+#   DINO term, the init (x1ll_1122_1000 -> x1dll_1123_0821). As R4: cache (rerun for colour by
+#   rgbacache_1123_2254), rollouts 4,000, LR 2e-5, warmup 200, seed 0, a file at 2,000, DINO
+#   331.6 on alpha.
+# Question: does alpha on the shared trunk hold R4's, with RGB held at the base?
+# Read beside R4: flat mid tiles on the 8 working renders, held-out alpha L1, RGB dB.
+output_name = "rgbar5_1123_2305"
+cache_dir = "post_image_dataset/pixel_alpha_r4"
+init = "output/pixel_head/x1dll_1123_0821/head.safetensors"
+rollouts = 4000
+lr = 2e-5
+warmup = 200
+lambda_rgb = 1.0
+lambda_dino = 331.6
+lambda_dino_alpha = 331.6
+seed = 0
+save_every = 2000

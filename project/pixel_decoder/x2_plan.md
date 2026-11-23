@@ -145,7 +145,7 @@ Open, none queued:
 
 ### Interpretation
 
-- By the rule in `configs/x2llgf512_1122_2209.toml`: the 512 crop's stamp rise is inside the
+- By the rule in `archive/configs/x2llgf512_1122_2209.toml` (local): the 512 crop's stamp rise is inside the
   earlier 512 runs' and its off-grid penalty is small, so the 1024 crop raised the fixed pattern
   and costs 2.4× the time.
 - On the two grainy originals (`test_00`, `test_01`) the stamp is as high at 512 as at 1024:

@@ -1,6 +1,6 @@
 # LPIPS gradient into v: the pixel heads against the VAE decode (2026-11-21)
 
-`lgrad_1121_1845`: step 1 of `idea.md`, a forward + backward probe of whether a pixel head can be
+`lgrad_1121_1845`: step 1 of the former idea file, a forward + backward probe of whether a pixel head can be
 the differentiable decode of an LPIPS term on a LoRA. Design and the reading rule: the last
 section of this file.
 
@@ -47,7 +47,7 @@ section of this file.
   the three in-range σ. cos(c, Wᵀ g_a), the raw head gradient in f space: 0.021 … 0.032 in range.
 - Cost of one backward on the 512² window (median seconds, peak GB over the 4.45 GB of models on
   the card): fp32 VAE 0.154 s / 4.33, bf16 VAE 0.087 s / 2.46, a head 0.019 s / 0.70.
-- Claude's reading rule, fixed before the result (`plan.md`): "yes" if `mixr`'s cos(b, a) at the
+- Claude's reading rule, fixed before the result: "yes" if `mixr`'s cos(b, a) at the
   three in-range σ sits nearer cos(a16, a) than the floor. Result: 0.115 / 0.154 / 0.166 against
   floors 0.060 / 0.078 / 0.081 and a16 0.511 / 0.495 / 0.434: nearer the floor at each. Not passed.
 - Not run: a spread over window or image seeds, the training images, a head trained on wider σ, a
@@ -77,7 +77,7 @@ section of this file.
 - The same reading applies to cjk_rl arm D's "reader NLL through the head": its D0 cost probe
   should take the windowed VAE path, or a decoder whose only inputs are x_t and v.
 
-## Design as written in `plan.md` (moved 2026-11-22)
+## Design as written in the former plan (moved 2026-11-22)
 
 Step 1, the gradient-agreement probe (the user, 2026-11-21: "let's go ahead with item 1 and if
 any, proceed to 2"; item 2 = a head over a wider σ range).

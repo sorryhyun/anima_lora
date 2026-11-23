@@ -75,30 +75,32 @@ class RGBATrainer(X1Trainer):
             lambda_dino_rgb,
             lambda_dino_alpha,
         )
-        self.rec_log: dict[str, float] = {}
+        self.rec_log: dict[str, torch.Tensor] = {}  # detached; read once per update()
 
     def _rec(self, pred, tgt):
         rgb, rgb_mse = rec_loss(pred[:3], tgt[:3])
         a, a_mse = rec_loss(pred[3:], tgt[3:])
-        self.rec_log.update(rgb=rgb.item(), rgb_mse=rgb_mse.item(), alpha=a.item())
+        self.rec_log.update(
+            rgb=rgb.detach(), rgb_mse=rgb_mse.detach(), alpha=a.detach()
+        )
         return self.lambda_rgb * rgb + a, a_mse
 
     def _dino_term(self, pred, tgt, rng, compiled: bool = True):
         out = pred.new_zeros(())
         if self.lambda_dino_rgb > 0:
             d = super()._dino_term(pred[:3], tgt[:3], rng, compiled)
-            self.rec_log["dino_rgb"] = d.item()
+            self.rec_log["dino_rgb"] = d.detach()
             out = out + self.lambda_dino_rgb * d
         if self.lambda_dino_alpha > 0:
             a, b = (x[3:].repeat(3, 1, 1) for x in (pred, tgt))
             d = super()._dino_term(a, b, rng, compiled)
-            self.rec_log["dino_alpha"] = d.item()
+            self.rec_log["dino_alpha"] = d.detach()
             out = out + self.lambda_dino_alpha * d
         return out
 
     def update(self) -> dict[str, float]:
         out = super().update()
-        return {**out, **self.rec_log}
+        return {**out, **{k: v.item() for k, v in self.rec_log.items()}}
 
 
 def save_rgba_head(head: PixelHead, path: str | Path, stamp: dict) -> None:

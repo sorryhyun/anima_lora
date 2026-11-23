@@ -4,7 +4,7 @@
 #
 # Keys are BaseX1Request field names (`--help` lists them); CLI flags win over this file,
 # and a key left out keeps the field default. Values below are the confirmed base recipe
-# (project/pixel_decoder/plan.md), the settings of x1ll_1122_1000 with the DINOv3 ViT-S/16
+# (project/pixel_decoder/README.md), the settings of x1ll_1122_1000 with the DINOv3 ViT-S/16
 # term in the place of LPIPS ("LPIPS → DINO"; no 12,000-rollout run with it yet): regression
 # only, the init of the GAN finish (x1.toml), of ×2 and of RGBA.
 # For a run, copy this file to <handle>_mmdd_hhmm.toml and set output_name to that name.

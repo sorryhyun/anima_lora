@@ -342,9 +342,7 @@ def load_pixel_head(
     ``d_feat`` defaults to the stored ``proj.weight``'s input width (2048 on Anima). The
     output channels come from the ``channels`` stamp (3 when unstamped; 4 = RGBA). The
     trained σ ranges ride along as ``head.sigma_ranges``, the rest of the stamp as
-    ``head.meta``. A file stamped ``skip = 1`` (or unstamped: the P1 readout heads) needs
-    the skip linear this module no longer has and does not load; the ``linear.*`` weights
-    older files carry unused are dropped."""
+    ``head.meta``."""
     from safetensors import safe_open
     from safetensors.torch import load_file
 
@@ -352,10 +350,6 @@ def load_pixel_head(
     x2 = False
     with safe_open(str(path), "pt") as fh:
         meta = fh.metadata() or {}
-        if meta.get("skip", "1") != "0":
-            raise ValueError(
-                f"{path}: a skip-linear head (P1 readout); no longer loads"
-            )
         x2 = "x2_depth" in meta
         pre = "base." if x2 else ""
         if d_feat is None:

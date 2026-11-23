@@ -3,7 +3,7 @@
 Code for `project/pixel_decoder/`: a pixel head on the frozen Anima DiT's pre-head features (the
 input of `final_layer.linear`) in place of the VAE decoder (FastFrames, arXiv:2611.23226 §3.2,
 App. C). Run records, numbers and reads: `project/pixel_decoder/reports/` (in use) and
-`project/pixel_decoder/archive/` (finished; local), an index in each `README.md`. Plan and current recipe: `project/pixel_decoder/plan.md`.
+`project/pixel_decoder/archive/` (finished; local), an index in each `README.md`. Current recipe: `project/pixel_decoder/README.md`.
 
 The model code (`PixelHead`, `PixelTap`, `load_pixel_head`, `lat_patches`, `from_patches`,
 `PATCH`) lives in `library/anima/pixel_head.py`. A script here imports the
@@ -19,7 +19,7 @@ Training of the settled recipes is in `scripts/pixel_head/` (entry points; their
   from a start rollout), on `train/_x2_trainer.py` and `train/_common.py`
 
 The heads' perceptual term is the DINOv3 ViT-S/16 tile distance (`DinoFeat`); LPIPS is gone
-from training and from the reads (`project/pixel_decoder/plan.md`, "LPIPS → DINO"). The arms
+from training and from the reads (`project/pixel_decoder/README.md`). The arms
 that led to the recipes are in `experiments/`; the two harnesses with LPIPS built in
 (`convnext_head.py`, `x2_head.py`) are archived below.
 

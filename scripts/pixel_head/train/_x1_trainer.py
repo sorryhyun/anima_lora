@@ -1,6 +1,6 @@
 """×1 pixel-head training: what ``scripts/pixel_head/{base_x1,train_x1}.py`` compose.
 
-The recipe (``project/pixel_decoder/plan.md``): one DiT forward per rollout at a decode
+The recipe (``project/pixel_decoder/README.md``): one DiT forward per rollout at a decode
 point, the points taken in turn. A ``:real`` point trains the head against the image the
 latent was encoded from (with the DINO feature term, and the PE-GAN term in a finish), any
 other point against ``target`` (the VAE's decode of x̂0 or x0). A share of the rollouts
@@ -207,7 +207,7 @@ class X1Rollout(DiTRollout):
 
 @dataclass
 class X1TrainConfig:
-    """The loop's knobs; defaults are the base recipe (``plan.md``)."""
+    """The loop's knobs; defaults are the base recipe (``project/pixel_decoder/README.md``)."""
 
     rollouts: int = 12000
     opt_steps: int = 16  # head updates per rollout, each on one replay sample
@@ -248,9 +248,11 @@ class X1Trainer:
         assert cfg.pegan_crop % 16 == 0, "pegan_crop: a multiple of 16"
         self.head, self.cfg, self.dino = head, cfg, dino
         self.disc = disc if cfg.pegan_ratio > 0 else None
-        self.dino_ema: float | None = None
-        if compile:  # one compile over every image size (_head_compile.py)
-            from scripts.pixel_head.train._head_compile import opaque_dwconv_
+        self._dino_ema: torch.Tensor | None = None  # on the GPU: no sync per step
+        if (
+            compile
+        ):  # one compile over every image size (library/anima/pixel_head_compile.py)
+            from library.anima.pixel_head_compile import opaque_dwconv_
 
             opaque_dwconv_(head)
         self.head_c = torch.compile(head, dynamic=True) if compile else head
@@ -269,6 +271,10 @@ class X1Trainer:
         self._gan_rng = random.Random(cfg.seed + 9)  # the crop of an update
         self._lam_rng = random.Random(cfg.seed + 10)  # the weight rule's sample, crops
         self._dino_rng = random.Random(cfg.seed + 11)  # the tiles of an update
+
+    @property
+    def dino_ema(self) -> float | None:
+        return None if self._dino_ema is None else self._dino_ema.item()
 
     def push(self, f, lat, target, real: bool) -> None:
         """A rollout's features, x_t patches and target image."""
@@ -336,8 +342,8 @@ class X1Trainer:
             if real and cfg.lambda_dino > 0:
                 dn = self._dino_term(pred, tgt, self._dino_rng)
                 loss = loss + cfg.lambda_dino * dn
-                v, ema = dn.item(), self.dino_ema
-                self.dino_ema = v if ema is None else 0.98 * ema + 0.02 * v
+                v, ema = dn.detach(), self._dino_ema
+                self._dino_ema = v if ema is None else 0.98 * ema + 0.02 * v
             gan = real and self.disc is not None
             if gan:
                 g_loss = self._gan_term(pred, tgt, self._gan_rng)
@@ -363,7 +369,6 @@ def save_x1_head(head: PixelHead, path: str | Path, stamp: dict[str, str]) -> No
         "width": str(head.proj.out_features),
         "depth": str(len(head.blocks) + n_up),
         "up": str(head.up),
-        "skip": "0",  # loaders before the skip linear's removal read 1 when unstamped
         **{k: str(v) for k, v in stamp.items()},
     }
     save_file(

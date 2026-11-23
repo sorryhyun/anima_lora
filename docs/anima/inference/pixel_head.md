@@ -11,7 +11,7 @@ python inference.py … --decoder pixel_head [--pixel_head <file>]
 ```
 
 The weight is the catalog row `anima_pixel_head` (Hub `sorryhyun/anima-pixel-decoder`,
-`x1/anima_pixel_decoder_base.safetensors`; local `models/vae/anima_pixel_decoder_base.safetensors`),
+`x1/anima_pixel_decoder_base.safetensors`; local `models/pixel_decoder/anima_pixel_decoder_base.safetensors`),
 fetched on first use;
 `make download-model ARGS=anima-pixel-head` fetches it (and the ×2 file) ahead of time. `PIXEL_HEAD=<file>` or
 `--pixel_head` points at another head (a trainer's `output/pixel_head/<run>/head.safetensors`).
@@ -29,7 +29,7 @@ At any other last-step σ it still decodes and logs a warning; no refusal. The c
 (`x1dll_1123_0821`, since 2026-11-23) was trained on the original image with a DINOv3 ViT-S tile
 term at the base points and on VAE(x̂0) at the turbo point, with the turbo LoRA
 `anima_turbo_4step_v4_longer.safetensors`; it reads 34.00 dB / DINO 0.109e-3 against the original
-on held-out test images at σ 0.0577 (`project/pixel_decoder/plan.md`). Beside it on the Hub,
+on held-out test images at σ 0.0577 (`project/pixel_decoder/README.md`). Beside it on the Hub,
 `x1/anima_pixel_decoder_sharp.safetensors` (`x1dgan512_1123_1214`, catalog
 `anima_pixel_head_sharp`) is the same head with a GAN finish at the base points: sharper detail,
 further from the VAE decode; pick it with `PIXEL_HEAD=`. The timings

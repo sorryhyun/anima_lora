@@ -1,6 +1,6 @@
 # pixel_decoder — a light pixel head on the frozen Anima DiT's last features
 
-The algorithm and what was found. What is ahead: the `*plan.md` files. Runs: `reports/`, and
+The algorithm and what was found. What is ahead: `rgba_plan.md` and `x2_plan.md`. Runs: `reports/`, and
 `archive/` (local).
 
 ## Algorithm
@@ -119,9 +119,9 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   the dip is about a quarter as deep.
 - A GAN finish (2,000 rollouts, ratio 2) on the last head: test 33.33 / 0.0828. High-pass
   amplitude on base renders, colour / mono: 0.880 / 0.850 → 0.986 / 0.941 of the VAE's. The
-  user's read: "gan ft가 날카롭게 만드는건 확인했다" ([record](plan.md)).
+  user's read: "gan ft가 날카롭게 만드는건 확인했다".
 - That finish has no term on the turbo point. Its amplitude there is 0.933 / 0.944, against
-  0.920 / 0.931 for the head without a finish at 3,000 rollouts ([record](plan.md)).
+  0.920 / 0.931 for the head without a finish at 3,000 rollouts.
 
 ### ×2 training
 
@@ -171,7 +171,7 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
 - Fine strokes: the user reported the region blurred at ×2. Claude's read, labelled: merged
   already by every ×1 head tried, separate in the VAE decode
   ([record](reports/x1_recipe_2026_11_22.md)).
-- Screentone: small dots are smoothed into shading (the user's read; [record](plan.md)).
+- Screentone: small dots are smoothed into shading (the user's read).
 - Tone: darker than the VAE on textured regions, about 2.5 levels in linear light on
   screentone-like blocks of base mono renders, 1 on turbo, under 1 over a whole image
   ([record](archive/p4_mix_2026_11_19.md), local).

@@ -4,7 +4,7 @@
 Base decode points against the original image with the DINO term, the turbo point against the
 VAE's decode of x̂0, manga pages in the mix, no GAN term. The GAN finish on the result
 (the release) is ``train_x1.py``; ×2 is ``train_x2.py`` with ``init`` at this head's
-file. Recipe and its records: ``project/pixel_decoder/plan.md``.
+file. Recipe and its records: ``project/pixel_decoder/README.md``.
 
 Every flag is an :class:`BaseX1Request` field; ``--config <file.toml>`` takes a flat TOML
 of field names (field default → ``--config`` → CLI). Shipped config:

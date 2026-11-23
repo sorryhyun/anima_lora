@@ -6,7 +6,7 @@
 # file, and a key left out keeps the field default. Values below are the settled recipe
 # (project/pixel_decoder/reports/x2_full_run_deploy_2026_11_21.md): arm B (the real 2× image as the target, base decode
 # points only) with the PE-Spatial GAN term at gradient ratio 2 from rollout 1000, and the
-# DINOv3 ViT-S/16 term in the place of LPIPS (project/pixel_decoder/plan.md, "LPIPS → DINO";
+# DINOv3 ViT-S/16 term in the place of LPIPS (project/pixel_decoder/README.md;
 # no full-length run with it yet).
 # For a run, copy this file to <handle>_mmdd_hhmm.toml and set output_name to that name.
 

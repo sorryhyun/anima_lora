@@ -1,15 +1,15 @@
 # Pixel decoder — a light head in place of the VAE
 
-A 25M-parameter ConvNeXt head that reads the frozen Anima DiT's last features and writes RGB
-directly, so sampling ends without a VAE decode. The form follows FastFrames (arXiv:2611.23226,
-§3.2 and App. C). The DiT is never trained; the head is trained against the VAE.
+A ~23M-parameter ConvNeXt head that reads the frozen Anima DiT's last features and writes the
+image directly, so sampling ends without a VAE decode. The form follows FastFrames
+(arXiv:2611.23226, §3.2 and App. C). The DiT is never trained.
 
-This page covers the structure, the training and where the line stands. Usage (`PIXEL=1`,
-`--decoder pixel_head`, the ComfyUI nodes) is in [../inference/pixel_head.md](../inference/pixel_head.md).
-Records: `project/pixel_decoder/`; training: `scripts/pixel_head/` (entry points `base_x1.py`,
-`train_x1.py`, `train_x2.py`, `train_rgba.py`, `cache_alpha.py`, `render_alpha.py`; their
-modules in `train/` and `cache/`); evals and earlier arms: `bench/pixel_readout/`; the
-module: `library/anima/pixel_head.py`.
+Three forms share one module (`library/anima/pixel_head.py`, torch only): ×1 RGB, ×2 RGB (decode
+and 2× upscale in one readout) and ×1 RGBA (a transparent image). Usage (`PIXEL=1`,
+`--decoder pixel_head`, the ComfyUI nodes): [../inference/pixel_head.md](../inference/pixel_head.md).
+Training: `scripts/pixel_head/` (entry points `base_x1.py`, `train_x1.py`, `train_x2.py`,
+`cache_alpha.py`, `train_rgba.py`, `render_alpha.py`; their modules in `train/` and `cache/`),
+shipped configs in `configs/pixel_head/`.
 
 ## Where it reads
 
@@ -49,7 +49,7 @@ x_t latent of that step.
 
 ## In code
 
-The head file is the catalog row `anima_pixel_head` (`models/vae/anima_pixel_decoder_base.safetensors`,
+The head file is the catalog row `anima_pixel_head` (`models/pixel_decoder/anima_pixel_decoder_base.safetensors`,
 Hub `sorryhyun/anima-pixel-decoder`, `x1/`). The module lives in `library/anima/pixel_head.py` (torch only).
 
 ### anima_lora
@@ -93,7 +93,7 @@ from PIL import Image
 from diffusers.modular_pipelines.anima import AnimaAutoBlocks
 from library.anima.pixel_head import lat_patches, load_pixel_head  # anima_lora repo
 
-head = load_pixel_head("models/vae/anima_pixel_decoder_base.safetensors", "cuda")
+head = load_pixel_head("models/pixel_decoder/anima_pixel_decoder_base.safetensors", "cuda")
 
 blocks = AnimaAutoBlocks()
 blocks.sub_blocks.pop("decode")                       # no VAE decode
@@ -128,13 +128,14 @@ Image.fromarray(((rgb + 1) * 127.5).round().byte().permute(1, 2, 0).cpu().numpy(
 ```
 
 The head was trained on fp32-stream features (`--stream fp32`). The diffusers transformer runs in
-bf16, so expect it to read somewhat lower than the numbers below; this path has not been
-measured.
+bf16; this path has not been measured.
 
-## The head
+## The heads
 
-Released head `mixr_1119_1455`: width 1024, three ConvNeXt blocks (two at token resolution, one
-after a 2× upsample), no skip, 24.9M parameters.
+### ×1 (`PixelHead`)
+
+Width 1024, three ConvNeXt blocks: two at token resolution, one after a 2× upsample. 23.3M
+parameters.
 
 ```
  f  (gh, gw, 2048)          x_t patch (gh, gw, 64)
@@ -153,150 +154,109 @@ after a 2× upsample), no skip, 24.9M parameters.
             │ ConvNeXt block ×1   │
             │ width 512           │
             └──────────┬──────────┘
-                       │  LN → Linear 512→8·8·3 (fp32)
+                       │  LN → Linear 512→8·8·C (fp32)
                        ▼
-             RGB (3, 16·gh, 16·gw) in [-1, 1]
+             (C, 16·gh, 16·gw) in [-1, 1]      C = 3 (RGB) or 4 (RGB, 2α − 1)
 ```
 
-Choices that held up:
+The output layer runs in fp32 under bf16 autocast. `channels = 4` is the RGBA head: the same
+trunk, an output layer with an α row per pixel. Its RGB is straight colour; inference saves it
+with α = clamp((a + 1) / 2, 0, 1) as a transparent PNG.
 
-| Choice | What it replaced | Record |
+### ×2 (`PixelHeadX2`)
+
+The ×1 head plus a second 2× stage, so a 1024-tier render leaves the head at 2048:
+
+```
+   ×1 trunk ── … ── ConvNeXt at width 512, 8 px per position
+                                         │
+                       LN → Linear 512→4·256 → pixel shuffle 2×     4 px per position
+                                         ▼
+                              ConvNeXt ×2, width 256
+                                         │
+                              LN → Linear 256→8·8·3 (fp32)
+                                         ▼
+                              ×2 RGB (32 px / token)
+```
+
+A file stamped `scales = "2"` carries no ×1 output layer and decodes at ×2 only. Two optional
+forms are read from the file: noise inputs (`x2_noise`, zero-init Gaussian channels before each
+second-stage block) and an overlapping output (`out2` writes 16×16 patches at stride 8, blended
+under a sin² window so no patch border carries a step).
+
+### Files
+
+| Catalog id | File (Hub `sorryhyun/anima-pixel-decoder`) | Form |
 |---|---|---|
-| No linear skip from f to the patch | A P1 linear readout as skip, zero-init output, layer scale 1e-6: stalled at 26.50 dB | `archive/p2_skip_2026_11_19.md` (local) |
-| One 2× upsample stage before the last block | All blocks at token resolution: 32.93 → 33.64 dB test | `archive/upsample_2026_11_19.md` (local) |
-| Output layer kept in fp32 under bf16 autocast | bf16 output weights cost dB (measured with the skip head) | `library/anima/pixel_head.py` |
+| `anima_pixel_head` | `x1/anima_pixel_decoder_base.safetensors` | ×1, the default |
+| `anima_pixel_head_sharp` | `x1/anima_pixel_decoder_sharp.safetensors` | ×1 with a GAN finish at the base points |
+| `anima_pixel_head_x2` | `x2/anima_pixel_head_x2.safetensors` | ×2 only, base points only |
+
+`load_pixel_head` builds the form from the file's metadata (`width`, `depth`, `up`, `channels`,
+`x2_depth`, `scales`, `sigma`). The `sigma` stamp is the trained decode range; off it the head
+still decodes, with a warning.
 
 ## Training
 
-Teacher-forced from cached latents: each rollout noises a training latent to the decode point,
-runs one frozen DiT forward and one VAE decode, and trains the head on the result. No sampling
-loop runs during training.
+Teacher-forced: each rollout noises a cached latent to a decode point, runs one frozen DiT forward
+(fp32 stream, compiled blocks) and trains the head on that feature. No sampling loop runs.
 
 ```
- cached latent x0 ──► x_t = (1−σ)·x0 + σ·ε     σ drawn per rollout (decode points, below)
+ cached latent x0 ──► x_t = (1−σ)·x0 + σ·ε       σ drawn per rollout from the decode points
                           │
                           ▼
-              frozen DiT forward (fp32 stream, compiled blocks;
-                                  turbo LoRA on at σ 0.5)
+              frozen DiT forward  (turbo LoRA on at σ 0.5)
                           │
-              ┌───────────┴────────────┐
-              ▼                        ▼
-       f, x_t patch             x̂0 = x_t − σ·v ──► VAE.decode ──► target VAE(x̂0)
-              │                                                       │
-              └──────────────► replay buffer (64 rollouts) ◄──────────┘
+                    f, x_t patch ──► replay buffer (64 rollouts) ◄── target
                                          │
                                 16 head updates per rollout
                                          │
                                          ▼
-                   loss = 0.5·L1 + 5·MSE + 0.05·L_grad    (FastFrames' spatial terms)
-                   AdamW, LR 2e-4, cosine, clip 1.0
+          loss = 0.5·L1 + 5·MSE + 0.05·L_grad  +  λ_dino · DINO  [+ λ_gan · L_G]
+          AdamW, one cosine cycle, clip 1.0
 ```
 
-- **Target VAE(x̂0), not the image.** The head can only know what the features hold. At σ_last
-  that is x̂0, and the VAE caps how close anything gets to the original: on real manga pages the
-  VAE alone is 21.5–39.8 dB from the original, VAE(x̂0) 24.3–36.3 dB from VAE(x0). The reachable
-  target is VAE(x̂0).
-- **Decode points.** One head covers the samplers it ships for:
+- **Decode points.** The base DiT at shift-3 Euler 20 … 50 steps (σ uniform 0.0577 … 0.1364 at the
+  last forward) and the 4-step turbo LoRA (σ 0.5), alternating per rollout.
+- **Targets.** At the base points the original image. At σ 0.5, where x̂0's outline can leave the
+  original's, the VAE's decode of the DiT's own x̂0.
+- **DINO term.** DINOv3 ViT-S/16 (`facebook/dinov3-vits16-pretrain-lvd1689m`, gated on the Hub):
+  4 tiles of 224 px per update at the same places on head output and target, patch tokens after
+  blocks 3 / 6 / 9 / 12, L2-normalised per position, MSE averaged over the blocks.
+- **GAN term** (optional). A frozen PE-Spatial-B16 with trainable token heads, a paired
+  relativistic loss on 512-px crops of output and target, R1 / R2 by noise perturbation. Its
+  weight is set so its gradient norm over the head is `pegan_ratio` × the regression terms'.
+- **Data.** The LoRA training caches (`post_image_dataset/lora/`) plus manga pages
+  (`post_image_dataset/pixel_pages`, share 0.33).
+- **Compile.** The DiT blocks, the head and the DINO tower compile. The head's depthwise convs run
+  as opaque custom ops (`library/anima/pixel_head_compile.py`), so one graph covers every image
+  size.
 
-  | DiT | sampler | σ at the last forward |
-  |---|---|---|
-  | anima-base | shift-3 Euler, 20…50 steps (Spectrum included) | uniform 0.0577…0.1364 |
-  | anima-base + turbo LoRA (Hub `old/`) | 4 steps, CFG 1 | 0.5 |
+The stages, each a daemon job (`make daemon-run ARGS="--queue --stall-timeout 900 <script>
+--config <file>"`):
 
-  The two points alternate per rollout, with the LoRA toggled by `set_enabled`.
-- **Data.** The LoRA training caches (`post_image_dataset/lora/`) plus 3,000 manga pages
-  (Manga109-s and JA web manga, one fixed tag caption) at share 0.33. The pages took the manga eval from 26.64 to 28.15 dB
-  (`archive/pagemix_2026_11_19.md` (local)).
-- **Cost.** 900 rollouts in 11.3 min on a 5070 Ti (`replay_1119_1225`). The release head took
-  3,000 rollouts on top of `pagemix_1119_1242` (2,000).
+| Stage | Script, config | Init | What changes |
+|---|---|---|---|
+| ×1 base | `base_x1.py`, `configs/pixel_head/base_x1.toml` | a ×1 head | regression at both points, DINO (331.6) at the base points, 12,000 rollouts, LR 5e-5 |
+| ×1 GAN finish | `train_x1.py`, `configs/pixel_head/x1.toml` | the ×1 base | + the GAN term at ratio 2, 2,000 rollouts |
+| ×2 | `train_x2.py`, `configs/pixel_head/x2.toml` | a ×1 head + a fresh second stage | target the real 2× image (`x2flex` set), base points only, one 24-token window (+3 margin) per rollout; + DINO (245.2), a tone term (L1 on 32-px block means), the GAN term from rollout 1,000; 4,000 rollouts, LR 2e-4 |
+| RGBA | `cache_alpha.py`, then `train_rgba.py` | the ×1 base, α rows fresh | below |
 
-## Results
+### RGBA
 
-PSNR against the VAE decode of the same latent, one seed, held-out artists. Colour / mono are
-generated renders; test / text are teacher-forced held-out images.
+`cache_alpha.py` lays RGBA cutouts on light backgrounds (white, a flat light colour, a light
+affine field with grain) and caches the DiT's inputs: the composite's VAE latent, the caption's
+TE + `llm_adapter` embed and the cutout itself. A rerun encodes only what changed.
 
-| Head | Read on | Numbers |
-|---|---|---|
-| P1 linear readout | teacher-forced test / text | 26.28 / 21.61 |
-| P2 ConvNeXt, no skip | teacher-forced test / text | 32.93 / 27.45 |
-| `pagemix_1119_1242` (+ upsample, pages, VAE(x̂0) target) | test / text / manga | 34.83 / 29.65 / 28.15 |
-| `mixr_1119_1455` (release) | turbo rollouts colour / mono | 35.90 / 29.01 |
-| | base 28 steps colour / mono | 33.83 / 26.38 |
-| | base 20 / 50 steps colour | 33.71 / 33.49 |
-| | Spectrum colour / mono | 34.37 / 26.00 |
-
-What is left, from the user's reads: screentone dots come out as soft grey shading, textured
-regions run 1–2.5 levels darker than the VAE in linear light, and speed lines and footnote-size
-glyphs are slightly soft under zoom. The loss has no perceptual or local-tone term; that is the
-"pixel losses on the head" topic below.
-
-## Phases
-
-```
- P1 linear readout ──► P2 ConvNeXt head ──► P3 generated images, LoRA transfer, manga pages
-                                                │
-                                                ▼
-                       P4 decode points (base range + turbo), release, library/, ComfyUI node
-                                                │
-                                                ▼
-                       P5 (open): ×2 output · pixel losses on the head · RGBA · a head at
-                              every step · MOSS (losses through the head into the DiT: closed)
-```
-
-P1–P4 are complete (2026-11-19). Per-phase record: `project/pixel_decoder/archive/phases_p1_p4_2026_11_19.md` (local).
-
-## ×2 output (P5)
-
-The goal is to decode and upscale 2× in one readout, so a 1024-tier render leaves the head at
-2048. A second 2× stage goes on top of the release head. In the preview file the ×1 output
-stays, so one file serves both; the shipped ×2 file (`anima_pixel_head_x2`, `x2bgan2_1121_1340`,
-2026-11-21: real 2× targets, ×1 loss off, PE-Spatial GAN) drops the ×1 output layer and decodes
-at ×2 only ([../inference/pixel_head.md](../inference/pixel_head.md#×2-output)). The rest of
-this section is the research record.
-
-```
-   release head (as above) ── … ── ConvNeXt ×1, width 512, 8 px per position
-                                         │
-                       ┌─────────────────┴──────────────────┐
-                       ▼                                    ▼
-          LN → Linear 512→8·8·3                LN → Linear 512→4·256 → pixel shuffle 2×
-                       │                                    │      4 px per position
-                       ▼                                    ▼
-            ×1 RGB (16 px / token)             ConvNeXt ×2, width 256
-                                                            │
-                                               LN → Linear 256→8·8·3 (fp32)
-                                                            ▼
-                                               ×2 RGB (32 px / token)
-```
-
-Target: the released 1-step ResShift ×2 student (`sorryhyun/Distilled-ResShift-2x`) run on
-VAE(x̂0). It sees one 30×30-token window per rollout, with the loss on the inner 24×24. The head
-runs in 13 ms on 80×52 tokens (×1 and ×2, eager), against 3.2 s for VAE → ResShift.
-
-The level to read against is the **chain**: the release head's ×1 output, then the teacher.
-The target is a function of VAE(x̂0), which the head knows only to its ×1 error, so the
-teacher's second draw (42–46 dB) is out of reach.
-
-| Base σ 0.097, against the teacher on VAE(x̂0) | test | text | manga | LPIPS test | dark-pixel lift |
-|---|---|---|---|---|---|
-| bicubic ×2 of VAE(x̂0) | 29.82 | 28.25 | 27.00 | | |
-| arm A, recipe loss only (`x2a_1119_1802`) | 30.70 | 27.25 | 26.49 | 0.205 | +10.1 |
-| chain: head ×1 → teacher | 33.71 | 29.55 | 28.17 | 0.152 | +5.7 |
-
-Dark-pixel lift is the mean luma difference, in 8-bit levels, over the pixels the teacher has
-under 64.
-
-Arm A came out soft: lines thicker than the chain's, dark pixels lifted, and the ×1 output down
-about 1 dB. Fit probes showed that the stage can express the target on 2 windows but does not
-learn it as a mapping on 16 under the recipe loss. The running arm adds VGG-LPIPS and the SR
-line's tone term (`dc_loss`, L1 on 32-px block means) on the ×2 output. If its lines stay soft,
-a GAN term is next. Algorithm and findings: `project/pixel_decoder/README.md`; runs: `project/pixel_decoder/reports/`.
+`train_rgba.py` runs the DiT on those inputs (base points only) and trains the whole four-channel
+head against the RGBA image: its own colour where α > 0, the composite where α = 0, and 2α − 1.
+Loss: `lambda_rgb` · rec(RGB) + rec(α) + DINO on the RGB + DINO on α read as three channels.
+`render_alpha.py` renders prompts through a trained file and saves the transparent PNGs.
 
 ## Limits
 
 - A head is tied to the DiT, and to the adapter, whose features it reads. The turbo point was
   trained on the Hub turbo repo's `old/` LoRA; v3 and v4 read about 3 dB lower.
-- An off-point σ still decodes, with a warning. Tiled diffusion is refused, since it makes one
-  forward per tile.
-- The int8 DiT and other LoRAs are untested; a merged style LoRA read level in P3.
-- Every number is from one seed; no head has a seed twin yet.
+- Tiled diffusion is refused, since it makes one forward per tile.
+- The int8 DiT and other LoRAs are untested.
+- The RGBA head is trained on light simple backgrounds only.

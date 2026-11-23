@@ -3,7 +3,7 @@
 
 ``base_x1.py``'s recipe on a new cosine cycle from the base, with the paired PE-Spatial
 GAN term on the ``:real`` samples (the original image is its real; the turbo point keeps
-its regression alone). Recipe and its records: ``project/pixel_decoder/plan.md``.
+its regression alone). Recipe and its records: ``project/pixel_decoder/README.md``.
 
 Every flag is an :class:`X1TrainRequest` field; ``--config <file.toml>`` takes a flat TOML
 of field names (field default → ``--config`` → CLI). Shipped config:

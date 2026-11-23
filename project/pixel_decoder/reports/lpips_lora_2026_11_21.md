@@ -80,7 +80,7 @@ ratio 1.0 behind it 5 – 11, one training seed. Design: the last section of thi
   shown gain nor level: a seed twin (control + ratio 0.3 at seed 43) is what would settle it; two
   clusters put the sign-flip floor at 0.25.
 
-## Design as written in `plan.md` (moved 2026-11-22)
+## Design as written in the former plan (moved 2026-11-22)
 
 Step 2, the LoRA arm on ama mitsuki (the user, 2026-11-21: "그래 차라리 그게 낫겠다. ama mitsuki 로
 해보자").
