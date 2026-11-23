@@ -1,0 +1,55 @@
+# x1dgan_1123_1059 with pegan_crop 0 (the whole image) -> 512, nothing else changed (init
+#   x1dll_1123_0821, 2,000 rollouts, LR 5e-5 one new cosine, PE-GAN ratio 2 on the :real samples,
+#   PE eager, DINO λ 331.6, seed 0). Code: scripts/pixel_head/train_x1.py; the crop's offset is
+#   drawn per pixel (library/anima/pixel_head_train_x1.py), so PE's 16-px grid falls at any phase
+#   of the DiT's 16-px tokens. At 0 it sat on them every update.
+# The user (2026-11-23): "ㅇㅇ 512로 재실행하자", after x1dgan_1123_1059's sheets showed a regular dot
+#   pattern on manga_page; README Rules: a GAN arm takes the PE term on a 512² crop.
+# Question: does the random-phase crop take the 16-px stamp of the GAN finish back down while the
+#   sharpening stays? Stamp near x1dll's with amplitude kept -> the ×1 recipe (x1.toml at 512).
+#   Stamp as x1dgan's -> not the crop; noise injection (x2_plan.md) is next.
+# Records it rests on (sheet_texture.py on 16 prompts x 2 seeds, base 28 steps CFG 4):
+#   - x1dgan_1123_1059 (x1dganb28_1123_1059, tex_1123_1215): amplitude colour / mono 0.997 / 0.971
+#     (x1dll 0.909 / 0.882); stamp16 0.699 / 2.251 (x1dll 0.565 / 1.451, VAE 0.426 / 1.102);
+#     manga_page s0 / s1 stamp16 12.94 / 9.35 (x1dll 4.66 / 4.94). Held-out σ 0.0577 test
+#     33.19 dB / DINO 0.117e-3 (x1dll 34.00 / 0.109e-3).
+#   - x1fgan_1122_1247 (whole image, LPIPS base; tex_x1fgan_1123): stamp16 mono 0.972 -> 1.633,
+#     manga_page s0 1.71 -> 5.45.
+#   - x2 (x2_plan.md, "The crop, 1024 against 512"): stamp rise 1024 +0.14 / +0.23 / +0.52,
+#     512 +0.02 / +0.05 / +0.21.
+# Read: evals beside x1dll's and x1dgan's; p3_generated.py with x1dll and this head,
+#   sheet_texture.py (amplitude, stamps), pair sheets; the user's read decides.
+# Bars: no twin; spread unknown.
+# Cost: 2,000 rollouts, under x1dgan's 1.83 s: under 60 min + evals, then about 7 min of renders.
+
+output_name = "x1dgan512_1123_1214"
+output_dir = "output/pixel_head"       # → <output_dir>/<output_name>/head.safetensors
+init = "output/pixel_head/x1dll_1123_0821/head.safetensors"
+points = "0.0577-0.1364:real 0.5:adapter"
+target = "xhat0"
+adapter = "output/ckpt/release/anima_turbo_4step_v4_longer.safetensors"
+pages = "post_image_dataset/pixel_pages"
+page_share = 0.33
+
+rollouts = 2000                        # the points alternate: half of them carry the term
+opt_steps = 16
+replay = 64
+lr = 5e-5
+warmup = 200
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 331.6                    # on the :real points
+dino_tiles = 4
+
+pegan_ratio = 2.0                      # GAN gradient norm over the head / the regression terms'; 0 = off
+pegan_crop = 512                       # random offset per pixel
+pegan_lr = 1e-4
+pegan_lambda_max = 1.0
+
+eval_points = "0.03 0.25"
+eval_every = 500
+start_eval = false
+n_sheets = 4
+
+stream = "fp32"
+compile = true
+seed = 0

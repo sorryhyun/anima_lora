@@ -29,7 +29,7 @@ lambda_dino = 331.6                    # on the :real points
 dino_tiles = 4
 
 pegan_ratio = 2.0                      # GAN gradient norm over the head / the regression terms'; 0 = off
-pegan_crop = 0                         # 0 = the whole image; the PE tower runs eager
+pegan_crop = 512                       # a multiple of 16, offset drawn per pixel; 0 = the whole image (PE grid locked to the tokens: a 16-px stamp, x1dgan_1123_1059)
 pegan_lr = 1e-4
 pegan_lambda_max = 1.0
 

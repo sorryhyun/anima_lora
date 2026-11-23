@@ -60,6 +60,12 @@ There is no linear skip from f. Output layers run in fp32. A ×2 file has no ×1
 
 - Discriminator: frozen PE-Spatial-B16, blocks 3 / 7 / 11 (0-based), each with a small
   convolutional head writing one logit per token.
+- PE over DINOv3 ViT-S/16 and ConvNeXt-T as the tower: a linear probe of the original against
+  `x1dll_1123_0821`'s output, 112 whole images, image-level split, best block's held-out
+  accuracy, unpaired at σ 0.0577 / 0.1364: PE 0.880 / 0.894 (block 3), ViT-S 0.709 / 0.743
+  (block 2), ConvNeXt-T 0.700 / 0.728 (the 8-px stage). Paired: PE 0.999 / 1.000, ViT-S 0.973 /
+  0.989, ConvNeXt-T 0.924 / 0.938. The user's rule: a DINO tower that loses keeps PE
+  (`bench/pixel_readout/experiments/disc_backbone_probe.py`, `discprobe_1123_1108`).
 - Paired relativistic loss on the output and the real image at the same place:
   L_D = softplus(−(D(real) − D(fake))), L_G = softplus(−(D(fake) − D(real))).
 - R1 / R2 in noise-perturbation form: 0.1 · mean((D(x + σε) − D(x))²), σ 0.01. LR 1e-4.
