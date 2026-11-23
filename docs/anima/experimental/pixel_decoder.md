@@ -49,7 +49,7 @@ x_t latent of that step.
 
 ## In code
 
-The head file is the catalog row `anima_pixel_head` (`models/pixel_decoder/anima_pixel_decoder_base.safetensors`,
+The head file is the catalog row `anima_pixel_head` (`models/pixel_heads/anima_pixel_decoder_base.safetensors`,
 Hub `sorryhyun/anima-pixel-decoder`, `x1/`). The module lives in `library/anima/pixel_head.py` (torch only).
 
 ### anima_lora
@@ -93,7 +93,7 @@ from PIL import Image
 from diffusers.modular_pipelines.anima import AnimaAutoBlocks
 from library.anima.pixel_head import lat_patches, load_pixel_head  # anima_lora repo
 
-head = load_pixel_head("models/pixel_decoder/anima_pixel_decoder_base.safetensors", "cuda")
+head = load_pixel_head("models/pixel_heads/anima_pixel_decoder_base.safetensors", "cuda")
 
 blocks = AnimaAutoBlocks()
 blocks.sub_blocks.pop("decode")                       # no VAE decode

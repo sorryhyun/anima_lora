@@ -11,7 +11,7 @@ python inference.py … --decoder pixel_head [--pixel_head <file>]
 ```
 
 The weight is the catalog row `anima_pixel_head` (Hub `sorryhyun/anima-pixel-decoder`,
-`x1/anima_pixel_decoder_base.safetensors`; local `models/pixel_decoder/anima_pixel_decoder_base.safetensors`),
+`x1/anima_pixel_decoder_base.safetensors`; local `models/pixel_heads/anima_pixel_decoder_base.safetensors`),
 fetched on first use;
 `make download-model ARGS=anima-pixel-head` fetches it (and the ×2 file) ahead of time. `PIXEL_HEAD=<file>` or
 `--pixel_head` points at another head (a trainer's `output/pixel_head/<run>/head.safetensors`).

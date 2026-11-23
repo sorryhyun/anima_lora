@@ -209,5 +209,5 @@ def test_catalog_row():
     assert x2.files == (downloads.ANIMA_PIXEL_HEAD_X2_FILE,)
     assert x2.subfolder == "x2"
     assert x2.repo == asset.repo
-    assert asset.dest.name == downloads.ANIMA_PIXEL_DECODER_DIR
+    assert asset.dest.name == downloads.ANIMA_PIXEL_HEADS_DIR
     assert downloads.by_id()["anima_pixel_head_sharp"].dest == asset.dest
