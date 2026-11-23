@@ -47,8 +47,10 @@ Root after the move: `README.md`, `LICENSE.md`, `NOTICE.md`, `.gitattributes`, `
 - The root head files are removed after the copy; old root links no longer resolve.
 - `multi/` does not exist until a file goes in (the Hub keeps no empty folders).
 
-## Left
+## Also shipped
 
 - ComfyUI-Anima-PixelDecoder 0.3.3 (lists `*pixel_decoder*` files in the VAE folders; README on
-  the new paths): committed locally, not pushed or published.
-- The GAN finish on the new base (`plan.md` To do 2) ships later in `x1/` as its own file.
+  the new paths): pushed (`cc80d5a`) and published to the registry, 2026-11-23. The card's spec
+  table holds the common spec only; the training target sits in the Base section.
+
+Next: the GAN finish on the new base (`plan.md` To do 2) ships in `x1/` as its own file.
