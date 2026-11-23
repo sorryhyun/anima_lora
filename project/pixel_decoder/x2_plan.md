@@ -5,7 +5,8 @@
 - Done: `x2llgf512_1122_2209`, the same finetune at a 512 crop with the PE tower compiled
   ("The crop, 1024 against 512", at the end).
 - The crop is settled at 512 (the user, 2026-11-22: "512가 훨씬 낫다고 적어두자"; README, Rules).
-- Waiting: the user's word on the fix below. Nothing is queued.
+- Running: `x2dll_1123_1537`, B only 12k on the DINO term from `x1dll_1123_0821` (`plan.md`,
+  "LPIPS → DINO"). The fix below still waits on the user's word.
 
 ## A fixed pattern after the GAN finetune (2026-11-22)
 

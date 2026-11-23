@@ -37,8 +37,9 @@ ones in `archive/` (local; an index in each `README.md`):
 
 ### To do
 
-1. ×2 first: the full-length B run from the ×1 base on `configs/pixel_head/x2.toml` (`init` at
-   `x1ll_1122_1000`), then the GAN finish from it (`x2_plan.md`).
+1. ×2 first: the full-length B run, from the DINO ×1 base `x1dll_1123_0821` (the user,
+   2026-11-23: "init은 배포본인 dino base로 하고, x2 b only로 하자고"): `x2dll_1123_1537`, queued
+   (job `20261123-153807-b99f58`). No GAN finish queued behind it.
 2. ×1: the GAN finish from `x1dll_1123_0821`: done, `x1dgan512_1123_1214` shipped as
    `x1/anima_pixel_decoder_sharp` (2026-11-23; State, the ×1 files).
 3. RGBA: R3 runs on the DINO term (`rgba_plan.md`).
