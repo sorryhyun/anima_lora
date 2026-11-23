@@ -201,10 +201,12 @@ def test_catalog_row():
 
     asset = downloads.by_id()["anima_pixel_head"]
     assert asset.files == (downloads.ANIMA_PIXEL_HEAD_FILE,)
+    assert asset.subfolder == "x1"
     assert (
         downloads.default_pixel_head_path()
         == asset.dest / downloads.ANIMA_PIXEL_HEAD_FILE
     )
     x2 = downloads.by_id()["anima_pixel_head_x2"]
     assert x2.files == (downloads.ANIMA_PIXEL_HEAD_X2_FILE,)
+    assert x2.subfolder == "x2"
     assert x2.repo == asset.repo and x2.dest == asset.dest

@@ -73,7 +73,7 @@ def main_():
     p.add_argument("--clip", default="qwen_3_06b_base.safetensors")
     p.add_argument("--vae", default="qwen_image_vae.safetensors")
     p.add_argument("--lora", default="anima_turbo_4step.safetensors")
-    p.add_argument("--head", default="anima_pixel_head.safetensors")
+    p.add_argument("--head", default="anima_pixel_decoder_base.safetensors")
     p.add_argument(
         "--pixel_head",
         default=None,

@@ -39,14 +39,21 @@ ones in `archive/` (local; an index in each `README.md`):
 
 1. ×2 first: the full-length B run from the ×1 base on `configs/pixel_head/x2.toml` (`init` at
    `x1ll_1122_1000`), then the GAN finish from it (`x2_plan.md`).
-2. ×1: the base recipe on the DINO term at 12,000 rollouts, `configs/x1dll_1123_0821.toml`
-   (queued 2026-11-23 08:21 on the user's word, ahead of ×2), with the read of `x1ll_1122_1000` in
-   the new code behind it (`configs/x1llread_1123_0821.toml`); then the GAN finish from it.
+2. ×1: the GAN finish from `x1dll_1123_0821` (done and shipped as the base, 2026-11-23; State).
 3. RGBA: R3 runs on the DINO term (`rgba_plan.md`).
 
 ## State
 
 ### Facts
+
+- `x1dll_1123_0821` (×1 base on the DINO term, 12k, `configs/x1dll_1123_0821.toml`) against
+  `x1ll_1122_1000` read in the same code (`x1llread_1123_0821`): DINO distance to the original
+  12 – 34 % lower at σ ≤ 0.25 on test / text / manga, unchanged at the turbo point; PSNR 0.15 –
+  0.25 dB lower at the base points. On generated images (`x1dllb28_1123_0821`, 16 prompts × 2
+  seeds, 28 steps, CFG 4) PSNR against the VAE decode 32.25 against 32.66.
+- The user on the sheets (2026-11-23): "스크린톤 패턴까지 살아났고 14번 보면 원래 있었던 가로줄 왜곡이
+  사라졌네 이대로 base는 올리자". Shipped as Hub `x1/anima_pixel_decoder_base.safetensors`
+  (`deploy_plan.md`).
 
 - The user (2026-11-22): "x2 하듯이 마지막에 gan 마무리 하는걸 배포본으로, 그리고 x1ll 은 일종의 base
   느낌으로, x2나 추후 rgba 용도 등으로 사용하면 어때?"
@@ -59,11 +66,12 @@ ones in `archive/` (local; an index in each `README.md`):
 
   | role | head | used for | state |
   |---|---|---|---|
-  | base | `x1ll_1122_1000` | the init of the GAN finish, of ×2 and of RGBA | done, fixed as the base; local only |
-  | release | `realr_1119_2200` | Hub `anima_pixel_head.safetensors`, the catalog's default | unchanged |
-  | sharp | `x1fgan_1122_1247` (the base + a GAN finish) | Hub `anima_pixel_head_sharp.safetensors`, picked by path | shipped 2026-11-22; no catalog row |
+  | release | `x1dll_1123_0821` (×1 on the DINO term, 12k) | Hub `x1/anima_pixel_decoder_base.safetensors`, the catalog's default | shipped 2026-11-23 (`deploy_plan.md`) |
+  | base (LPIPS) | `x1ll_1122_1000` | the init of the GAN finish, of ×2 and of RGBA | done; local only |
+  | old release | `realr_1119_2200` | Hub `x1/anima_pixel_head_old.safetensors` | kept for comparison |
+  | sharp (old) | `x1fgan_1122_1247` (`x1ll` + a GAN finish) | Hub `x1/anima_pixel_head_sharp_old.safetensors` | kept for comparison |
 
-- The Hub ×2 file stays `x2bgan2_1121_1340`.
+- The Hub ×2 file stays `x2bgan2_1121_1340`, now at `x2/anima_pixel_head_x2.safetensors`.
 
 ### Interpretation
 

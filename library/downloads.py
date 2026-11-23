@@ -64,8 +64,12 @@ ANIMA_DIT_INT8_FILE = "anima-base-v1.0_int8_gptq.safetensors"
 # Pixel head: decodes the DiT's last features to RGB in place of the VAE
 # (``library/anima/pixel_head.py``, ``inference.py --decoder pixel_head``).
 ANIMA_PIXEL_HEAD_REPO = "sorryhyun/anima-pixel-decoder"
-ANIMA_PIXEL_HEAD_FILE = "anima_pixel_head.safetensors"
+# The Hub keeps one folder per output scale (``x1/``, ``x2/``, ``multi/``); the
+# rows flatten into ``models/vae/``.
+ANIMA_PIXEL_HEAD_SUBFOLDER = "x1"
+ANIMA_PIXEL_HEAD_FILE = "anima_pixel_decoder_base.safetensors"
 # The ×2 file (``--pixel_scale 2``): decodes and 2× upscales in one readout, no ×1 output.
+ANIMA_PIXEL_HEAD_X2_SUBFOLDER = "x2"
 ANIMA_PIXEL_HEAD_X2_FILE = "anima_pixel_head_x2.safetensors"
 
 # PE-Core-L14-336 — global/CLIP-aligned vision features (CMMD validation
@@ -118,7 +122,8 @@ def default_anima_path(kind: str) -> Path:
 
 
 def default_pixel_head_path() -> Path:
-    """``<models_dir>/vae/anima_pixel_head.safetensors`` — the pixel head beside the VAE."""
+    """``<models_dir>/vae/anima_pixel_decoder_base.safetensors`` — the ×1 pixel head
+    beside the VAE."""
     return models_dir() / kind_dir("vae") / ANIMA_PIXEL_HEAD_FILE
 
 
@@ -458,6 +463,7 @@ def anima_catalog() -> tuple[Asset, ...]:
             title="Anima pixel head (decoder)",
             repo=ANIMA_PIXEL_HEAD_REPO,
             files=(ANIMA_PIXEL_HEAD_FILE,),
+            subfolder=ANIMA_PIXEL_HEAD_SUBFOLDER,
             dest=models_dir() / kind_dir("vae"),
             used_by="inference.py --decoder pixel_head (PIXEL=1 on test-*)",
             notes="~95 MB. Reads the DiT's last-step features and writes RGB in "
@@ -470,6 +476,7 @@ def anima_catalog() -> tuple[Asset, ...]:
             title="Anima pixel head ×2 (decoder + 2× upscale)",
             repo=ANIMA_PIXEL_HEAD_REPO,
             files=(ANIMA_PIXEL_HEAD_X2_FILE,),
+            subfolder=ANIMA_PIXEL_HEAD_X2_SUBFOLDER,
             dest=models_dir() / kind_dir("vae"),
             used_by="inference.py --decoder pixel_head --pixel_scale 2 (PIXEL=1 PIXEL_SCALE=2)",
             notes="~100 MB. The ×1 head plus a second 2× stage: one readout writes the "

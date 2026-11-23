@@ -10,8 +10,9 @@ make test-turbo PIXEL=1           # 4-step turbo, CFG 1
 python inference.py … --decoder pixel_head [--pixel_head <file>]
 ```
 
-The weight is the catalog row `anima_pixel_head` (`sorryhyun/anima-pixel-decoder`,
-`models/vae/anima_pixel_head.safetensors`), fetched on first use;
+The weight is the catalog row `anima_pixel_head` (Hub `sorryhyun/anima-pixel-decoder`,
+`x1/anima_pixel_decoder_base.safetensors`; local `models/vae/anima_pixel_decoder_base.safetensors`),
+fetched on first use;
 `make download-model ARGS=anima-pixel-head` fetches it (and the ×2 file) ahead of time. `PIXEL_HEAD=<file>` or
 `--pixel_head` points at another head (a trainer's `output/pixel_head/<run>/head.safetensors`).
 
@@ -25,21 +26,21 @@ The head was trained at fixed decode points, stamped as `sigma` in the file's me
 | anima-base + turbo LoRA | 4 steps, CFG 1 | 0.5 |
 
 At any other last-step σ it still decodes and logs a warning; no refusal. The current head
-(`realr_1119_2200`, since 2026-11-19) was trained on the original image with LPIPS at the base
-points and on VAE(x̂0) at the turbo point, with the turbo LoRA
-`anima_turbo_4step_v4_longer.safetensors`; it reads 33.75 dB / LPIPS 0.081 against the original
-on held-out test images at σ 0.0577 (`project/pixel_decoder/archive/real_target_2026_11_19.md` (local)).
-The previous head (`old/anima_pixel_head.safetensors` on the Hub, VAE(x̂0) target, turbo point
-on the turbo repo's `old/` file) read turbo 35.4 dB and base 28 steps + Spectrum 33.0 dB against
-the VAE decode; the numbers below are that head's.
+(`x1dll_1123_0821`, since 2026-11-23) was trained on the original image with a DINOv3 ViT-S tile
+term at the base points and on VAE(x̂0) at the turbo point, with the turbo LoRA
+`anima_turbo_4step_v4_longer.safetensors`; it reads 34.00 dB / DINO 0.109e-3 against the original
+on held-out test images at σ 0.0577 (`project/pixel_decoder/plan.md`). The heads it replaced stay
+on the Hub for comparison: `x1/anima_pixel_head_old.safetensors` (`realr_1119_2200`, LPIPS term)
+and `x1/anima_pixel_head_sharp_old.safetensors` (`x1fgan_1122_1247`, a GAN finish). The timings
+below were measured on an earlier head of the same architecture.
 
 Decode time ~7 ms per ~1 MP image against 141 ms (VAE resident), 176 ms (VAE moved to the card
 and back) or ~850 ms (VAE loaded from disk). On turbo the VAE is 15 % of DiT + decode.
 
 ## ×2 output
 
-The ×2 file `anima_pixel_head_x2` (`models/vae/anima_pixel_head_x2.safetensors`, same Hub repo,
-fetched on first use) carries a second 2× stage after the head's own: one readout writes a 32×32
+The ×2 file `anima_pixel_head_x2` (Hub `x2/anima_pixel_head_x2.safetensors`, local
+`models/vae/anima_pixel_head_x2.safetensors`, fetched on first use) carries a second 2× stage after the head's own: one readout writes a 32×32
 RGB patch per token, so a 1024-tier render leaves the head at 2048 (~12 ms on 85 × 48 tokens).
 
 ```bash
@@ -49,7 +50,7 @@ python inference.py … --decoder pixel_head --pixel_head <×2 file>   # scale f
 ```
 
 The file decides the scale. With `--pixel_scale` unset the head decodes at its file's own: ×1
-for `anima_pixel_head`, ×2 for `anima_pixel_head_x2` (stamped `scales = "2"`), ×1 for the old
+for `anima_pixel_decoder_base`, ×2 for `anima_pixel_head_x2` (stamped `scales = "2"`), ×1 for the old
 two-scale preview file. An explicit scale the file does not hold refuses at load, in both
 directions: the ×2 file has no ×1 output layer (it was trained with the ×1 loss off), and a ×1
 file has no ×2 stage. With no `--pixel_head`, `--pixel_scale 2` takes the ×2 catalog row.
