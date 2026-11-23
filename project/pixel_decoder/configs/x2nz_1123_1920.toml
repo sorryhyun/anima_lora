@@ -1,0 +1,44 @@
+# Noise inputs on the x2 GAN finish: x2dgf512_1123_1701 with noise 0 -> 64, nothing else changed
+#   (resume x2dll_1123_1537, 2,000 rollouts, LR 5e-5 one new cosine, window 32 on manifest_w32,
+#   DINO 245.2, PE-GAN ratio 2 from rollout 0 on a 512 crop, seed 0).
+# noise = 64: before each of the two second-stage blocks, 64 Gaussian channels per 4-px position
+#   (one value per output pixel of its 8x8 patch), a fresh draw per forward, through a linear map
+#   starting at zero, so rollout 0 is x2dll's output (library/anima/pixel_head.py, PixelHeadX2).
+# The user (2026-11-23, after the fixed-tile read and the disc / ResShift alternatives): "차라리
+#   noise injection이 제일 나은거같아. 해보자".
+# Question: with a source of randomness, does the GAN finish stop writing the fixed token tile and
+#   the centre speck? Dictionary share and speck down with the texture kept on the user's read ->
+#   the form for the x2 ship read. noise_w stays near 0 or the draw gap near 0 -> the head did not
+#   take the noise under this loss; the unpaired disc arm (x2_plan.md) next. Tile kept with the
+#   noise in use -> the tile is not from missing randomness.
+# Records it rests on (reports/x2_dll_dgf_2026_11_23.md, "A fixed tile"):
+#   - x2dgf512_1123_1701 on its 32 renders: departed tiles 6.1 % at a 16-centroid share of 0.73,
+#     tiles between 0.3 and 0.7 12.4 %, mean token tile's peak +3.95 at the centre.
+#   - x2dll_1123_1537 (the parent of both): 5.3 % at 0.76, 6.0 %, peak -2.40.
+#   - x2dgf512's log: d_margin 6.3 - 7.0 through the finish; 0.92 s a rollout, peak 8.7 GB.
+# Read: evals and the log's noise_w / draw gap beside x2dgf512's; p3_generated.py --x2 with
+#   x2dgf512 and this head on the same 32 renders (x2nzgen), the tile read on them
+#   (tile_dict.py: departed share, dictionary share, 0.3 - 0.7 share, mean-tile peak), pair
+#   sheets x2dgf512 | this arm of manga_page, manga_action, castle and kotatsu, labelled; the
+#   user's read decides.
+# Bars: no twin of a x2 GAN finish on this parent; spread unknown.
+# Cost: 2,000 rollouts at about 0.9 s: about 30 min + evals; the render read about 12.
+# make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_x2.py --config <this file>"
+
+output_name = "x2nz_1123_1920"
+resume = "output/pixel_head/x2dll_1123_1537/head_x2.safetensors"
+x2flex = "post_image_dataset/x2flex/manifest_w32.json"
+rollouts = 2000
+lr = 5e-5
+eval_every = 500
+window = 32
+noise = 64
+
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 245.2
+dino_tiles = 4
+
+pegan_crop = 512
+pegan_ratio = 2.0
+pegan_start = 0
+seed = 0

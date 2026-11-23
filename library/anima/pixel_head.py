@@ -160,7 +160,17 @@ class PixelHeadX2(nn.Module):
     patch per position, i.e. 32×32 output pixels per DiT token. The ×1 output is the base
     head's. ``scales=(2,)`` drops it (``base.norm_out`` / ``base.out``): a file trained
     with the ×1 loss off carries no usable ×1 output. ``forward(…, scale=1 | 2)`` runs only
-    the stages that scale needs; ``scale=None`` returns both (training, two-scale heads)."""
+    the stages that scale needs; ``scale=None`` returns both (training, two-scale heads).
+
+    ``noise`` > 0 (files stamped ``x2_noise``): before each second-stage block, ``noise``
+    Gaussian channels per position, a fresh draw per forward, enter through a linear map
+    that starts at zero (StyleGAN's noise inputs). 64 = one value per output pixel of the
+    position's 8×8 patch. ``forward(…, noise=False)`` leaves the draw out.
+
+    ``overlap`` (files whose ``out2`` writes 16×16 patches, stamped ``x2_overlap``): each
+    position writes a patch twice its 8-px cell, centred on it; the patches are summed
+    under a sin² window whose shifts by one cell add to 1, so every output pixel blends
+    its four nearest positions and no patch or token border carries a step."""
 
     def __init__(
         self,
@@ -169,9 +179,13 @@ class PixelHeadX2(nn.Module):
         ls_init: float = 1.0,
         width2: int | None = None,
         scales: tuple[int, ...] = (1, 2),
+        noise: int = 0,
+        overlap: bool = False,
     ):
         super().__init__()
         assert base.up and not base.use_skip, "base head: one upsample stage, no skip"
+        self.noise = 0
+        self.overlap = overlap
         self.base = base
         w = base.up_proj.out_features // 4
         w2 = width2 or w // 2
@@ -182,19 +196,66 @@ class PixelHeadX2(nn.Module):
             ConvNeXtBlock(w2, ls_init) for _ in range(depth2)
         )
         self.norm2 = nn.LayerNorm(w2, eps=1e-6)
-        self.out2 = nn.Linear(w2, self.patch2 * self.patch2 * 3)
+        k2 = self.patch2 * (2 if overlap else 1)  # the side of the patch out2 writes
+        self.out2 = nn.Linear(w2, k2 * k2 * 3)
+        k = 2 * self.patch2
+        win = torch.sin(torch.pi * (torch.arange(k) + 0.5) / k) ** 2
+        self.register_buffer("win2", win[:, None] * win[None, :], persistent=False)
         self.scales = (1, 2)
         if tuple(scales) == (2,):
             drop_x1_output(self)
         elif tuple(scales) != (1, 2):
             raise ValueError(f"PixelHeadX2: scales {scales}; (1, 2) or (2,)")
+        if noise:
+            self.add_noise(noise)
+
+    def add_noise(self, channels: int = 64) -> "PixelHeadX2":
+        """Give the second stage its noise inputs (zero-init: the output is unchanged
+        until they are trained), on the head's device."""
+        assert not self.noise, "PixelHeadX2: noise inputs already present"
+        w2 = self.norm2.normalized_shape[0]
+        self.noise_in = nn.ModuleList(
+            nn.Linear(channels, w2, bias=False) for _ in self.up2_blocks
+        ).to(self.out2.weight.device)
+        for m in self.noise_in:
+            nn.init.zeros_(m.weight)
+        self.noise = channels
+        return self
+
+    def to_overlap(self) -> "PixelHeadX2":
+        """Turn an 8×8 ``out2`` into the overlapping 16×16 one in place. Each new patch
+        starts as the old one with its edge pixels repeated outwards, so the output
+        starts as the old output blended across the patch borders."""
+        assert not self.overlap, "PixelHeadX2: out2 already overlaps"
+        p, old = self.patch2, self.out2
+        src = (torch.arange(2 * p) - p // 2).clamp(0, p - 1)
+        new = nn.Linear(old.in_features, 4 * p * p * 3).to(old.weight.device)
+        with torch.no_grad():
+            w = old.weight.view(p, p, 3, -1)[src][:, src]
+            new.weight.copy_(w.reshape(4 * p * p * 3, -1))
+            new.bias.copy_(old.bias.view(p, p, 3)[src][:, src].reshape(-1))
+        self.out2, self.overlap = new, True
+        return self
+
+    def _overlap_add(self, tok: torch.Tensor) -> torch.Tensor:
+        """(n, m, 16·16·3) patches at stride 8 → (3, 8n, 8m), window-weighted and
+        divided by the window's own sum (under 1 only on the image's 4-px rim)."""
+        n, m = tok.shape[:2]
+        p, k = self.patch2, 2 * self.patch2
+        win = self.win2.to(tok.dtype)
+        t = tok.view(n * m, k, k, 3) * win[None, :, :, None]
+        t = t.permute(3, 1, 2, 0).reshape(1, 3 * k * k, n * m)
+        size = dict(output_size=(n * p, m * p), kernel_size=k, stride=p, padding=p // 2)
+        img = F.fold(t, **size)
+        norm = F.fold(win.reshape(1, k * k, 1).expand(1, k * k, n * m), **size)
+        return (img / norm)[0]
 
     @staticmethod
     def _unpatch(tok: torch.Tensor, p: int) -> torch.Tensor:
         n, m = tok.shape[:2]
         return tok.view(n, m, p, p, 3).permute(4, 0, 2, 1, 3).reshape(3, n * p, m * p)
 
-    def forward(self, f, lat, scale: int | None = None):
+    def forward(self, f, lat, scale: int | None = None, noise: bool = True):
         """f (gh, gw, D), lat (gh, gw, 64) → (×1, ×2) images, or one of them."""
         b = self.base
         h = (b.proj(f) + b.lat_embed(lat)).permute(2, 0, 1)[None]
@@ -215,11 +276,20 @@ class PixelHeadX2(nn.Module):
                 return x1
         u = self.up2_proj(self.up2_norm(h.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
         g = F.pixel_shuffle(u, 2)  # (1, w/2, 4gh, 4gw)
-        for blk in self.up2_blocks:
+        for i, blk in enumerate(self.up2_blocks):
+            if self.noise and noise:
+                z = torch.randn(
+                    g.shape[2], g.shape[3], self.noise, device=g.device, dtype=g.dtype
+                )
+                g = g + self.noise_in[i](z).permute(2, 0, 1)[None]
             g = blk(g)
         h2 = self.norm2(g[0].permute(1, 2, 0))
         with torch.autocast(h.device.type, enabled=False):
-            x2 = self._unpatch(self.out2(h2.float()), self.patch2)
+            tok = self.out2(h2.float())
+            if self.overlap:
+                x2 = self._overlap_add(tok)
+            else:
+                x2 = self._unpatch(tok, self.patch2)
         return x2 if scale == 2 else (x1, x2)
 
 
@@ -278,7 +348,9 @@ def load_pixel_head(
 
     A file stamped ``x2_depth`` (keys ``base.*``, ``up2_*``, ``out2.*``) loads as a
     :class:`PixelHeadX2`: at ×2 only when also stamped ``scales = "2"`` (no ×1 output
-    layer in the file), else at ×1 and ×2; any other file as a :class:`PixelHead`.
+    layer in the file), else at ×1 and ×2, with noise inputs when stamped ``x2_noise``
+    and the overlapping output when ``out2`` holds 16×16 patches; any other file as a
+    :class:`PixelHead`.
     ``d_feat`` defaults to the stored ``proj.weight``'s input width (2048 on Anima). The
     trained σ ranges ride along as ``head.sigma_ranges``, the rest of the stamp as
     ``head.meta``."""
@@ -295,6 +367,8 @@ def load_pixel_head(
             d_feat = int(fh.get_slice(f"{pre}proj.weight").get_shape()[1])
         if x2:
             width2 = int(fh.get_slice("up2_proj.weight").get_shape()[0]) // 4
+            # an overlapping out2 writes 16×16 patches (4× the 8×8 layer's rows)
+            overlap = int(fh.get_slice("out2.weight").get_shape()[0]) == 3 * PATCH**2
     head = PixelHead(
         d_feat,
         LAT_PATCH_DIM,
@@ -305,7 +379,14 @@ def load_pixel_head(
     )
     if x2:
         scales = tuple(int(v) for v in meta.get("scales", "1,2").split(","))
-        head = PixelHeadX2(head, int(meta["x2_depth"]), width2=width2, scales=scales)
+        head = PixelHeadX2(
+            head,
+            int(meta["x2_depth"]),
+            width2=width2,
+            scales=scales,
+            noise=int(meta.get("x2_noise", "0")),
+            overlap=overlap,
+        )
     head.load_state_dict(load_file(str(path)))
     head.sigma_ranges = parse_sigma_ranges(meta.get("sigma"))
     head.meta = dict(meta)

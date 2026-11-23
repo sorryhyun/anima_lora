@@ -46,6 +46,12 @@ class X2TrainRequest(Request):
     init: str = ""  # a ×1 head file for a new second stage; "" = the catalog's head
     resume: str = ""  # a ×2 head file to continue from (replaces init / depth2)
     depth2: int = 2  # ConvNeXt blocks of the second stage
+    # Gaussian channels per position fed to each second-stage block, a fresh draw per
+    # forward (0 = none); added zero-init to a --resume file that has none
+    noise: int = 0
+    # out2 writes 16×16 patches at stride 8, summed under a window (no patch or token
+    # border step); a --resume file with the 8×8 layer is converted (edge-repeat init)
+    overlap: bool = False
     sigma: str = "0.0577-0.1364"  # decode-point range, drawn per rollout
     # the loop (library.anima.pixel_head_train.X2TrainConfig)
     rollouts: int = 4000
@@ -168,9 +174,15 @@ def run(req: X2TrainRequest) -> Path:
         src = resolve_pixel_head_path(req.init or None)
         base = load_pixel_head(src, device, anima.final_layer.hidden_size)
         assert not isinstance(base, PixelHeadX2), f"--init {src}: a ×1 head file"
-        head = PixelHeadX2(base, req.depth2).to(device)
+        head = PixelHeadX2(base, req.depth2, overlap=req.overlap).to(device)
     # the ×1 loss is off in this recipe: the file carries no ×1 output (scales = 2)
     drop_x1_output(head)
+    if req.noise and not head.noise:
+        head.add_noise(req.noise)
+    if req.overlap and not head.overlap:
+        head.to_overlap()
+    assert head.overlap == req.overlap, f"{src}: overlap {head.overlap}"
+    assert head.noise == req.noise, f"{src}: noise {head.noise}, asked {req.noise}"
     head.train()
     print(
         f"head {sum(q.numel() for q in head.parameters()) / 1e6:.1f}M params from {src}",
@@ -232,6 +244,8 @@ def run(req: X2TrainRequest) -> Path:
                 "luma": luma,
                 "dark": dark,
             }
+            if head.noise:  # mean |difference| of two draws, 8-bit levels
+                row["draw_gap"] = 127.5 * (predict(f, lat) - x2).abs().mean().item()
             if nulls:
                 row["dino_null"] = dn.image(null_of(x2, ref, j), ref)
             rows.append(row)
@@ -250,6 +264,7 @@ def run(req: X2TrainRequest) -> Path:
         return "  ".join(
             f"{st} {ev[f'{st}_psnr']:.2f} dB dino {1e3 * ev[f'{st}_dino']:.3f}e-3 "
             f"dark {ev[f'{st}_dark'] or 0:+.2f}"
+            + (f" draw gap {ev[f'{st}_draw_gap']:.2f}" if head.noise else "")
             for st in sets
         )
 

@@ -178,3 +178,69 @@ def test_load_x2flex(tmp_path):
     data = load_x2flex(man)
     assert [len(data[k]) for k in ("train", "test", "text")] == [1, 0, 1]
     assert data["train"][0].tokens == (1024 // PATCH) * (768 // PATCH)
+
+
+def test_noise_inputs(tmp_path):
+    """Zero-init noise inputs leave the output as it was; trained ones make two draws
+    differ, ``noise=False`` leaves the draw out, and the file carries them."""
+    head = _head().eval()
+    f, lat = torch.randn(3, 4, D_FEAT), torch.randn(3, 4, 64)
+    with torch.no_grad():
+        plain = head(f, lat, 2)
+        head.add_noise(8)
+        assert torch.equal(head(f, lat, 2), plain)
+        for m in head.noise_in:
+            torch.nn.init.normal_(m.weight, std=0.5)
+        a, b = head(f, lat, 2), head(f, lat, 2)
+        assert not torch.equal(a, b)
+        assert torch.equal(head(f, lat, 2, noise=False), plain)
+    path = tmp_path / "head_x2.safetensors"
+    save_x2_head(head, path, {"sigma": "0.0577-0.1364"})
+    back = load_pixel_head(path)
+    assert back.noise == 8 and back.meta["x2_noise"] == "8"
+    assert torch.equal(back.noise_in[0].weight, head.noise_in[0].weight)
+
+
+def test_overlap_output(tmp_path):
+    """The overlapping output: the window's shifts add to 1 up to the image rim, a
+    converted head whose patches are flat reproduces the old output, and the file loads
+    back with the 16×16 layer."""
+    head = _head().eval()
+    f, lat = torch.randn(3, 4, D_FEAT), torch.randn(3, 4, 64)
+    with torch.no_grad():
+        # a flat colour per position and channel: old and converted outputs agree
+        # wherever the four blended positions do, so compare on a uniform image
+        head.out2.weight.zero_()
+        head.out2.bias.copy_(torch.tensor([0.3, -0.2, 0.1]).repeat(64))
+        plain = head(f, lat, 2)
+        head.to_overlap()
+        over = head(f, lat, 2)
+    assert head.out2.out_features == 16 * 16 * 3 and over.shape == plain.shape
+    assert torch.allclose(over, plain, atol=1e-5)
+    path = tmp_path / "head_x2.safetensors"
+    save_x2_head(head, path, {"sigma": "0.0577-0.1364"})
+    back = load_pixel_head(path)
+    assert back.overlap and back.meta["x2_overlap"] == "1"
+    with torch.no_grad():
+        assert torch.equal(back(f, lat, 2), over)
+
+
+def test_overlap_has_no_patch_step():
+    """Patches that are flat but differ per position: the 8×8 layer steps by the full
+    difference at a patch border, the overlapping one spreads it over the cell."""
+    torch.manual_seed(0)
+    head = _head().eval()
+    f, lat = torch.randn(4, 4, D_FEAT), torch.randn(4, 4, 64)
+
+    def max_step(img):
+        return (img[:, :, 1:] - img[:, :, :-1]).abs().max().item()
+
+    with torch.no_grad():
+        colour = torch.randn(3, head.out2.in_features) * 0.05  # one row per channel
+        head.out2.weight.copy_(colour.repeat(64, 1))
+        head.out2.bias.zero_()
+        steps = max_step(head(f, lat, 2))
+        head.to_overlap()
+        smooth = max_step(head(f, lat, 2))
+    # the sin² window moves at most π/16 of a difference per pixel
+    assert steps > 0 and smooth < 0.25 * steps, (steps, smooth)

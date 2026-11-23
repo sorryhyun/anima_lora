@@ -684,6 +684,15 @@ class X2Trainer:
             self.opt.step()
             self.step += 1
             log = {k: v.item() for k, v in t.items()}
+            if self.head.noise:  # 0 = the noise inputs are unused
+                log["noise_w"] = (
+                    sum(
+                        m.weight.detach().float().pow(2).sum()
+                        for m in self.head.noise_in
+                    )
+                    .sqrt()
+                    .item()
+                )
             if self.gan_live:
                 log["lam_pegan"] = self.lam_pegan
                 log.update(self.disc.step())  # on this step's paired crop, detached
@@ -792,6 +801,8 @@ def save_x2_head(head: PixelHeadX2, path: str | Path, stamp: dict[str, str]) -> 
         "skip": "0",
         "x2_depth": str(len(head.up2_blocks)),
         "scales": ",".join(str(v) for v in head_scales(head)),
+        **({"x2_noise": str(head.noise)} if head.noise else {}),
+        **({"x2_overlap": "1"} if head.overlap else {}),
         **{k: str(v) for k, v in stamp.items()},
     }
     save_file(

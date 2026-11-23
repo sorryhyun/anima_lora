@@ -25,7 +25,7 @@ sampling step. The DiT is frozen.
 | upsample | 8 px | 512 | LayerNorm, linear, pixel shuffle ×2, 1 ConvNeXt block |
 | ×1 output | 8 px | | LayerNorm, linear to an 8×8 RGB patch per position |
 | ×2 second stage | 4 px of the ×1 image | 256 | from the upsample stage: the same shuffle, 2 ConvNeXt blocks |
-| ×2 output | 4 px of the ×1 image | | LayerNorm, linear to an 8×8 patch of the 2× image per position |
+| ×2 output | 4 px of the ×1 image | | LayerNorm, linear to an 8×8 patch of the 2× image per position; or, in a file stamped `x2_overlap`, to a 16×16 patch centred on the position, summed with its neighbours' under a sin² window |
 
 A block is a 3×3 depthwise convolution, LayerNorm and a 4× MLP, with layer scale starting at 1.0.
 There is no linear skip from f. Output layers run in fp32. A ×2 file has no ×1 output layer.
@@ -145,6 +145,20 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   0.155 / 0.145, 1.54 s. Stamp rise over the parent on three images: 1024 +0.14 / +0.23 / +0.52,
   512 +0.02 / +0.05 / +0.21; on the two grainy originals the stamp is 1.59 / 1.89 at 1024 and
   1.59 / 1.75 at 512. The user: "512가 훨씬 낫다" ([record](x2_plan.md)).
+- Noise inputs on the GAN finish (64 Gaussian channels per position before each second-stage
+  block, zero-init): two decodes of one input differ by 0.08 – 0.09 levels at the end, after 0.14 –
+  0.16 at rollout 500; tile numbers and dB level with the finish without them
+  ([record](reports/x2_noise_2026_11_23.md)).
+- On halftone the heads write one or two fixed token tiles in place of the dots: 16 centroids hold
+  0.28 of those tiles' energy with the LPIPS head, 0.76 with the DINO head, 0.73 after the GAN
+  finish; the chain's tiles at the same places 0.06
+  ([record](reports/x2_dll_dgf_2026_11_23.md)).
+- On flat regions every ×2 head with the 8 × 8 output steps at the patch borders (× 1.23 – 1.37
+  of the inner first difference) and at the token borders (× 1.33 – 1.37); the chain reads × 1.0
+  ([record](reports/x2_noise_2026_11_23.md)). With 16 × 16 patches at stride 8 summed under a
+  window: × 0.99 / × 0.98, at 30.42 / 26.04 dB against its init's 30.48 / 26.13 and a high-pass
+  ratio of 1.000 / 0.987 (σ 3 / 1 px); the decode takes 18.0 ms against 12.4
+  ([record](reports/x2_overlap_2026_11_23.md)).
 - The discriminator's margin on held-out heads is 6.33 against a null of 0.05
   ([record](archive/x2_disc_probes_2026_11_21.md), local). In training it stays at 5.9 – 7.3 after
   its rise ([record](reports/x2_full_run_deploy_2026_11_21.md)).

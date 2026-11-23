@@ -9,15 +9,41 @@
   `x2dgf512_1123_1701`, read on held-out sheets and 32 generated renders
   ([report](reports/x2_dll_dgf_2026_11_23.md)). Every ×2 head writes token seams (border / within
   first difference 1.23 – 1.28, chain 1.02).
-- Open, on the user's read of more sheets after the RGBA read (2026-11-23: "seam만 줄이면 사실 거의
-  해결된다고는 봐"): how to remove the token seams. Proposed, not queued:
-  1. decode twice with the token grid shifted half a token (one more DiT forward at the last step
-     on x_t shifted one latent pixel) and blend with weights at 0 on each decode's token borders;
-     no training; a probe on a few renders of `x2dll` / `x2dgf512`, read by the edge ratio and
-     sheets;
-  2. training: a border first-difference term against the target, or a full-resolution refine
-     stage at ×2.
-  Noise injection (below) addresses the stamp, not the seam.
+- Done 2026-11-23: `x2nz_1123_1920`, noise inputs on the GAN finish: level with `x2dgf512` on
+  every tile number, draw gap 0.08 – 0.09 levels ([report](reports/x2_noise_2026_11_23.md)).
+- Done 2026-11-23: `x2ov_1123_2012`, the overlapping output (16 × 16 patches at stride 8 under a
+  window) as a 2,000-rollout B finetune of `x2dll`: the patch and token steps are gone (flat
+  tokens × 0.99 / × 0.98, token edge ratio on textured tiles 0.96 / 1.10), sharpness level with
+  `x2dll`, 30.42 / 26.04 dB against 30.48 / 26.13 ([report](reports/x2_overlap_2026_11_23.md)).
+  It closes the seam item (the shifted double decode and the border term are dropped).
+
+## The ×2 form from here (2026-11-23)
+
+- The user: "그럴거면 x2 자체를 stride 버전으로 하고, 거기에 gan을 얹는게 맞나? 뭐... 12k 학습을
+  해야하는지는 모르겠다만... 일단 이건 x2 plan으로 갱신하자".
+- The ×2 head's output is the overlapping one; the B head is trained with it and the GAN finish
+  goes on top of that head. `x2dll` / `x2dgf512` (the 8 × 8 output) stay as the references.
+
+Open, none queued:
+
+1. The GAN finish on the overlapping output: `x2dgf512_1123_1701`'s recipe with resume `x2dll` →
+   `x2ov_1123_2012` as the one change, about 30 min; the render read runs from
+   `output/pixel_head/render_cache/` (local). Read against `x2dgf512` on the same 32 renders: the
+   line gradient and high-pass (the user on `x2ov`: "진짜 좀 무르네"), the flat-token border
+   ratios with the GAN's grain on, `tile_dict.py`, and the user's sheets of candle, kotatsu and
+   manga_page.
+2. Undecided by the user, whether the B stage is retrained: 12,000 rollouts from `x1dll_1123_0821`
+   with the overlap from the start (`x2dll`'s recipe plus `overlap = true`, about 1.5 h), against
+   keeping `x2ov` (`x2dll`'s trunk, the output layer converted, 2,000 rollouts). What is known:
+   `x2ov` is 0.06 – 0.09 dB under `x2dll` and was still rising at 2,000 (30.35 → 30.42 over the
+   last 500). Step 1's read comes first; the long run is for the head that ships.
+3. The fixed tile on halftone and the GAN's net (neither moved by the output form): the unpaired
+   discriminator, `x2dgf512`'s recipe on the overlapping parent with the real crop drawn from
+   another replay sample as the one change, about 30 min + the render read; read by the margin's
+   course (6.3 – 7.0 with the pairing), `tile_dict.py` and the user's sheets. It leaves the
+   paper's paired form.
+4. The noise inputs again with a nonzero init and their own LR, if 3 moves the margin: only then
+   does a loss reward the draw.
 
 ## A fixed pattern after the GAN finetune (2026-11-22)
 
