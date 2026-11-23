@@ -18,9 +18,8 @@ leaves this file for a report.
 
 ## Work
 
-- 636 SFX-main crops with speech partly inside the box train `OCR:` only. Most hold a balloon's
-  edge or one or two glyphs; some hold a whole small line that the annotation joins to a
-  neighbouring balloon (`PrismHeart_024_11`, `何それー`). For the review page (a filter for them).
+- `AosugiruHaru_028_21`: the main `アハハハ` covers only part of the SFX (a `キ…` column beside
+  it); no one has read the whole. Trains as proposed.
 - 141 speech mains held by the line-break agents (15+ characters: 76 label and crop differ, 9
   with unclear columns; 9–14: 49 and 7; `output/ocr/linebreak/agent/speech{15,9}/held.tsv`,
   local) still train as one line. Out of `OCR:` until reviewed, like the waiting rows: proposed,
@@ -48,3 +47,5 @@ leaves this file for a report.
 - [`mainsub_1122_1446.md`](reports/mainsub_1122_1446.md): the sync-free training forward.
 - [`mainsub_1123_1328.md`](reports/mainsub_1123_1328.md): `OCR2:` negatives from swap_relax and
   reviewed JA rows (main 85.4 %, sub 51.0 %, empty on the 292 JA crops 72.6 %).
+- [`mainsub_sfx_agents_2026_11_23.md`](reports/mainsub_sfx_agents_2026_11_23.md): the SFX-only
+  check (190 / 2 / 8 of 200) and the agent subs of the 636 SFX crops with speech partly inside.

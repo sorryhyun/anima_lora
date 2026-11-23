@@ -363,6 +363,10 @@ def load_mainsub(
       takes its breaks from ``assets/m109_breaks.tsv`` (:func:`with_breaks`).
     * KO / ZH (``manifest_sfxp_kozh``, train only): ``OCR:`` = the label; ``OCR2:`` =
       ``assets/sub_labels.tsv``'s sub, else ``assets/kozh_sfx.tsv``'s SFX text.
+    * Agent labels (``assets/m109_agent_subs.tsv``) take the place of an unreviewed
+      proposal: ``typed`` gives the sub, ``empty`` an ``OCR2:`` negative in the SFX-only
+      group, ``other`` (text the agent did not type) no ``OCR2:`` row; a ``main`` there
+      replaces the proposed main.
     * ``OCR2:`` only where there is a sub to read: a reviewed one, or a proposal on a crop
       with no partly visible text. An empty sub is no row, except the ``OCR2:`` negatives
       (train only, the user, 2026-11-23): a Manga109 row reviewed ``ok`` with an empty sub,
@@ -391,6 +395,13 @@ def load_mainsub(
             f"{r.source}:{r.id}": (r.status, un(r.main), un(r.sub))
             for r in t.itertuples()
         }
+    # agent labels (verdict typed / empty / other), below a user review
+    agent = {}
+    if (t := rd(ASSETS / "m109_agent_subs.tsv")) is not None:
+        agent = {
+            f"{r.source}:{r.id}": (r.verdict, un(r.main), un(r.sub))
+            for r in t.itertuples()
+        }
     subl = {}
     if (t := rd(ASSETS / "sub_labels.tsv")) is not None:
         subl = {(r.source, r.id): un(r.sub) for r in t.itertuples()}
@@ -412,6 +423,7 @@ def load_mainsub(
             continue
         w, h, o = geo[x["path"]]
         v = rev.get(f"{x['source']}:{x['id']}")
+        a = agent.get(f"{x['source']}:{x['id']}") if v is None else None
         if v is not None and v[0] == "drop":
             n_drop += 1
             continue
@@ -429,6 +441,9 @@ def load_mainsub(
         else:
             main, sub = with_breaks(x, filled), x["subp"]
             done = not x["part"]
+        if a is not None:
+            main = a[1] or main
+            sub, done = a[2], a[0] != "other"
         base = dict(
             book=x["book"],
             page=x["page"],
@@ -452,7 +467,10 @@ def load_mainsub(
             )
         if done:
             rev_neg = v is not None and not sub.strip()
-            neg = split == "train" and (rev_neg or (v is None and sfx_only(x)))
+            agent_neg = a is not None and not sub.strip()
+            neg = split == "train" and (
+                rev_neg or agent_neg or (v is None and a is None and sfx_only(x))
+            )
             recs.append(
                 dict(
                     base,

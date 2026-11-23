@@ -27,7 +27,8 @@ the review page and its procedure are in the README's § Rules.
 
 - Every other text visible in the crop, one item per line, in reading order: furigana, smaller
   speech or SFX, hand-lettered asides, smaller lettering that the annotation joins into the same
-  `<text>` box, text cut by the crop edge.
+  `<text>` box, text cut by the crop edge, numbers drawn in the art (a clock face, a floor
+  display; the user, 2026-11-23).
 - A label that leaves out visible text teaches the reader to skip text, so a sub is complete or
   it is not trained (§ What trains).
 
@@ -78,8 +79,9 @@ still label the speech inside the detector crops.
 
 ### Manga109 labels
 
-Proposed by `probes/m109_mainsub.py` from the annotations; a reviewed row
-(`assets/m109_mainsub.tsv`: source, id, status, main, sub) replaces the proposal.
+Proposed by `probes/m109_mainsub.py` from the annotations. An agent label
+(`assets/m109_agent_subs.tsv`, local: source, id, verdict, main, sub, pass) replaces the proposal, and a
+reviewed row (`assets/m109_mainsub.tsv`: source, id, status, main, sub) replaces both.
 
 - An annotated item (COO SFX polygon or `<text>` box) is in the crop at 0.8 of its convex hull
   or more, partly visible from 0.05 to 0.8.
@@ -102,6 +104,9 @@ Proposed by `probes/m109_mainsub.py` from the annotations; a reviewed row
 |---|---|---|
 | reviewed `drop` | out | out |
 | reviewed | the main as reviewed | the sub as reviewed; `""` if empty (train) |
+| agent `typed` | the agent's main if set, else the proposed main | the agent's sub |
+| agent `empty` | the same | `""` (train, SFX-only group) |
+| agent `other` (text inside, not typed) | the same | out |
 | unreviewed `trim` | out | out |
 | unreviewed, main empty | out | out |
 | unreviewed, line breaks waiting on review (train) | out | as the rows below |
@@ -114,12 +119,12 @@ Proposed by `probes/m109_mainsub.py` from the annotations; a reviewed row
   and `swaprelax_v5` crops, each drawn at random.
 - Val reads `main` / `main_neg` / `sub`; the best checkpoint is picked by `main_exact`.
 
-Train rows on 2026-11-23 (`load_mainsub('train')`):
+Train rows on 2026-11-23, with the agent labels (`load_mainsub('train')`):
 
 | prompt | metric | rows | from |
 |---|---|--:|---|
 | `OCR:` | `main` | 113,728 | Manga109 (SFX main 21,205, speech main 92,198, no annotated item whole inside 325) |
 | `OCR:` | `main_kozh` | 24,145 | KO / ZH |
 | `OCR:` | `main_neg` | 3 | Manga109, reviewed |
-| `OCR2:` | `sub` | 26,677 | Manga109 26,647 (on SFX-main crops 163; the rest on speech-main crops, mostly furigana), KO / ZH 30 |
-| `OCR2:` | `sub_neg` | 6,669 | SFX-only 3,212 (of 20,085), `swaprelax_v5` 3,211 (of 6,423), Manga109 reviewed 246 |
+| `OCR2:` | `sub` | 26,907 | Manga109 26,877 (on SFX-main crops 393; the rest on speech-main crops, mostly furigana), KO / ZH 30 |
+| `OCR2:` | `sub_neg` | 6,726 | SFX-only 3,240 (of 20,490 with the agents' empty ones), `swaprelax_v5` 3,240 (of 6,423), Manga109 reviewed 246 |
