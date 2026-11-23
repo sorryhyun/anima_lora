@@ -6,7 +6,9 @@ The crop list is that run's re-read, ``output/ocr/eval/subneg292_mainsub_1121_18
     make daemon-run ARGS="--queue project/finished/ocr_reader/probes/eval_subneg.py \\
         --ckpt output/ocr/<run>/best --name <run>"
 
-Writes ``output/ocr/eval/subneg292_<name>.jsonl`` (path, pred, empty).
+Writes ``output/ocr/eval/subneg292_<name>.jsonl`` (path, pred, empty). ``--crops`` reads
+another crop list (a jsonl with a ``path`` per line, relative to ``derived_root()``) and writes
+``output/ocr/eval/<crops stem>_<name>.jsonl``.
 """
 
 from __future__ import annotations
@@ -32,14 +34,16 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--name", required=True)
     ap.add_argument("--bs", type=int, default=16)
+    ap.add_argument("--crops", type=Path, default=CROPS)
     a = ap.parse_args()
-    paths = [json.loads(line)["path"] for line in open(CROPS, encoding="utf-8")]
+    paths = [json.loads(line)["path"] for line in open(a.crops, encoding="utf-8")]
     d = m109.derived_root()
     rd = ev.Vl16Reader(a.ckpt, "cuda")
     ev.TASK = "OCR2:"  # Vl16Reader.read's prompt
     crops = [cv2.imread(str(d / p)) for p in paths]
     preds = rd.read(crops, [""] * len(crops), a.bs)
-    out = m109.REPO / "output/ocr/eval" / f"subneg292_{a.name}.jsonl"
+    stem = "subneg292" if a.crops == CROPS else a.crops.stem
+    out = m109.REPO / "output/ocr/eval" / f"{stem}_{a.name}.jsonl"
     with open(out, "w", encoding="utf-8") as f:
         for p, s in zip(paths, preds):
             row = dict(path=p, pred=s, empty=not s.strip())

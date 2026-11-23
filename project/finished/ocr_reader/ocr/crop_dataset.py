@@ -23,6 +23,7 @@ from __future__ import annotations
 import random
 import re
 import sys
+import zlib
 from pathlib import Path
 
 import cv2
@@ -328,6 +329,11 @@ def with_breaks(x: dict, filled: dict[str, str]) -> str:
     return x["main"]
 
 
+# 1 in RUBY_RAW_SHARE train sub rows headed by an unreviewed ruby read trains (a hash of
+# seed and id)
+RUBY_RAW_SHARE = 4
+
+
 def sfx_only(x: dict) -> bool:
     """A ``m109_mainsub.py`` row whose crop holds one SFX main and no other annotated text,
     whole or partly visible. An agent check of 200 random ones (2026-11-23): other text in 2
@@ -360,7 +366,11 @@ def load_mainsub(
       (mainsub_1121_1806 read text on all 59 val ones: a box cut under half, a sign).
       An unreviewed main with line breaks waiting (:func:`waiting_break`) is out of
       ``OCR:`` in train, not of ``OCR2:`` (the user, 2026-11-22). An unreviewed main
-      takes its breaks from ``assets/m109_breaks.tsv`` (:func:`with_breaks`).
+      takes its breaks from ``assets/m109_breaks.tsv`` (:func:`with_breaks`). An unreviewed
+      main in ``assets/m109_break_held.tsv`` (breaks held by the agents, two ``<text>`` boxes
+      on one line) is out of train ``OCR:`` the same way. Of the unreviewed train subs
+      headed by a ruby read no agent fixed (``ruby_raw``), one in ``RUBY_RAW_SHARE``
+      trains, picked by a hash of ``seed`` and the id.
     * KO / ZH (``manifest_sfxp_kozh``, train only): ``OCR:`` = the label; ``OCR2:`` =
       ``assets/sub_labels.tsv``'s sub, else ``assets/kozh_sfx.tsv``'s SFX text.
     * Agent labels (``assets/m109_agent_subs.tsv``) take the place of an unreviewed
@@ -374,7 +384,8 @@ def load_mainsub(
       (:func:`sfx_only`), and a ``swaprelax_v5`` crop with no sub label (proofread KO
       speech lines).
 
-    Negatives (target ``""``) are at most ``neg_share`` of each prompt's rows. The reviewed
+    Negatives (target ``""``) are at most ``neg_share`` of each prompt's rows (``OCR2:``:
+    counted with the ruby subs the quarter leaves out). The reviewed
     Manga109 negatives go in first; the rest are drawn at random, alternating between the
     SFX-only crops and the KO / ZH ones (1 : 1, the user, 2026-11-23). ``metric`` is
     ``main`` / ``main_kozh`` / ``main_neg`` / ``sub`` / ``sub_neg``. ``limit`` caps every
@@ -402,6 +413,12 @@ def load_mainsub(
             f"{r.source}:{r.id}": (r.verdict, un(r.main), un(r.sub))
             for r in t.itertuples()
         }
+    # unreviewed speech mains whose line breaks no one settled: the agents' held rows
+    # (label and crop differ, columns unclear) and mains joining two <text> boxes on one
+    # line; out of train OCR: like the waiting rows (the user, 2026-11-23)
+    held = set()
+    if (t := rd(ASSETS / "m109_break_held.tsv")) is not None:
+        held = {f"{r.source}:{r.id}" for r in t.itertuples()}
     subl = {}
     if (t := rd(ASSETS / "sub_labels.tsv")) is not None:
         subl = {(r.source, r.id): un(r.sub) for r in t.itertuples()}
@@ -416,7 +433,7 @@ def load_mainsub(
     # train only: val keeps the rows earlier runs were read on
     proposals = break_proposals(d) if split == "train" else {}
     filled = filled_breaks()
-    n_trim = n_drop = n_rev = n_empty = n_wait = 0
+    n_trim = n_drop = n_rev = n_empty = n_wait = n_held = n_ruby = 0
     for line in open(MAINSUB_JSONL / name, encoding="utf-8"):
         x = json.loads(line)
         if x["path"] not in geo:
@@ -455,6 +472,8 @@ def load_mainsub(
         )
         if v is None and waiting_break(x, proposals):
             n_wait += 1
+        elif v is None and split == "train" and f"{x['source']}:{x['id']}" in held:
+            n_held += 1
         else:
             recs.append(
                 dict(
@@ -465,6 +484,19 @@ def load_mainsub(
                     source="m109_" + x["cat"],
                 )
             )
+        # an unreviewed ruby read heads the sub: a quarter of those rows trains, fixed per
+        # seed (``RUBY_RAW_SHARE``, the user, 2026-11-23)
+        if (
+            done
+            and split == "train"
+            and v is None
+            and a is None
+            and x.get("ruby_raw")
+            and sub.strip()
+            and zlib.crc32(f"{seed}:{x['id']}".encode()) % RUBY_RAW_SHARE
+        ):
+            done = False
+            n_ruby += 1
         if done:
             rev_neg = v is not None and not sub.strip()
             agent_neg = a is not None and not sub.strip()
@@ -532,7 +564,10 @@ def load_mainsub(
     for task in (OCR_TASK, OCR2_TASK):
         t = df[df.task == task]
         pos, neg = t[~t.metric.str.endswith("_neg")], t[t.metric.str.endswith("_neg")]
-        n = int(min(len(neg), cap * len(pos)))
+        # OCR2: negatives are sized on the subs before the ruby quarter (the user,
+        # 2026-11-23: real negatives, kept at their number)
+        base = len(pos) + (n_ruby if task == OCR2_TASK else 0)
+        n = int(min(len(neg), cap * base))
         neg = neg.iloc[rng.permutation(len(neg))]
         group = neg.neg_group.fillna("m109")
         # the reviewed Manga109 rows first, then the other groups in turn
@@ -545,7 +580,7 @@ def load_mainsub(
     print(
         f"[data] mainsub {split}: reviewed {n_rev}, dropped {n_drop}, unreviewed trim "
         f"out {n_trim}, unreviewed empty main out {n_empty}, unreviewed "
-        f"waiting break main out {n_wait}, empty sub out "
+        f"waiting break main out {n_wait}, held break main out {n_held}, unreviewed ruby sub out {n_ruby}, empty sub out "
         f"{int(no_sub.sum())}; {out.groupby(['task', 'metric']).size().to_dict()}",
         flush=True,
     )

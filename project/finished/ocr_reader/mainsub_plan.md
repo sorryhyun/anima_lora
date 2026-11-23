@@ -20,14 +20,18 @@ leaves this file for a report.
 
 - Pick out the suspect crops among the ~20k SFX-only `OCR2:` negatives (text the annotation does
   not cover, marks that may be glyphs): 2 with text and 8 unsure in a 200-crop agent check
-  ([report](reports/mainsub_sfx_agents_2026_11_23.md)). Method not chosen; the next training run
-  follows it (the user, 2026-11-23).
+  ([report](reports/mainsub_sfx_agents_2026_11_23.md)). Shelved (the user, 2026-11-23: furigana
+  and line breaks first). Claude's read of 30 more random crops: 2 hold small hand-lettered SFX the
+  COO annotation lacks (`MutekiBoukenSyakuma_003_17` `ううう`, `MisutenaideDaisy_081_29`), 2
+  unsure. An overlap or ink feature does not rank them (`probes/sfxonly_suspect.py`); an `OCR2:`
+  read by a reader not trained on these negatives was the next candidate, not run.
 - `AosugiruHaru_028_21`: the main `アハハハ` covers only part of the SFX (a `キ…` column beside
   it); no one has read the whole. Trains as proposed.
 - 141 speech mains held by the line-break agents (15+ characters: 76 label and crop differ, 9
   with unclear columns; 9–14: 49 and 7; `output/ocr/linebreak/agent/speech{15,9}/held.tsv`,
-  local) still train as one line. Out of `OCR:` until reviewed, like the waiting rows: proposed,
-  not decided.
+  local) and 21 unreviewed mains joining two `<text>` boxes on one line are out of train `OCR:`
+  (`assets/m109_break_held.tsv`, local; the user, 2026-11-23), their `OCR2:` rows kept: main
+  113,728 → 113,566.
 - 19 mains of 9–14 characters print a mark their label lacks
   (`output/ocr/linebreak/agent/speech9/missing_marks.tsv`, local): not fixed.
 - 3 labels type quote marks as `゛`, which `normalize_target` folds onto the kana: not fixed.

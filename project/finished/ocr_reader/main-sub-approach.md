@@ -109,7 +109,7 @@ reviewed row (`assets/m109_mainsub.tsv`: source, id, status, main, sub) replaces
 | agent `other` (text inside, not typed) | the same | out |
 | unreviewed `trim` | out | out |
 | unreviewed, main empty | out | out |
-| unreviewed, line breaks waiting on review (train) | out | as the rows below |
+| unreviewed, line breaks waiting on review or held (`m109_break_held.tsv`) (train) | out | as the rows below |
 | unreviewed, partly visible text in the crop | the proposed main | out |
 | unreviewed, SFX only (train) | the proposed main | `""` |
 | unreviewed, other | the proposed main | the proposed sub, if not empty |
@@ -117,14 +117,18 @@ reviewed row (`assets/m109_mainsub.tsv`: source, id, status, main, sub) replaces
 - Negatives (target `""`) are at most `--neg_share` (0.2) of each prompt's rows. The reviewed
   Manga109 negatives go in first; the rest of the share is split 1 : 1 between SFX-only crops
   and `swaprelax_v5` crops, each drawn at random.
+- Of the unreviewed train subs headed by a ruby read no agent fixed (`ruby_raw` in
+  `m109_mainsub.jsonl`), a quarter trains (`RUBY_RAW_SHARE`; the user,
+  2026-11-23): 5,724 of 22,762 at seed 0, a hash of seed and id.
 - Val reads `main` / `main_neg` / `sub`; the best checkpoint is picked by `main_exact`.
 
-Train rows on 2026-11-23, with the agent labels (`load_mainsub('train')`):
+Train rows on 2026-11-23, with the agent labels, the held line breaks out and a quarter of the
+unreviewed ruby subs (`load_mainsub('train')`):
 
 | prompt | metric | rows | from |
 |---|---|--:|---|
-| `OCR:` | `main` | 113,728 | Manga109 (SFX main 21,205, speech main 92,198, no annotated item whole inside 325) |
+| `OCR:` | `main` | 113,566 | Manga109 (SFX main 21,205, speech main 92,036, no annotated item whole inside 325) |
 | `OCR:` | `main_kozh` | 24,145 | KO / ZH |
 | `OCR:` | `main_neg` | 3 | Manga109, reviewed |
-| `OCR2:` | `sub` | 26,907 | Manga109 26,877 (on SFX-main crops 393; the rest on speech-main crops, mostly furigana), KO / ZH 30 |
-| `OCR2:` | `sub_neg` | 6,726 | SFX-only 3,240 (of 20,490 with the agents' empty ones), `swaprelax_v5` 3,240 (of 6,423), Manga109 reviewed 246 |
+| `OCR2:` | `sub` | 9,869 | Manga109 9,839 (unreviewed ruby reads 5,724 at seed 0), KO / ZH 30 |
+| `OCR2:` | `sub_neg` | 6,726 | SFX-only 3,240 (of 20,490 with the agents' empty ones), `swaprelax_v5` 3,240 (of 6,423), Manga109 reviewed 246; sized on the subs before the ruby quarter |

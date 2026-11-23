@@ -27,7 +27,8 @@ cut), train split by default. main / sub is read on the boxes the detector gives
 user's call, 2026-11-21): the COO polygons it misses (``manifest_sfxp_missed``) and the
 crops cut from the ``<text>`` boxes (``manifest_sfxp_speech``) are out; the speech texts
 still come from the latter. Each row keeps the ``<text>`` ids in it (``sp``: the
-furigana reads follow them) and, when it holds one ``<text>`` box and no SFX, ``gt_iou``:
+furigana reads follow them), ``ruby_raw`` (how many of those boxes head the sub with a ruby
+read no agent fixed) and, when it holds one ``<text>`` box and no SFX, ``gt_iou``:
 the IoU of the detector box with that box at the 4 px margin.
 
     ANIMA_MANGA109S_ROOT=… python project/finished/ocr_reader/probes/m109_mainsub.py \\
@@ -259,15 +260,18 @@ def book_rows(args) -> list[dict]:
         )
         # the sub proposal with the ruby first: per <text> box the agents' fix where they
         # reviewed it, else the reads; a trim crop the ruby inside it
-        heads = []
+        # raw: the boxes whose ruby is a read no agent fixed (crop_dataset samples them)
+        heads, raw = [], 0
         for t in sp:
             rid = f"{book}_{int(r['page']):03d}_{t}"
             if trim is not None and t == trim.id:
                 heads.append((extra or {}).get("trim_ruby", ""))
+                raw += bool(heads[-1])
             elif rid in fixed:
                 heads.append(fixed[rid])
             elif (book, int(r["page"]), t) in ruby:
                 heads.append(ruby_text(ruby[(book, int(r["page"]), t)]))
+                raw += 1
         subp = "\n".join([h for h in heads if h] + ([sub] if sub else []))
         out.append(
             dict(
@@ -295,6 +299,7 @@ def book_rows(args) -> list[dict]:
                 trim=int(trim is not None),
                 trim_cut=cut,
                 gt_iou=gt_iou(quad, inc),
+                ruby_raw=raw,
                 **(extra or {}),
             )
         )
