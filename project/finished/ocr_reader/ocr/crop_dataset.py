@@ -350,12 +350,14 @@ def load_mainsub(
     * KO / ZH (``manifest_sfxp_kozh``, train only): ``OCR:`` = the label; ``OCR2:`` =
       ``assets/sub_labels.tsv``'s sub, else ``assets/kozh_sfx.tsv``'s SFX text.
     * ``OCR2:`` only where there is a sub to read: a reviewed one, or a proposal on a crop
-      with no partly visible text. An empty sub is no row, whatever its source or review
-      state: it does not say the crop has none (``OCR2:`` negatives wait to be set as such).
+      with no partly visible text. An empty sub is no row, except the ``OCR2:`` negatives
+      (train only, the user, 2026-11-23): a Manga109 row reviewed ``ok`` with an empty sub,
+      and a ``swaprelax_v5`` crop with no sub label (proofread KO speech lines).
 
-    ``OCR:`` negatives (target ``""``) are at most ``neg_share`` of its rows; ``metric``
-    is ``main`` / ``main_kozh`` / ``main_neg`` / ``sub``. ``limit`` caps every ``metric``
-    group."""
+    Negatives (target ``""``) are at most ``neg_share`` of each prompt's rows; the reviewed
+    Manga109 ``OCR2:`` negatives go in first, the rest are drawn at random. ``metric`` is
+    ``main`` / ``main_kozh`` / ``main_neg`` / ``sub`` / ``sub_neg``. ``limit`` caps every
+    ``metric`` group."""
     import json
 
     d = m109.derived_root()
@@ -432,12 +434,13 @@ def load_mainsub(
                 )
             )
         if done:
+            neg = split == "train" and v is not None and not sub.strip()
             recs.append(
                 dict(
                     base,
                     text=sub,
                     task=OCR2_TASK,
-                    kind="sub",
+                    kind="sub_neg" if neg else "sub",
                     source="m109_" + x["cat"],
                 )
             )
@@ -461,12 +464,21 @@ def load_mainsub(
                     base, text=r.text, task=OCR_TASK, kind="main_kozh", source=r.source
                 )
             )
+            neg = r.source == "swaprelax_v5" and not sub.strip()
             recs.append(
-                dict(base, text=sub, task=OCR2_TASK, kind="sub", source=r.source)
+                dict(
+                    base,
+                    text=sub,
+                    task=OCR2_TASK,
+                    kind="sub_neg" if neg else "sub",
+                    source=r.source,
+                )
             )
     df = pd.DataFrame(recs)
     df = cap_targets(df, f"mainsub {split}")
-    no_sub = (df.task == OCR2_TASK) & (df.target.str.len() == 0)
+    no_sub = (
+        (df.task == OCR2_TASK) & (df.target.str.len() == 0) & (df.kind != "sub_neg")
+    )
     df = df[~no_sub].copy()
     df["metric"] = np.where(
         df.task == OCR_TASK,
@@ -475,7 +487,7 @@ def load_mainsub(
             "main_neg",
             np.where(df.kind == "main_kozh", "main_kozh", "main"),
         ),
-        "sub",
+        df.kind,
     )
     cap = neg_share / (1 - neg_share)
     parts = []
@@ -483,7 +495,14 @@ def load_mainsub(
         t = df[df.task == task]
         pos, neg = t[~t.metric.str.endswith("_neg")], t[t.metric.str.endswith("_neg")]
         n = int(min(len(neg), cap * len(pos)))
-        parts += [pos, neg.iloc[rng.permutation(len(neg))[:n]]]
+        neg = neg.iloc[rng.permutation(len(neg))]
+        neg = pd.concat(
+            [
+                neg[neg.source.str.startswith("m109_")],
+                neg[~neg.source.str.startswith("m109_")],
+            ]
+        )
+        parts += [pos, neg.iloc[:n]]
     out = pd.concat(parts, ignore_index=True)
     print(
         f"[data] mainsub {split}: reviewed {n_rev}, dropped {n_drop}, unreviewed trim "

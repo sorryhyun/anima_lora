@@ -135,7 +135,9 @@ Policy, for the user:
 - "Largest" when a dense block meets a few large glyphs. `GarakutayaManta_006_34`: the
   proposal's main was `ひ～` (the larger glyphs), the user's review has the English paragraph
   as main and `ひ～` as sub. That main is over the cap, so only the sub trains.
-- How "no sub" is marked, for the `OCR2:` negatives.
+- How "no sub" is marked, for the `OCR2:` negatives. First cut (the user, 2026-11-23):
+  swap_relax crops with no sub label plus Manga109 rows reviewed `ok` with an empty sub
+  ([`mainsub_1123_1328`](reports/mainsub_1123_1328.md): 72.6 % empty on the 292 JA crops).
 - When a sub counts as complete. The loader's rule is a first cut: most `OCR2:` positives
   are unreviewed ruby reads (about half right in a 14-row read, the data report).
 - `drop` boxes (an SFX cut partway, 2,678 train) and `neg_other` boxes (no annotation inside,
@@ -169,3 +171,5 @@ Work:
   the agents' breaks on 15+ character speech (1,259 applied, 85 held).
 - [`mainsub_linebreak_agents_9to14_2026_11_22.md`](reports/mainsub_linebreak_agents_9to14_2026_11_22.md):
   the same on 9–14 characters (1,199 applied, 56 held).
+- [`mainsub_1123_1328.md`](reports/mainsub_1123_1328.md): `OCR2:` negatives from swap_relax and
+  reviewed JA rows (main 85.4 %, sub 51.0 %, empty on the 292 JA crops 72.6 %).
