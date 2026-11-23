@@ -24,6 +24,8 @@ merged LoRA is used at multiplier 1.0 only. The shipped base-teacher turbo
 ## Layout
 
 - [plan.md](plan.md): what is carried, the open items, what is measured again.
+- [edmd.md](edmd.md): proposal, an endpoint fake (arXiv 2611.17194) as the objective for steps 1–3.
+  Nothing built or run.
 - [reports/](reports/README.md): one report per run or probe, added as runs finish.
 - [findings/](findings/README.md): two findings on how to measure (an LR artifact in a gate, a
   permutation null for gradient comparisons).

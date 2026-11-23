@@ -105,6 +105,7 @@ Nothing below carries a verdict from the archive.
 - The depth of the step-0 fit on 7 of 28 (held-out anchor MSE against renders), and what moves it:
   the number of pairs, the schedule.
 - The objective for steps 1–3 if item 1 says they need training: DMD as it stands in the loop, MFD,
-  APEX, VA-TDM.
+  APEX, VA-TDM, eDMD (an endpoint fake; proposal and its first pair in [edmd.md](edmd.md), not
+  queued).
 - The GAN (its form, its discriminator, where it reads), feature matching, L_CDM.
 - Whether the handoff into steps 1–3 is the student's own step 0 or the teacher's.
