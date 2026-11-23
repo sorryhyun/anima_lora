@@ -84,12 +84,9 @@ Labelling next: the Korean set (`probes/ko_label_review.py` → `apply_ko_review
 Interpretation (notes on the table): v4's mean token logprob ranks well on K3 (P1 relabel
 row). Hito JA sits far more confident than the sincos SFX (P1b row).
 
-Current policy (`OCR:` main / `OCR2:` sub): [`main-sub-approach.md`](main-sub-approach.md). Its finished work:
-[`reports/mainsub_data_2026_11_21.md`](reports/mainsub_data_2026_11_21.md),
-[`reports/mainsub_1121_1806.md`](reports/mainsub_1121_1806.md),
-[`reports/mainsub_labels_2026_11_22.md`](reports/mainsub_labels_2026_11_22.md),
-[`reports/mainsub_linebreak_agents_2026_11_22.md`](reports/mainsub_linebreak_agents_2026_11_22.md),
-[`reports/mainsub_linebreak_agents_9to14_2026_11_22.md`](reports/mainsub_linebreak_agents_9to14_2026_11_22.md). The P0–P3 roadmap is in git history.
+Current policy (`OCR:` main / `OCR2:` sub): definitions and dataset in
+[`main-sub-approach.md`](main-sub-approach.md); open questions, pending work and the reports in
+[`mainsub_plan.md`](mainsub_plan.md). The P0–P3 roadmap is in git history.
 
 ## The gate — sincos 597
 
@@ -148,8 +145,8 @@ so older commands still resolve.
 
 ## Rules — the label review loop (v7, main / sub)
 
-The line is in use for labelling. The split policy is [`main-sub-approach.md`](main-sub-approach.md);
-finished work goes to `reports/mainsub_*.md`, not into that doc.
+The line is in use for labelling. Definitions and the dataset: [`main-sub-approach.md`](main-sub-approach.md);
+open items: [`mainsub_plan.md`](mainsub_plan.md); finished work goes to `reports/mainsub_*.md`.
 
 ### The page
 
@@ -163,6 +160,13 @@ finished work goes to `reports/mainsub_*.md`, not into that doc.
   (`Nekodama_007_0004b534` → `…`).
 - A reviewed row exports its sub proposal untouched, so a wrong ruby read becomes a reviewed
   positive.
+- `ok` or an edit confirms both boxes as they stand, the proposed sub included. Emptying the main
+  box makes a sub-only row.
+- The `has` filter lists rows by what the boxes hold (main only, sub only, both, partly visible
+  text). The default `suspicion` sort puts `trim`, then partly visible text, first.
+- A row holding one `<text>` box with ruby starts from its furigana row's sub edits.
+- Apply writes `mainsub_*` rows to `assets/m109_mainsub.tsv` and other sources' subs to
+  `assets/sub_labels.tsv`. The manifests are not touched by `mainsub_*` rows.
 
 ### After each export
 
@@ -172,18 +176,33 @@ finished work goes to `reports/mainsub_*.md`, not into that doc.
 2. Check the crops of a small export and report suspected typos with paste-ready text. Fix only
    on the user's word.
 3. Retrain only when asked; export `ANIMA_MANGA109S_ROOT` at submit.
-4. Rebuild the page (commands in `main-sub-approach.md` § Review).
+4. Rebuild the page:
+
+   ```
+   python project/finished/ocr_reader/probes/ko_label_review.py --out ~/ko_label_review \
+       --flags <ko_reads>_flags.parquet --doujin_reads <sfx>_cap4_sfx.jsonl \
+       --ruby output/ocr/furigana/ruby_all_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
+       --mainsub output/ocr/mainsub/m109_mainsub.jsonl
+   ```
+
+   Rebuilding the Manga109 proposals (after a change to the annotations, the ruby reads or
+   `m109_mainsub.py`):
+
+   ```
+   python project/finished/ocr_reader/ocr/build_sfx_prefix.py --det_all
+   python project/finished/ocr_reader/probes/m109_mainsub.py \
+       --out output/ocr/mainsub/m109_mainsub.jsonl \
+       --ruby output/ocr/furigana/ruby_m109_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent
+   ```
 
 ### Labels (the user's rules)
 
-- Korean keeps `...` and `…` apart: dots are never folded on KO text (`ellipsis_fold` is a JA
-  speech rule).
-- The label follows the 4 px training crop as shown. What the crop does not show stays empty;
-  text or dots only the page shows are not typed. Merged blocks go.
-- Unswapped JA lettering under a KO label stays Japanese.
+- What a label holds (the crop decides, empty labels, spelling): `main-sub-approach.md`
+  § Definitions.
+- Merged blocks go.
 - `swaprelax_v5` was audited by agents and the user read every gelnote KO row: neither set is
   "unreviewed".
-- An empty sub is never trained as "". `OCR2:` negatives are set up by the user.
+- Which sources give `OCR2:` negatives is the user's call (`main-sub-approach.md` § Sources).
 - Mains waiting on a line-break proposal stay out of training; agents do not fill them.
 - Rows over the training cap (main > 150 normalized characters) are hidden on the page and
   still export.
