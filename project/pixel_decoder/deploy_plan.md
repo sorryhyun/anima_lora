@@ -58,3 +58,6 @@ Root after the move: `README.md`, `LICENSE.md`, `NOTICE.md`, `.gitattributes`, `
   (VAE | base | sharp, castle / sakura / manga_page s0 of `x1dgan512b28_1123_1214`): Hub
   `bde8c5aa`, 2026-11-23. Catalog row `anima_pixel_head_sharp`, never a default. No
   sheet_texture.py read of this head; the user read the pair sheets.
+- The user (2026-11-23): "old는 그냥 지우자". `x1/anima_pixel_head_old`, `x1/anima_pixel_head_sharp_old`
+  and `samples/sharp_compare.png` deleted, the card's Sharp (old) section and `_old` rows dropped:
+  Hub `a5c2bb50`. `x1/` now holds base and sharp only.

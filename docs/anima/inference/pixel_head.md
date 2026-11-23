@@ -29,9 +29,10 @@ At any other last-step σ it still decodes and logs a warning; no refusal. The c
 (`x1dll_1123_0821`, since 2026-11-23) was trained on the original image with a DINOv3 ViT-S tile
 term at the base points and on VAE(x̂0) at the turbo point, with the turbo LoRA
 `anima_turbo_4step_v4_longer.safetensors`; it reads 34.00 dB / DINO 0.109e-3 against the original
-on held-out test images at σ 0.0577 (`project/pixel_decoder/plan.md`). The heads it replaced stay
-on the Hub for comparison: `x1/anima_pixel_head_old.safetensors` (`realr_1119_2200`, LPIPS term)
-and `x1/anima_pixel_head_sharp_old.safetensors` (`x1fgan_1122_1247`, a GAN finish). The timings
+on held-out test images at σ 0.0577 (`project/pixel_decoder/plan.md`). Beside it on the Hub,
+`x1/anima_pixel_decoder_sharp.safetensors` (`x1dgan512_1123_1214`, catalog
+`anima_pixel_head_sharp`) is the same head with a GAN finish at the base points: sharper detail,
+further from the VAE decode; pick it with `PIXEL_HEAD=`. The timings
 below were measured on an earlier head of the same architecture.
 
 Decode time ~7 ms per ~1 MP image against 141 ms (VAE resident), 176 ms (VAE moved to the card
