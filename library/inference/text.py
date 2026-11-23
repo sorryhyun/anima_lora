@@ -194,10 +194,10 @@ def prepare_text_inputs(
             return
         model_is_moved = True
 
-        logger.info(f"Moving Text Encoder to appropriate device: {text_encoder_device}")
+        logger.debug(f"Moving Text Encoder to appropriate device: {text_encoder_device}")
         text_encoder.to(text_encoder_device)
 
-    logger.info("Encoding prompt with Text Encoder")
+    logger.debug("Encoding prompt with Text Encoder")
 
     prompt = process_escape(prompt)
     cache_key = prompt
