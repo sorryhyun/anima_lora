@@ -18,6 +18,10 @@ leaves this file for a report.
 
 ## Work
 
+- Pick out the suspect crops among the ~20k SFX-only `OCR2:` negatives (text the annotation does
+  not cover, marks that may be glyphs): 2 with text and 8 unsure in a 200-crop agent check
+  ([report](reports/mainsub_sfx_agents_2026_11_23.md)). Method not chosen; the next training run
+  follows it (the user, 2026-11-23).
 - `AosugiruHaru_028_21`: the main `アハハハ` covers only part of the SFX (a `キ…` column beside
   it); no one has read the whole. Trains as proposed.
 - 141 speech mains held by the line-break agents (15+ characters: 76 label and crop differ, 9
