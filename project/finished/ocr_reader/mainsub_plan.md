@@ -9,14 +9,6 @@ leaves this file for a report.
   proposal's main was `ひ～` (the larger glyphs), the user's review has the English paragraph as
   main and `ひ～` as sub. That main is over the cap, so only the sub trains.
   `AosugiruHaru_031_20` is the same case unreviewed (main `ググッ`, the ranking list as sub).
-- `OCR2:` negatives on SFX-only crops (20,090 train crops whose box holds one SFX and nothing
-  else annotated). The user (2026-11-23): empty subs go in under the negative cap, real subs stay
-  apart. Agent check of 200 random such crops (4 agents × 50, 2026-11-23; local
-  `scratchpad/sfxonly/result*.tsv`): none 190, other text 2 (`MomoyamaHaikagura_042_25`, a
-  neighbouring column cut by the edge; `UltraEleven_102_09`, floor numbers in the background,
-  both confirmed on the crop), unsure 8 (strokes cut by the edge that may be glyphs or art).
-  Open: the share they take of the cap. Manga109 negatives fill the cap first, so without a set
-  share they push out the `swaprelax_v5` ones.
 - When a sub counts as complete. Most `OCR2:` positives are unreviewed ruby reads (about half
   right in a 14-row read, `reports/mainsub_data_2026_11_21.md`).
 - `drop` boxes (an SFX cut partway, 2,678 train) and `neg_other` boxes (no annotation inside,

@@ -328,6 +328,20 @@ def with_breaks(x: dict, filled: dict[str, str]) -> str:
     return x["main"]
 
 
+def sfx_only(x: dict) -> bool:
+    """A ``m109_mainsub.py`` row whose crop holds one SFX main and no other annotated text,
+    whole or partly visible. An agent check of 200 random ones (2026-11-23): other text in 2
+    (a column cut by the edge, background numbers), marks that may be glyphs in 8."""
+    return (
+        bool(x["items"])
+        and all(i["k"] == "sfx" for i in x["items"])
+        and not x["part"]
+        and not x["subp"].strip()
+        and not x["trim"]
+        and bool(x["main"].strip())
+    )
+
+
 def load_mainsub(
     split: str,
     *,
@@ -352,10 +366,13 @@ def load_mainsub(
     * ``OCR2:`` only where there is a sub to read: a reviewed one, or a proposal on a crop
       with no partly visible text. An empty sub is no row, except the ``OCR2:`` negatives
       (train only, the user, 2026-11-23): a Manga109 row reviewed ``ok`` with an empty sub,
-      and a ``swaprelax_v5`` crop with no sub label (proofread KO speech lines).
+      an unreviewed Manga109 crop holding one SFX and nothing else annotated
+      (:func:`sfx_only`), and a ``swaprelax_v5`` crop with no sub label (proofread KO
+      speech lines).
 
-    Negatives (target ``""``) are at most ``neg_share`` of each prompt's rows; the reviewed
-    Manga109 ``OCR2:`` negatives go in first, the rest are drawn at random. ``metric`` is
+    Negatives (target ``""``) are at most ``neg_share`` of each prompt's rows. The reviewed
+    Manga109 negatives go in first; the rest are drawn at random, alternating between the
+    SFX-only crops and the KO / ZH ones (1 : 1, the user, 2026-11-23). ``metric`` is
     ``main`` / ``main_kozh`` / ``main_neg`` / ``sub`` / ``sub_neg``. ``limit`` caps every
     ``metric`` group."""
     import json
@@ -434,7 +451,8 @@ def load_mainsub(
                 )
             )
         if done:
-            neg = split == "train" and v is not None and not sub.strip()
+            rev_neg = v is not None and not sub.strip()
+            neg = split == "train" and (rev_neg or (v is None and sfx_only(x)))
             recs.append(
                 dict(
                     base,
@@ -442,6 +460,7 @@ def load_mainsub(
                     task=OCR2_TASK,
                     kind="sub_neg" if neg else "sub",
                     source="m109_" + x["cat"],
+                    neg_group=("m109" if rev_neg else "sfx_only") if neg else None,
                 )
             )
     if split == "train":
@@ -472,6 +491,7 @@ def load_mainsub(
                     task=OCR2_TASK,
                     kind="sub_neg" if neg else "sub",
                     source=r.source,
+                    neg_group="kozh",
                 )
             )
     df = pd.DataFrame(recs)
@@ -496,12 +516,12 @@ def load_mainsub(
         pos, neg = t[~t.metric.str.endswith("_neg")], t[t.metric.str.endswith("_neg")]
         n = int(min(len(neg), cap * len(pos)))
         neg = neg.iloc[rng.permutation(len(neg))]
-        neg = pd.concat(
-            [
-                neg[neg.source.str.startswith("m109_")],
-                neg[~neg.source.str.startswith("m109_")],
-            ]
-        )
+        group = neg.neg_group.fillna("m109")
+        # the reviewed Manga109 rows first, then the other groups in turn
+        rest = [neg[group == g] for g in ("sfx_only", "kozh")]
+        turn = np.concatenate([np.arange(len(r)) * 2 + i for i, r in enumerate(rest)])
+        rest = pd.concat(rest).iloc[np.argsort(turn, kind="stable")]
+        neg = pd.concat([neg[group == "m109"], rest])
         parts += [pos, neg.iloc[:n]]
     out = pd.concat(parts, ignore_index=True)
     print(

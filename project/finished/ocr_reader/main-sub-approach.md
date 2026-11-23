@@ -66,7 +66,7 @@ the review page and its procedure are in the README's § Rules.
 
 | source | split | `OCR:` | `OCR2:` |
 |---|---|---|---|
-| Manga109 detector crops (`mainsub_det`: `manifest_sfxp_det_all`, labels `output/ocr/mainsub/m109_mainsub[_val].jsonl`) | train, val | main | sub; `""` on a row reviewed `ok` with an empty sub |
+| Manga109 detector crops (`mainsub_det`: `manifest_sfxp_det_all`, labels `output/ocr/mainsub/m109_mainsub[_val].jsonl`) | train, val | main | sub; `""` on a row reviewed `ok` with an empty sub, and on an SFX-only crop (`sfx_only`: one SFX, no other annotated text whole or partly inside) |
 | KO / ZH (`manifest_sfxp_kozh`) | train | the label | `assets/sub_labels.tsv`, else `assets/kozh_sfx.tsv`; `""` on a `swaprelax_v5` crop with neither |
 
 Not in the set: the COO polygons the detector misses, the `<text>`-box crops
@@ -103,10 +103,12 @@ Proposed by `probes/m109_mainsub.py` from the annotations; a reviewed row
 | unreviewed, main empty | out | out |
 | unreviewed, line breaks waiting on review (train) | out | as the rows below |
 | unreviewed, partly visible text in the crop | the proposed main | out |
+| unreviewed, SFX only (train) | the proposed main | `""` |
 | unreviewed, other | the proposed main | the proposed sub, if not empty |
 
-- Negatives (target `""`) are at most `--neg_share` (0.2) of each prompt's rows. Manga109
-  negatives fill the share first, the rest are drawn at random.
+- Negatives (target `""`) are at most `--neg_share` (0.2) of each prompt's rows. The reviewed
+  Manga109 negatives go in first; the rest of the share is split 1 : 1 between SFX-only crops
+  and `swaprelax_v5` crops, each drawn at random.
 - Val reads `main` / `main_neg` / `sub`; the best checkpoint is picked by `main_exact`.
 
 Train rows on 2026-11-23 (`load_mainsub('train')`):
@@ -117,4 +119,4 @@ Train rows on 2026-11-23 (`load_mainsub('train')`):
 | `OCR:` | `main_kozh` | 24,145 | KO / ZH |
 | `OCR:` | `main_neg` | 3 | Manga109, reviewed |
 | `OCR2:` | `sub` | 26,677 | Manga109 26,647 (on SFX-main crops 163; the rest on speech-main crops, mostly furigana), KO / ZH 30 |
-| `OCR2:` | `sub_neg` | 6,669 | `swaprelax_v5` 6,423, Manga109 reviewed 246 |
+| `OCR2:` | `sub_neg` | 6,669 | SFX-only 3,212 (of 20,085), `swaprelax_v5` 3,211 (of 6,423), Manga109 reviewed 246 |
