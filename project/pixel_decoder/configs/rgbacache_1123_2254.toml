@@ -1,0 +1,17 @@
+# RGBA cache for R5 (rgba_plan.md, Data and Next 2): R4's recipe into R4's folder, after the
+#   switch to the RGBA target (the cutout's colour where alpha > 0, the composite where alpha = 0).
+# R4's cache kept the train cutouts as alpha alone. This rerun writes every cutout with its
+#   colour; a latent whose stamp still matches (models, palette, seed, cutout, caption) is not
+#   re-encoded. Expected: "to encode 0", about 551 cutout files (583 cutouts, the 32 read ones
+#   already in colour).
+# Settings as R4's cache: the two sources, the 10% thin of one artist (the user, 2026-11-23:
+#   "10%만"), backgrounds from image_dataset's simple backgrounds, one draw per background kind,
+#   16 read images per set, seed 0.
+cutouts = "{CAPTION_CORPUS_DIR}/transparent"
+extra_cutouts = "{CAPTION_CORPUS_DIR}/anime_seg/skytnt"
+thin = "ootomo_takuji:0.1"
+bg_source = "image_dataset"
+cache_dir = "post_image_dataset/pixel_alpha_r4"
+draws = 1
+n_read = 16
+seed = 0

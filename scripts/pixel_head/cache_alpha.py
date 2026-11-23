@@ -36,10 +36,13 @@ _CKPTS = default_checkpoints()
 class CacheAlphaRequest(Request):
     """Cache the RGBA head's inputs."""
 
-    cutouts: str = _f("", "RGBA cutouts: <artist>/<id>.png + .txt")
+    cutouts: str = _f(
+        "", "RGBA cutouts: <artist>/<id>.png + .txt; {CAPTION_CORPUS_DIR} expands"
+    )
     extra_cutouts: str = _f(
         "",
-        "comma-separated folders (<artist>/<id>.png or flat <id>.png) that only train",
+        "comma-separated folders (<artist>/<id>.png or flat <id>.png) that only train; "
+        "{CAPTION_CORPUS_DIR} expands",
     )
     thin: str = _f(
         "", "<artist>:<frac>, keep a stable share of that artist's train-only cutouts"
@@ -54,6 +57,18 @@ class CacheAlphaRequest(Request):
     vae: str = _f(_CKPTS.vae, "VAE of the composites")
     text_encoder: str = _f(_CKPTS.text_encoder, "encodes the captions")
     device: str = _f("cuda", "torch device")
+
+
+def source_dir(path: str) -> Path:
+    """A cutout folder: ``{VAR}`` / ``$VAR`` from the environment and ``.env`` (the crawl
+    root is ``CAPTION_CORPUS_DIR``), ``~``, then the repo home for a relative path."""
+    import re
+
+    from library.env import load_dotenv
+
+    load_dotenv()
+    s = re.sub(r"\{(\w+)\}", lambda m: os.environ.get(m.group(1), m.group(0)), path)
+    return Path(resolve_under_home(os.path.expanduser(os.path.expandvars(s))))
 
 
 def encode_captions(req: CacheAlphaRequest, root: Path, pack, rows: list, device):
@@ -118,9 +133,7 @@ def run(req: CacheAlphaRequest) -> Path:
     root = Path(resolve_under_home(req.cache_dir))
     pal = D.fit_palette(Path(resolve_under_home(req.bg_source)))
     palette = pal["light"]
-    cuts = D.load_cutouts(
-        Path(resolve_under_home(Path(req.cutouts).expanduser())), limit=req.limit
-    )
+    cuts = D.load_cutouts(source_dir(req.cutouts), limit=req.limit)
     fit, read = D.pick_stress(cuts, req.n_read)  # from `cutouts` alone: the read stays
     if req.thin:
         artist, frac = req.thin.rsplit(":", 1)
@@ -131,9 +144,7 @@ def run(req: CacheAlphaRequest) -> Path:
             if c.key in picked or D.thin_keep(c.key, artist, float(frac))
         ]
     for extra in filter(None, (e.strip() for e in req.extra_cutouts.split(","))):
-        cuts = D.dedup(
-            cuts + D.load_cutouts(Path(resolve_under_home(Path(extra).expanduser())))
-        )
+        cuts = D.dedup(cuts + D.load_cutouts(source_dir(extra)))
     pack = default_vocab_pack()
     recipe = {
         "dit": C.file_id(resolve_under_home(req.dit)),
