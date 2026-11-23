@@ -35,8 +35,12 @@ def resolve_run(run: str | Path) -> Path:
 
 
 def load_head(run: str | Path, d_feat: int, device) -> PixelHead:
-    """A trained head from ``<run>/head.safetensors`` (shape from its metadata)."""
-    return load_pixel_head(resolve_run(run) / "head.safetensors", device, d_feat)
+    """A trained head from a ``.safetensors`` file or ``<run>/head.safetensors`` (shape
+    from its metadata)."""
+    path = Path(str(run))
+    if path.suffix != ".safetensors":
+        path = resolve_run(run) / "head.safetensors"
+    return load_pixel_head(resolve_under_home(str(path)), device, d_feat)
 
 
 def fit_size(w: int, h: int) -> tuple[int, int]:

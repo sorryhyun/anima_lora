@@ -1,7 +1,8 @@
 # RGBA output — plan (rewritten 2026-11-23)
 
 One ×1 head that writes RGB and alpha together, for renders on a white or light simple background.
-State: R5 `rgbar5_1123_2305` (the first run of the form) running, 2026-11-23.
+State: R5 `rgbar5_1123_2305` (the first run of the form) done, 2026-11-23 (Records); next, object
+cutouts into the cache (Next 1).
 The plan before this date (an alpha-only head in a file of its own, steps R0 – R4) is in git up to
 `222d5dd0`; its results are under Records below.
 
@@ -63,7 +64,9 @@ The plan before this date (an alpha-only head in a file of its own, steps R0 –
 
 The runs' and caches' configs (`rgbar*`, `rgbacache*`) were deleted on the user's word (2026-11-23:
 "rgbar config랑 rgbacache config도 다 지우고"); those up to R3 are in git up to `222d5dd0`, R4's and
-its cache's were never committed. Outputs: `output/pixel_head/<run>/` (local).
+its cache's were never committed. R5's is `configs/rgbar5_1123_2305.toml`. Outputs of R4 and R5:
+`output/pixel_head/<run>/` (local); those of R0 – R3 and the refine arm were deleted in the
+2026-11-24 cleanup (their `result.json` under `bench/pixel_readout/results/archive/`, local).
 
 - R0 `rgbar0_1122_1515`: on light backgrounds the RGB head keeps 0.864 – 0.933 of thin strokes'
   contrast, VAE(x0) 0.963 – 0.975. Generated `white background` borders: median 255, 20 of 20
@@ -80,15 +83,15 @@ its cache's were never committed. Outputs: `output/pixel_head/<run>/` (local).
 - Flat mid 8 × 8 tiles (`scripts/pixel_head/render_alpha.py`; 4 prompts × seeds 0, 1, base 28
   steps CFG 4; n = 1 run per column, spread unknown):
 
-  | render | R3 2k | R3 4k | R4 2k | R4 4k |
-  |---|---|---|---|---|
-  | all 8 | 69 | 144 | 120 | 137 |
-  | oldman s0 | 0 | 3 | 0 | 0 |
-  | oldman s1 | 1 | 65 | 0 | 0 |
-  | bicycle s0 | 21 | 24 | 44 | 76 |
-  | bicycle s1 | 47 | 51 | 76 | 58 |
-  | maid s0 + s1 | 0 | 1 | 0 | 0 |
-  | glass s0 + s1 | 0 | 0 | 0 | 3 |
+  | render | R3 2k | R3 4k | R4 2k | R4 4k | R5 2k | R5 4k |
+  |---|---|---|---|---|---|---|
+  | all 8 | 69 | 144 | 120 | 137 | 406 | 298 |
+  | oldman s0 | 0 | 3 | 0 | 0 | 0 | 0 |
+  | oldman s1 | 1 | 65 | 0 | 0 | 0 | 0 |
+  | bicycle s0 | 21 | 24 | 44 | 76 | 182 | 155 |
+  | bicycle s1 | 47 | 51 | 76 | 58 | 220 | 142 |
+  | maid s0 + s1 | 0 | 1 | 0 | 0 | 0 | 0 |
+  | glass s0 + s1 | 0 | 0 | 0 | 3 | 4 | 1 |
 
 - Held-out alpha L1 (`result.json` history, 16 images × 3 backgrounds a set), R3 → R4 at 4k:
   `other` all 0.0247 → 0.0279, transition 0.2219 → 0.2255, translucent 0.2656 → 0.2787, thin
@@ -98,6 +101,26 @@ its cache's were never committed. Outputs: `output/pixel_head/<run>/` (local).
   blocks inside the wheels in all four files; in R4 2k the space between the spokes is filled
   almost opaque.
 - The user (2026-11-23), on these: "ㅇㅋ".
+- R5 `rgbar5_1123_2305` (config `configs/rgbar5_1123_2305.toml`; parent R4, changed together: the
+  output form 1 → 4 channels, the RGB term and its DINO term, the init `x1ll_1122_1000` →
+  `x1dll_1123_0821`). Done 2026-11-23, rc 0, 2,487 s. Flat mid tiles: the table above.
+- R5 held-out alpha L1 at 4k against R4 at 4k: `new_bg` all 0.0208 / 0.0180, transition 0.2149 /
+  0.2093, translucent 0.2181 / 0.2190, thin 0.1701 / 0.1572; `other` all 0.0300 / 0.0279,
+  transition 0.2269 / 0.2255, translucent 0.2716 / 0.2787, thin 0.1935 / 0.1901.
+- R5 training α MSE as PSNR (50-step mean, [-1, 1] range) against R4: 27.25 / 27.86 dB at 2k; R4
+  27.20 dB at 4k.
+- R5 RGB dB: against the target 22.2 (`new_bg`) and 21.8 (`other`) at 4k, 23.0 in training at 2k;
+  against the init head on the 8 renders 25.4 – 27.7 (maid, oldman, glass), 21.5 / 21.9 (bicycle).
+  The base head `x1dll_1123_0821` trained at 27.9 dB mean (its run's MSE).
+- RGB target against the composite by α band (CPU, 300 train rows of `pixel_alpha_r4`, error as
+  MSE on [-1, 1]): 0 < α ≤ 0.1 holds 1.0 % of the pixels and 72 % of the gap (band MSE 2.18);
+  0.1 < α < 0.9 1.4 % and 28 % (0.65); α = 0 and α = 1 none. A head writing the composite exactly
+  reads 21.1 dB against the target (train), 20.8 (`new_bg`), 19.6 (`other`).
+- Claude's read of R5 (labelled; `renders_4x2.png` of R5 4k, and bicycle s0 / s1 on black, R4 4k
+  beside R5 4k): people and bottles as R4; blocks inside the wheels in both, opaque white in R4,
+  translucent grey in R5.
+- The user (2026-11-24), on the RGB loss and the α-band measure: "뭐 근데 괜찮은것 같은데?"; on
+  the RGB target: "rgb는 그냥 rgb대로 놔두는게 맞지않나?"; on the R5 read: "ㅇㅋ 커밋하자".
 
 ### Interpretation
 
@@ -105,6 +128,11 @@ its cache's were never committed. Outputs: `output/pixel_head/<run>/` (local).
   set, kept them. Object cutouts are the data to add (the user crawls and filters).
 - The held-out `other` set leans on the artist whose train share R4 cut, so its small rise is not
   read as a loss.
+- R5: α on the shared trunk stays near R4's (spread unknown) and RGB stays at the base on the
+  people and bottle renders. The RGB loss sits high because of the target's own colour where
+  0 < α ≤ 0.1, which the composite does not carry; it shows little at that α.
+- R5's larger bicycle tile count is R4's blocks moved to mid α. The wheels are an object case, with
+  no object cutouts in the cache: the RGB weight is not the lever for them.
 
 ## Data
 
@@ -123,32 +151,9 @@ its cache's were never committed. Outputs: `output/pixel_head/<run>/` (local).
 
 ## Next
 
-### 1. R5 `rgbar5_1123_2305`: the first run of the form (running)
+### 1. Object cutouts
 
-Facts (config `configs/rgbar5_1123_2305.toml`):
-
-- Parent `rgbar4_1123_2053` (settings under Records). Changed together, not separated: the output
-  form (1 → 4 channels), the RGB term and its DINO term, the init (`x1ll_1122_1000` →
-  `x1dll_1123_0821`). Cache (rerun for colour), rollouts, LR, schedule, seed and the α term as R4.
-- Question: does α on the shared trunk hold R4's, with RGB held at the base?
-- Read, per file, beside R4:
-  1. flat mid tiles on the 8 working renders (table above), with the on-black + alpha sheets of
-     oldman s1 and bicycle s0 / s1, labelled;
-  2. held-out alpha L1, the same regions;
-  3. RGB dB as the scripts print it: against the target on the read sets, against the init head on
-     the 8 renders.
-- Bars: spread unknown (no seed twin). The user's read decides.
-- Cost: about 41 min at 1.65 rollouts/s (R4: 2,075 s); one more DINO forward an update.
-
-Interpretation:
-
-- α level with R4 and RGB at the base → that file is the form; the R1 – R4 files go.
-- α behind R4 → the RGB term's weight, before anything else.
-- RGB off the base → the same weight, the other way.
-
-### 2. After it
-
-- Object cutouts into the cache (the user's data), then the same run.
+- Object cutouts into the cache (the user's data), then R5's run on it.
 - The ComfyUI node: a four-channel file returns a four-channel IMAGE; `make vendor-sync` for the
   pixel node. Local until the ship read; no publish, no Hub file.
 - Ship read on the second prompt set below. The user decides.

@@ -79,6 +79,7 @@ from library.anima.pixel_head import (
     head_scales,
     lat_patches,
     load_pixel_head,
+    resolve_pixel_head_path,
 )
 from library.anima.vocab_pack import default_vocab_pack
 from library.anima.weights import _attach_vocab_pack_if_set
@@ -100,8 +101,6 @@ from scripts.pixel_head.train._common import (
     tone_stats,
     zoom_sheet,
 )
-
-HEAD_RUN = "bench/pixel_readout/results/20261119-0959-convnext_1119_0938"
 
 
 def build_models(args, device, prompts) -> SimpleNamespace:
@@ -209,7 +208,10 @@ def sample(m, args, device, k: int, size, seed: int, sigma_last: float):
 
 def head_name(r) -> str:
     r = Path(str(r))
-    return (r.parent.name if r.suffix == ".safetensors" else r.name).split("-")[-1]
+    if r.suffix != ".safetensors":
+        return r.name.split("-")[-1]
+    # a run's head.safetensors / head_x2.safetensors → the run; a named file → its stem
+    return r.parent.name.split("-")[-1] if r.stem in ("head", "head_x2") else r.stem
 
 
 def x2_cache_dir(args) -> Path:
@@ -481,8 +483,9 @@ def main():
     p.add_argument(
         "--head_run",
         nargs="+",
-        default=[HEAD_RUN],
-        help="one or more heads (path or label); each reads the same renders",
+        default=None,
+        help="one or more heads (a .safetensors file, a run folder or a run label); "
+        "each reads the same renders. Default: the catalog head (×1, or ×2 with --x2)",
     )
     p.add_argument("--adapter", default=None)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1])
@@ -525,6 +528,8 @@ def main():
         help="--x2: render every image again and write no cache",
     )
     args = p.parse_args()
+    if not args.head_run:
+        args.head_run = [str(resolve_pixel_head_path(None, scale=2 if args.x2 else 1))]
     start_heartbeat(label="p3")
     device = torch.device(args.device)
     prompts = [x for x in PROMPTS if not args.only or x[0] in args.only]
