@@ -1,4 +1,4 @@
-# ocr_reader — PaddleOCR-VL reader v6 (JA + KO + ZH, line breaks)
+# ocr_reader — PaddleOCR-VL reader v7 (JA + KO + ZH, main / sub)
 
 Opened 2026-10-10 on branch `ocr-reader`, out of
 [`finished/cjk_aware_anima_dit`](../cjk_aware_anima_dit/README.md)
@@ -42,6 +42,15 @@ v0.9.8 — v5's command plus `--extra_manifest pseudo_swaprelax_v5` (20,745 proo
 speech train). Paired against v5: K3 KO 22 → 28 (+7 / −1, z +2.1; CER .220 → .153), ZH 30 → 30
 (CER .183 → .138); sincos SFX ♡-blind 414 → 413; COO SFX 84.9 → 85.3 %, speech 88.4 → 88.9 %.
 Reports: `reports/ocr_eval_*swaprelax*.md`.
+
+v7 (2026-11-24) = `mainsub_1124_0151`, Hub `v7/` (`59768fc6`), pinned by `anime_tools` v0.14.0
+as the default reader under `OCR:` only (`OCR2:` is not read there; the user, 2026-11-24:
+"일단은 ocr만 쓰는식으로 하자"; v6 and `v7_preview` are its opt-ins) — the main / sub reader: `OCR:` reads a detector box's main
+text, `OCR2:` the rest, 4 px crops ([`main-sub-approach.md`](main-sub-approach.md)). Paired against
+v6 on the 4 px crops: doujin SFX strict 294 → 334 (+95 / −55), ♡-blind 430 → 442; Manga109 test
+SFX 85.2 → 80.8 % (+83 / −196), speech 88.4 → 89.0 %; K3 KO 28 → 30, ZH 30 → 33. Report:
+[`reports/mainsub_1124_0151.md`](reports/mainsub_1124_0151.md). Hub `v7_preview/` is the earlier
+two-prompt `sfxpc_1118_0412`.
 
 ## Why
 

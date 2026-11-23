@@ -25,6 +25,11 @@ leaves this file for a report.
   COO annotation lacks (`MutekiBoukenSyakuma_003_17` `ううう`, `MisutenaideDaisy_081_29`), 2
   unsure. An overlap or ink feature does not rank them (`probes/sfxonly_suspect.py`); an `OCR2:`
   read by a reader not trained on these negatives was the next candidate, not run.
+- `anime_tools` v0.14.0 reads v7 under `OCR:` only. How the `OCR2:` sub text enters a caption
+  is not decided (the user, 2026-11-24: OCR only for now).
+- Read the Manga109 test SFX rows that only `sfxpc_1121_0117` reads right (156 against 108 the
+  other way, [report](reports/mainsub_1124_0151.md)) and the 11 non-empty `OCR2:` answers on the
+  292 crops: not done.
 - `AosugiruHaru_028_21`: the main `アハハハ` covers only part of the SFX (a `キ…` column beside
   it); no one has read the whole. Trains as proposed.
 - 141 speech mains held by the line-break agents (15+ characters: 76 label and crop differ, 9
@@ -55,5 +60,10 @@ leaves this file for a report.
 - [`mainsub_1122_1446.md`](reports/mainsub_1122_1446.md): the sync-free training forward.
 - [`mainsub_1123_1328.md`](reports/mainsub_1123_1328.md): `OCR2:` negatives from swap_relax and
   reviewed JA rows (main 85.4 %, sub 51.0 %, empty on the 292 JA crops 72.6 %).
+- [`mainsub_1124_0138.md`](reports/mainsub_1124_0138.md): the 1k run on the loader of `74042c06`
+  (main 85.4 %, sub 50.8 %, empty on the 292 JA crops 99.0 %).
+- [`mainsub_1124_0151.md`](reports/mainsub_1124_0151.md): the 2-epoch run (whole val main
+  91.8 %, sub 54.7 %; doujin SFX 334 / 593, Manga109 test SFX 80.8 %, speech 89.0 %, K3 KO 30,
+  ZH 33) against `sfxpc_1121_0117` and v6; shipped as Hub `v7/` (`59768fc6`).
 - [`mainsub_sfx_agents_2026_11_23.md`](reports/mainsub_sfx_agents_2026_11_23.md): the SFX-only
   check (190 / 2 / 8 of 200) and the agent subs of the 636 SFX crops with speech partly inside.

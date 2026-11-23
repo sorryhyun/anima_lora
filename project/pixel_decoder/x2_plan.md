@@ -32,11 +32,11 @@ Open, none queued:
    line gradient and high-pass (the user on `x2ov`: "진짜 좀 무르네"), the flat-token border
    ratios with the GAN's grain on, `tile_dict.py`, and the user's sheets of candle, kotatsu and
    manga_page.
-2. Undecided by the user, whether the B stage is retrained: 12,000 rollouts from `x1dll_1123_0821`
-   with the overlap from the start (`x2dll`'s recipe plus `overlap = true`, about 1.5 h), against
-   keeping `x2ov` (`x2dll`'s trunk, the output layer converted, 2,000 rollouts). What is known:
-   `x2ov` is 0.06 – 0.09 dB under `x2dll` and was still rising at 2,000 (30.35 → 30.42 over the
-   last 500). Step 1's read comes first; the long run is for the head that ships.
+2. Waiting on the user's read: `x2ovll_1124_0139` (the B stage retrained with the overlap from
+   the start, 12,000 rollouts) against `x2ov` on the pair sheets
+   ([report](reports/x2_overlap_12k_2026_11_24.md)). The numbers: held out 30.45 / 26.11
+   dB against 30.42 / 26.04, DINO the same, the token border step on flat tokens × 1.19 against
+   × 0.98. The GAN finish of step 1 resumes from `x2ov` unless the read picks `x2ovll`.
 3. The fixed tile on halftone and the GAN's net (neither moved by the output form): the unpaired
    discriminator, `x2dgf512`'s recipe on the overlapping parent with the real crop drawn from
    another replay sample as the one change, about 30 min + the render read; read by the margin's

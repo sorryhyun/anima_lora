@@ -66,8 +66,8 @@ def main() -> None:
     args = ap.parse_args()
 
     src = Path(resolve_under_home(args.run))
-    heads = [
-        Path(r).name
+    heads = [  # a run's head file is named by its run folder, as on the sheets
+        Path(r).parent.name if Path(r).suffix else Path(r).name
         for r in json.loads((src / "result.json").read_text())["args"]["head_run"]
     ]
     if args.x2:

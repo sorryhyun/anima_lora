@@ -1,0 +1,38 @@
+# x2 B only with the overlapping output from the start: x2dll_1123_1537 with overlap false -> true
+#   (out2 writes 16x16 patches at stride 8 under a sin^2 window, a fresh layer on the x1 init),
+#   nothing else changed (init x1dll_1123_0821, 12,000 rollouts, lr 5e-5, DINO 245.2, no GAN,
+#   seed 0, the x2flex data). x2_plan.md, Open 2.
+# The user (2026-11-24): "x2 12k run (아마 블록 제거하는 방법 썼던거같은데) b only 큐 넣자". No GAN
+#   finish is queued behind it.
+# Question: which B head is the parent of the GAN finish and the x2 ship read, this one or
+#   x2ov_1123_2012 (x2dll's trunk, out2 converted, 2,000 more rollouts)? Level or better than
+#   x2ov on the DINO distance and the user's read, with the flat-token border ratios still near
+#   1.0 -> this head is the x2 B head and the GAN finish (Open 1) resumes from it. Softer or the
+#   steps back -> x2ov stays the parent.
+# Records it rests on:
+#   - x2dll_1123_1537 (the 8x8 output, same recipe): held out 30.48 / 26.13 dB, DINO 2.49 / 2.72
+#     x 1e-4; 12,000 rollouts in 1 h 25 at 0.43 s, peak 7.6 GB.
+#   - x2ov_1123_2012 (reports/x2_overlap_2026_11_23.md): 30.42 / 26.04 dB, still rising at 2,000
+#     (30.35 -> 30.42 over the last 500); flat tokens x0.99 / x0.98, token edge ratio on textured
+#     tiles 0.96 / 1.10.
+# Read: evals beside x2dll's and x2ov's; p3_generated.py --x2 with x2ov and this head on the same
+#   32 renders (output/pixel_head/render_cache/, local), tile_dict.py on them, pair sheets x2ov |
+#   this arm of candle, kotatsu, manga_page, labelled; the user's read decides.
+# Bars: no twin of a x2 B run; spread unknown.
+# Cost: 12,000 rollouts at about 0.45 s (x2ov's rate): about 1.5 h + evals; the render read about 12.
+# make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_x2.py --config <this file>"
+
+output_name = "x2ovll_1124_0139"
+init = "output/pixel_head/x1dll_1123_0821/head.safetensors"
+rollouts = 12000
+lr = 5e-5
+eval_every = 1000
+pegan_ratio = 0.0
+pegan_start = 0
+overlap = true
+
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 245.2
+dino_tiles = 4
+
+seed = 0

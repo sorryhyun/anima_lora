@@ -5,8 +5,9 @@ swaprelax_v5) and the hito v4 self-labels (``manifest_pseudo_hito_v4.parquet``, 
 ``hito_v4_ja`` / ``hito_v4_ko``). Input for ``ko_label_fix.py``, whose flags file the
 review page (``ko_label_review.py --flags``) sorts on ("reader disagrees").
 
-The reader is the shipped v6 by default; ``--adapter_dir output/ocr/<run>/best`` reads
-with a local run (``--version v7_preview`` for a two-prompt run, which reads ``OCR:``).
+The reader is the shipped v7 by default (``OCR:`` only); ``--adapter_dir
+output/ocr/<run>/best`` reads with a local run (``--version v6`` for a run on 12 % crops,
+``--version v7_preview`` for a two-prompt run).
 Each crop is read under ``OCR:``; ``why`` says what the guard made of the decode:
 ``""`` (kept), ``length`` (longer than ``length_cap`` for the crop: the read is kept, the
 cap's 16 px glyph is larger than much of the KO lettering), ``runaway`` / ``empty`` (``read
@@ -17,7 +18,7 @@ reason) over an earlier file's empty rows.
 
     ANIMA_MANGA109S_ROOT=... make daemon-run ARGS="--stall-timeout 600 \\
         project/finished/ocr_reader/probes/ko_read.py --out <reads.parquet> \\
-        [--adapter_dir output/ocr/<run>/best --version v7_preview] [--fill <reads.parquet>]"
+        [--adapter_dir output/ocr/<run>/best --version v7] [--fill <reads.parquet>]"
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ def main():
         help="a run's checkpoint dir (adapter + lm.safetensors); default: the catalog row",
     )
     ap.add_argument(
-        "--version", default="v6", help="OcrReader version (v6 / v7_preview)"
+        "--version", default="v7", help="OcrReader version (v7 / v6 / v7_preview)"
     )
     ap.add_argument(
         "--name",
