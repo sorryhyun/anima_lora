@@ -37,7 +37,7 @@ def _dino() -> DinoFeat:
 
 def _trainer(dino=None, **kw) -> X1Trainer:
     torch.manual_seed(0)
-    head = PixelHead(D_FEAT, 64, width=16, depth=3, ls_init=1.0, use_skip=False, up=1)
+    head = PixelHead(D_FEAT, 64, width=16, depth=3, ls_init=1.0, up=1)
     cfg = X1TrainConfig(rollouts=12, opt_steps=2, replay=4, warmup=1, **kw)
     return X1Trainer(head, cfg, dino=dino)
 
@@ -110,7 +110,7 @@ def test_x1_term_on_real_samples_and_control_replay_draws():
 
 def _x2_trainer(dino=None, **kw) -> X2Trainer:
     torch.manual_seed(0)
-    base = PixelHead(D_FEAT, 64, width=16, depth=3, ls_init=1.0, use_skip=False, up=1)
+    base = PixelHead(D_FEAT, 64, width=16, depth=3, ls_init=1.0, up=1)
     head = PixelHeadX2(base, depth2=1, width2=4)
     drop_x1_output(head)
     cfg = X2TrainConfig(

@@ -1,0 +1,11 @@
+# RGBA cache (rgba_plan.md, Data): R4's recipe, rebuilt into the same folder after the
+# switch to the four-channel head. The head needs no colour in the cache, so the rows
+# R4 trained on stay; a rerun encodes only what changed.
+cutouts = "{CAPTION_CORPUS_DIR}/transparent"
+extra_cutouts = "{CAPTION_CORPUS_DIR}/anime_seg/skytnt"
+thin = "ootomo_takuji:0.1"
+bg_source = "image_dataset"
+cache_dir = "post_image_dataset/pixel_alpha_r4"
+draws = 1
+n_read = 16
+seed = 0

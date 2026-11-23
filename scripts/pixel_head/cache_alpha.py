@@ -3,7 +3,7 @@
 
 Composite (white | flat light colour | light gradient with grain) → VAE latent, caption →
 TE + llm_adapter embed, and the alpha (``scripts/pixel_head/_alpha_cache.py``). No DiT
-forward and no feature on disk: training runs the DiT (``scripts/pixel_head/train_alpha.py``).
+forward and no feature on disk: training runs the DiT (``scripts/pixel_head/train_rgba.py``).
 A rerun encodes only what changed, and loads no model when nothing did.
 
 Every flag is a :class:`CacheAlphaRequest` field; ``--config <file.toml>`` takes a flat

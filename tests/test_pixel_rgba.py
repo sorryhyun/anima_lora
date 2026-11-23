@@ -1,5 +1,6 @@
-"""Alpha head (library/anima/pixel_alpha.py, scripts/pixel_head/*alpha*.py): a changed input re-encodes, the read
-images never train, and training needs no VAE or TE."""
+"""RGBA head (library/anima/pixel_rgba.py, scripts/pixel_head/{train_rgba,*alpha*}.py): a
+changed input re-encodes, the read images never train, the init keeps the RGB head's output,
+and training needs no VAE or TE."""
 
 import numpy as np
 import pytest
@@ -7,8 +8,8 @@ import torch
 
 from scripts.pixel_head import _alpha_cache as C
 from scripts.pixel_head import _alpha_data as D
-from library.anima.pixel_alpha import AlphaHead, load_alpha_head
-from library.anima.pixel_head import LAT_PATCH_DIM, PixelHead
+from library.anima.pixel_head import LAT_PATCH_DIM, PixelHead, load_pixel_head
+from library.anima.pixel_rgba import rgba_from_rgb, straight_rgba
 from library.anima.pixel_head_train_x1 import save_x1_head
 
 D_FEAT = 32
@@ -72,15 +73,27 @@ def test_read_images_never_train(cache):
     assert {r.key for r in rows if r.set == "other"} == {"r"}
 
 
-def test_alpha_output_has_the_rgb_layout():
+def test_rgba_init_keeps_the_rgb():
     torch.manual_seed(0)
-    base = PixelHead(D_FEAT, LAT_PATCH_DIM, 16, 2, use_skip=False, up=1)
-    head = AlphaHead.from_base(base)
+    base = PixelHead(D_FEAT, LAT_PATCH_DIM, 16, 2, up=1)
+    head = rgba_from_rgb(base)
+    f, lat = torch.randn(6, 8, D_FEAT), torch.randn(6, 8, LAT_PATCH_DIM)
     with torch.no_grad():
-        base.out.weight[0::3] = head.out.weight
-        base.out.bias[0::3] = head.out.bias
-        f, lat = torch.randn(6, 8, D_FEAT), torch.randn(6, 8, LAT_PATCH_DIM)
-        assert torch.allclose(base(f, lat)[0], head(f, lat)[0], atol=1e-5)
+        x = head(f, lat)
+        assert x.shape == (4, 96, 128)
+        assert torch.equal(x[:3], base(f, lat))
+        assert x[3].std() > 0  # the α rows are not zero
+
+
+def test_straight_rgba_takes_out_the_background():
+    a = np.zeros((64, 64), np.float32)
+    a[16:48, 16:48] = 1
+    a[16:48, 44:48] = 0.5  # a soft rim
+    bg, fg = np.array([0.9, 0.95, 1.0]), np.array([0.2, 0.4, 0.1])
+    c = (a[..., None] * fg + (1 - a[..., None]) * bg).astype(np.float32)
+    x = straight_rgba(c, a)
+    assert np.allclose(x[..., 3], a)
+    assert np.allclose(x[16:48, 44:48, :3], fg, atol=0.02)
 
 
 def test_cached_inputs_are_max_padded(cache):
@@ -109,7 +122,7 @@ def test_training_loads_no_vae_or_te(cache, tmp_path, monkeypatch):
     from library.inference import models
     from library.models import qwen_vae
     from scripts.pixel_head import _setup
-    from scripts.pixel_head.train_alpha import TrainAlphaRequest, run
+    from scripts.pixel_head.train_rgba import TrainRGBARequest, run
 
     def refuse(*a, **k):
         raise AssertionError("training loaded a VAE or a TE")
@@ -118,9 +131,9 @@ def test_training_loads_no_vae_or_te(cache, tmp_path, monkeypatch):
     monkeypatch.setattr(models, "load_text_encoder", refuse)
     monkeypatch.setattr(_setup, "load_dit", lambda *a, **k: (_FakeDiT(), None))
     monkeypatch.setenv("ANIMA_PROGRESS", "0")
-    base = PixelHead(D_FEAT, LAT_PATCH_DIM, 16, 2, use_skip=False, up=1)
+    base = PixelHead(D_FEAT, LAT_PATCH_DIM, 16, 2, up=1)
     save_x1_head(base, tmp_path / "base.safetensors", {"sigma": "0.0577-0.1364"})
-    req = TrainAlphaRequest(
+    req = TrainRGBARequest(
         output_name="t",
         output_dir=str(tmp_path / "out"),
         cache_dir=str(cache[0]),
@@ -135,9 +148,10 @@ def test_training_loads_no_vae_or_te(cache, tmp_path, monkeypatch):
         device="cpu",
     )
     path = run(req)
-    head = load_alpha_head(path)
+    head = load_pixel_head(path)
+    assert head.channels == 4 and head.meta["init"] == req.init
     assert head(torch.randn(6, 8, D_FEAT), torch.randn(6, 8, LAT_PATCH_DIM)).shape == (
-        1,
+        4,
         96,
         128,
     )

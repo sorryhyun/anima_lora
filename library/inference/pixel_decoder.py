@@ -10,7 +10,8 @@ Euler 20 … 50 steps, the 4-step turbo LoRA at σ 0.5). Elsewhere it still deco
 warning goes to the log. The file decides the scale: ``--pixel_scale`` unset decodes at
 the file's own (2 for the ×2 file, whose saved image is twice ``--image_size``); an
 explicit scale the file does not hold refuses. With no ``--pixel_head``, ``--pixel_scale 2``
-takes the catalog's ×2 file.
+takes the catalog's ×2 file. An RGBA file (``channels = 4``) decodes to straight RGBA, the
+background taken out of the partly transparent pixels, and saves as a transparent PNG.
 """
 
 from __future__ import annotations
@@ -115,13 +116,25 @@ def _warn_settings(args: argparse.Namespace, dec: PixelDecoder) -> None:
         )
 
 
+def _straight(pixels: torch.Tensor) -> torch.Tensor:
+    """(B, 4, H, W) head output (RGB, 2α − 1) → straight RGBA, both in [-1, 1]."""
+    from library.anima.pixel_rgba import straight_rgba
+
+    out = []
+    for x in ((pixels + 1) / 2).permute(0, 2, 3, 1).numpy():
+        out.append(torch.from_numpy(straight_rgba(x[..., :3], x[..., 3])))
+    return torch.stack(out).permute(0, 3, 1, 2) * 2 - 1
+
+
 def pixel_decode(args: argparse.Namespace, anima) -> torch.Tensor:
-    """Pixels (B, 3, s·H, s·W), fp32 on the CPU, in [-1, 1], from the last sampling
-    (s = ``--pixel_scale``)."""
+    """Pixels (B, C, s·H, s·W), fp32 on the CPU, in [-1, 1], from the last sampling
+    (s = ``--pixel_scale``): C = 3, or 4 (straight RGBA) for an RGBA file."""
     dec: PixelDecoder | None = getattr(anima, "_pixel_decoder", None)
     if dec is None:
         raise RuntimeError("pixel_decode: ensure_pixel_decoder was not called")
     _warn_settings(args, dec)
     pixels = dec.tap.decode(dec.head, args.guidance_scale, dec.scale).cpu()
     dec.tap.reset()
+    if getattr(dec.head, "channels", 3) == 4:
+        pixels = _straight(pixels)
     return pixels

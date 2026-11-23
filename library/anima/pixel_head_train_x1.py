@@ -350,14 +350,8 @@ class X1Trainer:
 
             opaque_dwconv_(head)
         self.head_c = torch.compile(head, dynamic=True) if compile else head
-        # without a skip the linear never runs: no updates and no weight decay on it
-        params = [
-            p
-            for n, p in head.named_parameters()
-            if head.use_skip or not n.startswith("linear.")
-        ]
         self.opt = torch.optim.AdamW(
-            params, lr=cfg.lr, betas=(0.9, 0.99), weight_decay=0.01
+            head.parameters(), lr=cfg.lr, betas=(0.9, 0.99), weight_decay=0.01
         )
         self.total_steps = cfg.rollouts * cfg.opt_steps
         self.step = 0
@@ -381,6 +375,10 @@ class X1Trainer:
         with torch.autocast(f.device.type, dtype=torch.bfloat16):
             return (self.head_c if compiled else self.head)(f, lat)
 
+    def _rec(self, pred, tgt) -> tuple[torch.Tensor, torch.Tensor]:
+        """The reconstruction term → (loss, MSE)."""
+        return rec_loss(pred, tgt)
+
     def _dino_term(self, pred, tgt, rng: random.Random, compiled: bool = True):
         return self.dino.term(pred, tgt, rng, self.cfg.dino_tiles, compiled)
 
@@ -400,7 +398,7 @@ class X1Trainer:
         f, lat, tgt, _ = sample
         params = [q for q in self.head.parameters() if q.requires_grad]
         pred = self._predict(f, lat, compiled=False)
-        reg = rec_loss(pred, tgt.float())[0]
+        reg = self._rec(pred, tgt.float())[0]
         if self.cfg.lambda_dino > 0:
             reg = reg + self.cfg.lambda_dino * self._dino_term(
                 pred, tgt, self._lam_rng, compiled=False
@@ -430,7 +428,7 @@ class X1Trainer:
             self.opt.zero_grad(set_to_none=True)
             f, lat, tgt, real = self._replay_rng.choice(self.replay)
             pred = self._predict(f, lat)
-            loss, mse = rec_loss(pred, tgt.float())
+            loss, mse = self._rec(pred, tgt.float())
             if real and cfg.lambda_dino > 0:
                 dn = self._dino_term(pred, tgt, self._dino_rng)
                 loss = loss + cfg.lambda_dino * dn
@@ -461,7 +459,7 @@ def save_x1_head(head: PixelHead, path: str | Path, stamp: dict[str, str]) -> No
         "width": str(head.proj.out_features),
         "depth": str(len(head.blocks) + n_up),
         "up": str(head.up),
-        "skip": str(int(head.use_skip)),
+        "skip": "0",  # loaders before the skip linear's removal read 1 when unstamped
         **{k: str(v) for k, v in stamp.items()},
     }
     save_file(

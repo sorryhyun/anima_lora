@@ -10,7 +10,8 @@ to v_cfg exactly.
 Pieces:
 
 - :class:`PixelHead` / :func:`load_pixel_head` — the module and a loader that reads the
-  shape from the file's metadata (``width``, ``depth``, ``up``, ``skip``).
+  shape from the file's metadata (``width``, ``depth``, ``up``, ``channels``).
+  ``channels = 4``: the RGBA file (``project/pixel_decoder/rgba_plan.md``), RGB and 2α − 1.
 - :class:`PixelHeadX2` — a ``PixelHead`` plus a second 2× stage (files stamped
   ``x2_depth``, 32×32 output pixels per token). The file decides its scales: stamped
   ``scales = "2"`` it holds no ×1 output layer and decodes at ×2 only; unstamped (the
@@ -61,13 +62,13 @@ class ConvNeXtBlock(nn.Module):
 
 
 def from_patches(
-    tok: torch.Tensor, gh: int, gw: int, patch: int = PATCH
+    tok: torch.Tensor, gh: int, gw: int, patch: int = PATCH, channels: int = 3
 ) -> torch.Tensor:
-    """(gh·gw, patch·patch·3) token patches → (3, gh·patch, gw·patch)."""
+    """(gh·gw, patch·patch·C) token patches → (C, gh·patch, gw·patch)."""
     return (
-        tok.view(gh, gw, patch, patch, 3)
+        tok.view(gh, gw, patch, patch, channels)
         .permute(4, 0, 2, 1, 3)
-        .reshape(3, gh * patch, gw * patch)
+        .reshape(channels, gh * patch, gw * patch)
     )
 
 
@@ -91,19 +92,18 @@ class PixelHead(nn.Module):
         width: int,
         depth: int,
         ls_init: float = 1e-6,
-        use_skip: bool = True,
         up: int = 0,
+        channels: int = 3,
     ):
         """``up`` > 0: the last ``up`` of the ``depth`` blocks run after one 2× upsample
         (LayerNorm + per-token linear to 4 × width/2, pixel shuffle) at width/2, and
         ``out`` writes an 8×8 patch per upsampled position instead of 16×16 per token.
-        ``use_skip`` adds a per-token linear from the feature straight to the patch
-        (the P1 readout); the released head runs without it."""
+        ``channels``: 3 (RGB) or 4 (RGB + 2α − 1)."""
         super().__init__()
-        out = PATCH * PATCH * 3
-        self.use_skip = use_skip
+        if channels not in (3, 4):
+            raise ValueError(f"PixelHead: channels {channels} (3 or 4)")
+        self.channels = channels
         self.up = up
-        self.linear = nn.Linear(d_feat, out)  # skip (unused when use_skip is off)
         self.proj = nn.Linear(d_feat, width)
         self.lat_embed = nn.Linear(d_lat, width)
         self.blocks = nn.ModuleList(
@@ -119,12 +119,9 @@ class PixelHead(nn.Module):
             )
         self.patch = PATCH // 2 if up else PATCH
         self.norm_out = nn.LayerNorm(w_out, eps=1e-6)
-        self.out = nn.Linear(w_out, self.patch * self.patch * 3)
-        if use_skip:  # step 0 reproduces the skip alone
-            nn.init.zeros_(self.out.weight)
-            nn.init.zeros_(self.out.bias)
+        self.out = nn.Linear(w_out, self.patch * self.patch * channels)
 
-    def forward(self, f, lat):  # f (gh, gw, D), lat (gh, gw, 64) → (3, H, W)
+    def forward(self, f, lat):  # f (gh, gw, D), lat (gh, gw, 64) → (C, H, W)
         gh, gw = f.shape[:2]
         h = (self.proj(f) + self.lat_embed(lat)).permute(2, 0, 1)[None]
         for b in self.blocks:
@@ -135,25 +132,17 @@ class PixelHead(nn.Module):
             for b in self.up_blocks:
                 h = b(h)
         h = self.norm_out(h[0].permute(1, 2, 0))
-        # the skip loses ~dB under bf16 weights; the output layer stays in fp32
-        with torch.autocast(h.device.type, enabled=False):
-            tok = self.out(h).float()
-            if self.up:
-                n, m, p = h.shape[0], h.shape[1], self.patch
-                img = tok.view(n, m, p, p, 3).permute(4, 0, 2, 1, 3)
-                img = img.reshape(3, n * p, m * p)
-                if self.use_skip:
-                    img = img + from_patches(
-                        self.linear(f.float()).reshape(gh * gw, -1), gh, gw
-                    )
-                return img
-            if self.use_skip:
-                tok = tok + self.linear(f.float())
-        return from_patches(tok.reshape(gh * gw, -1).float(), gh, gw)
+        with torch.autocast(h.device.type, enabled=False):  # output layer in fp32
+            tok = self.out(h.float())
+        if self.up:
+            n, m, p, c = h.shape[0], h.shape[1], self.patch, self.channels
+            img = tok.view(n, m, p, p, c).permute(4, 0, 2, 1, 3)
+            return img.reshape(c, n * p, m * p)
+        return from_patches(tok.reshape(gh * gw, -1), gh, gw, channels=self.channels)
 
 
 class PixelHeadX2(nn.Module):
-    """A ``PixelHead`` (``up`` = 1, no skip) plus a second 2× stage → (×1 image, ×2 image).
+    """A ``PixelHead`` (``up`` = 1) plus a second 2× stage → (×1 image, ×2 image).
 
     The second stage: LayerNorm + per-position linear ``w`` → 4 × ``width2``, pixel
     shuffle, ``depth2`` ConvNeXt blocks at 4-px spacing, and a linear writing an 8×8 RGB
@@ -183,7 +172,7 @@ class PixelHeadX2(nn.Module):
         overlap: bool = False,
     ):
         super().__init__()
-        assert base.up and not base.use_skip, "base head: one upsample stage, no skip"
+        assert base.up, "base head: one upsample stage"
         self.noise = 0
         self.overlap = overlap
         self.base = base
@@ -352,8 +341,11 @@ def load_pixel_head(
     and the overlapping output when ``out2`` holds 16×16 patches; any other file as a
     :class:`PixelHead`.
     ``d_feat`` defaults to the stored ``proj.weight``'s input width (2048 on Anima). The
+    output channels come from the ``channels`` stamp (3 when unstamped; 4 = RGBA). The
     trained σ ranges ride along as ``head.sigma_ranges``, the rest of the stamp as
-    ``head.meta``."""
+    ``head.meta``. A file stamped ``skip = 1`` (or unstamped: the P1 readout heads) needs
+    the skip linear this module no longer has and does not load; the ``linear.*`` weights
+    older files carry unused are dropped."""
     from safetensors import safe_open
     from safetensors.torch import load_file
 
@@ -361,6 +353,10 @@ def load_pixel_head(
     x2 = False
     with safe_open(str(path), "pt") as fh:
         meta = fh.metadata() or {}
+        if meta.get("skip", "1") != "0":
+            raise ValueError(
+                f"{path}: a skip-linear head (P1 readout); no longer loads"
+            )
         x2 = "x2_depth" in meta
         pre = "base." if x2 else ""
         if d_feat is None:
@@ -374,8 +370,8 @@ def load_pixel_head(
         LAT_PATCH_DIM,
         int(meta.get("width", "1024")),
         int(meta.get("depth", "3")),
-        use_skip=meta.get("skip", "1") == "1",
         up=int(meta.get("up", "0")),
+        channels=int(meta.get("channels", "3")),
     )
     if x2:
         scales = tuple(int(v) for v in meta.get("scales", "1,2").split(","))
@@ -387,7 +383,10 @@ def load_pixel_head(
             noise=int(meta.get("x2_noise", "0")),
             overlap=overlap,
         )
-    head.load_state_dict(load_file(str(path)))
+    sd = load_file(str(path))
+    head.load_state_dict(
+        {k: v for k, v in sd.items() if not k.startswith(("linear.", "base.linear."))}
+    )
     head.sigma_ranges = parse_sigma_ranges(meta.get("sigma"))
     head.meta = dict(meta)
     return head.to(device).eval()
@@ -495,9 +494,10 @@ class PixelTap:
         guidance_scale: float,
         scale: int | None = None,
     ) -> torch.Tensor:
-        """Pixels (B, 3, scale·H, scale·W) fp32 on the head's device, clamped to
-        [-1, 1]. ``scale=None`` decodes at the file's own (:func:`default_scale`); a scale
-        the file does not hold raises."""
+        """Pixels (B, C, scale·H, scale·W) fp32 on the head's device, clamped to
+        [-1, 1]; C is the file's 3 or 4 (RGB, 2α − 1).
+        ``scale=None`` decodes at the file's own (:func:`default_scale`); a scale the
+        file does not hold raises."""
         scale = check_scale(head, scale)
         if isinstance(head, PixelHeadX2):
             fwd = lambda f, lat: head(f, lat, scale=scale)  # noqa: E731

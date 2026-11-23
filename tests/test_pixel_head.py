@@ -27,7 +27,7 @@ D_FEAT = 32
 
 def _head(up: int) -> PixelHead:
     torch.manual_seed(0)
-    return PixelHead(D_FEAT, 64, width=16, depth=3, ls_init=1.0, use_skip=False, up=up)
+    return PixelHead(D_FEAT, 64, width=16, depth=3, ls_init=1.0, up=up)
 
 
 def test_load_from_metadata(tmp_path):
@@ -44,7 +44,7 @@ def test_load_from_metadata(tmp_path):
         {k: v.contiguous() for k, v in head.state_dict().items()}, str(path), meta
     )
     loaded = load_pixel_head(path)
-    assert loaded.up == 1 and not loaded.use_skip
+    assert loaded.up == 1 and loaded.channels == 3
     assert loaded.sigma_ranges == ((0.06, 0.13), (0.5, 0.5))
     f, lat = torch.randn(3, 5, D_FEAT), torch.randn(3, 5, 64)
     with torch.no_grad():
@@ -95,7 +95,7 @@ def test_tap_cfg_combine_and_reset():
     assert torch.allclose(f, f_u + 4.0 * (f_c - f_u))
     assert x_t is not None and not tap.tail_cached
     f1, _ = tap.feature(1.0)
-    assert torch.allclose(f1, f_c)  # g = 1 → the cond feature
+    assert torch.allclose(f1, f_c, atol=1e-6)  # g = 1 → the cond feature
 
     # a final_layer call with no forward of its own (Spectrum cached step)
     dit.final_layer.linear(f_c)

@@ -153,7 +153,8 @@ def save_latent(
 
 
 def pixels_to_pil(sample: torch.Tensor) -> Image.Image:
-    """Convert a ``[-1, 1]`` CHW pixel tensor (VAE output) to a PIL image.
+    """Convert a ``[-1, 1]`` CHW pixel tensor (VAE output) to a PIL image: RGB, or RGBA
+    for four channels (the pixel head's RGBA file).
 
     Shared by ``save_images`` and ``decode_to_pil``.
     """
@@ -205,7 +206,8 @@ def save_decoded(
     original_base_name: Optional[str] = None,
 ) -> None:
     """``save_output`` for pixels decoded elsewhere (``--decoder pixel_head``):
-    the latent per ``output_type``, then the (3, H, W) pixels as the image."""
+    the latent per ``output_type``, then the (C, H, W) pixels as the image (C = 4:
+    a transparent PNG)."""
     if args.output_type in ("latent", "latent_images"):
         height, width = latent.shape[-2] * 8, latent.shape[-1] * 8
         save_latent(latent, args, height, width)

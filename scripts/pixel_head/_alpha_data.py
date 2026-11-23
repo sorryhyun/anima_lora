@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from library.anima.pixel_alpha import affine_grid, border_mask, fit_field
+from library.anima.pixel_rgba import affine_grid, border_mask, fit_field
 from library.anima.pixel_head import PATCH
 
 BG_KINDS = ("white", "flat", "field")

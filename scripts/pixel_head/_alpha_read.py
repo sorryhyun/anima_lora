@@ -1,4 +1,5 @@
-"""The alpha head's read: L1 per region on the cache's read sets and the GT | head sheets."""
+"""The RGBA head's read on the cache's read sets: α L1 per region, the RGB's dB against the
+init head's RGB, and the GT | head sheets."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 
-from library.anima.pixel_alpha import estimate_bg, unmix
+from library.anima.pixel_rgba import estimate_bg, unmix
 from scripts.pixel_head import _alpha_data as D
 
 NEAR = 5 / 255  # "the same colour as the background"
@@ -55,19 +56,25 @@ def to_sample(row, cut: D.Cutout, comp, bg, sigma: float, f, lat) -> dict:
 
 @torch.no_grad()
 def predict(head, s: dict, device) -> np.ndarray:
-    """→ α (H, W) in [0, 1], or the RGB head's (H, W, 3)."""
+    """→ the head's output (H, W, C) in [0, 1]: RGB, and α as the fourth channel."""
     f, lat = s["f"].to(device), s["lat"].to(device)
     with torch.autocast(device.type, dtype=torch.bfloat16):
         x = head(f, lat)
-    x = ((x.float().clamp(-1, 1) + 1) / 2).permute(1, 2, 0).cpu().numpy()
-    return x[..., 0] if x.shape[-1] == 1 else x
+    return ((x.float().clamp(-1, 1) + 1) / 2).permute(1, 2, 0).cpu().numpy()
+
+
+def rgb_db(c: np.ndarray, ref: np.ndarray) -> float:
+    """PSNR of the head's RGB against the init head's, peak 1."""
+    mse = float(((c - ref) ** 2).mean())
+    return 10 * np.log10(1 / max(mse, 1e-12))
 
 
 def quick_l1(samples: list[dict], preds: list[np.ndarray]) -> dict[str, float]:
     """The eval line during training."""
     vals: dict[str, list[float]] = {}
-    for s, a in zip(samples, preds):
-        err = np.abs(a - s["cut"].alpha)
+    for s, x in zip(samples, preds):
+        vals.setdefault(f"{s['set']}_rgb_db", []).append(rgb_db(x[..., :3], s["rgb"]))
+        err = np.abs(x[..., 3] - s["cut"].alpha)
         for reg in ("all", "transition", "translucent", "thin"):
             m = s["regs"][reg]
             if m.sum() >= 64:
@@ -75,11 +82,16 @@ def quick_l1(samples: list[dict], preds: list[np.ndarray]) -> dict[str, float]:
     return {k: float(np.mean(v)) for k, v in vals.items()}
 
 
-def score(s: dict, a: np.ndarray) -> list[dict]:
-    """The head and the flood null (B handed, without grain) on one sample."""
+def score(s: dict, x: np.ndarray) -> list[dict]:
+    """The head and the flood null (B handed, without grain, on the init head's RGB) on
+    one sample; each unmixes its own colour."""
+    a, c = x[..., 3], x[..., :3]
     smooth = estimate_bg(s["bg"], np.zeros(a.shape, np.float32))
     out = []
-    for name, alpha in (("head", a), ("flood", flood_alpha(s["rgb"], smooth))):
+    for name, alpha, col in (
+        ("head", a, c),
+        ("flood", flood_alpha(s["rgb"], smooth), s["rgb"]),
+    ):
         err = np.abs(alpha - s["cut"].alpha)
         row = {
             "name": name,
@@ -91,9 +103,10 @@ def score(s: dict, a: np.ndarray) -> list[dict]:
         for reg, m in s["regs"].items():
             if m.sum() >= 64:
                 row[f"l1_{reg}"] = float(err[m].mean())
-        est = estimate_bg(s["rgb"], alpha)
-        p = unmix(s["rgb"], alpha, est)
+        p = unmix(col, alpha, estimate_bg(col, alpha))
         row["black_l1"] = float(np.abs(p - s["cut"].premul).mean() * 255)
+        if name == "head":
+            row["rgb_db"] = rgb_db(c, s["rgb"])
         out.append(row)
     return out
 
@@ -136,7 +149,7 @@ def _sheet(rows: list[tuple[str, list[Image.Image]]], path: Path) -> None:
     height = label + sum(ims[0].height + label for _, ims in rows)
     out = Image.new("RGB", (2 * width, height), (90, 90, 90))
     d = ImageDraw.Draw(out)
-    for j, name in enumerate(("GT", "alpha head")):
+    for j, name in enumerate(("GT", "RGBA head")):
         d.text((j * width + 3, 3), name, fill="yellow")
     y = label
     for name, ims in rows:
@@ -165,9 +178,10 @@ def write_sheets(
             )
             if i is None or len(names) >= n:
                 continue
-            s, a = samples[i], preds[i]
+            s, x = samples[i], preds[i]
+            a, c = x[..., 3], x[..., :3]
             gt, p_gt = s["cut"].alpha, s["cut"].premul
-            p = unmix(s["rgb"], a, estimate_bg(s["rgb"], a))
+            p = unmix(c, a, estimate_bg(c, a))
             win = _window(s["regs"]["transition" if group == "white_fg" else group])
             checker = (on_checker(p_gt, gt)[win], on_checker(p, a)[win])
             rows = [

@@ -132,32 +132,22 @@ its cache's were never committed. Outputs: `output/pixel_head/<run>/` (local).
 
 ## Next
 
-### 1. Review of the design and of the pixel head code (before any run)
+### 1. Code for the candidate form (written 2026-11-23)
 
-Facts (the user, 2026-11-23): "pixel head 코드도 재검토해야 한다고 plan에 써놔"; the memory entry for
-this line reads "design under review".
+Facts (the user, 2026-11-23: "rgba 픽셀 헤드 코드 수정해줘", "채널 3이나 4 받도록", "스킵리니어
+자체를 없애", "학습코드 짜봐"):
 
-What the review covers, each against the use above (one file in the node, a transparent image out):
-
-- The form: the candidate under "The form", and what it leaves open (the RGB term and its weight,
-  the init, where the fringe step runs).
-- `library/anima/pixel_head.py`: `PixelHead`, `from_patches` and `load_pixel_head` fix the output at
-  three channels; `PixelTap.decode` and the ComfyUI `AnimaPixelDecode` return three.
-- `library/anima/pixel_alpha.py`: `AlphaHead` (one channel, the RGB output layer dropped at
-  `from_base`), `AlphaTrainer`, the α → colour functions that take their colour from another
-  decode.
-- `scripts/pixel_head/{cache_alpha,train_alpha,render_alpha,_alpha_cache,_alpha_data,_alpha_read}.py`
-  and `tests/test_pixel_alpha.py`: written for the alpha-only form (the target, the read's colour
-  from the base head or the VAE, the sheets).
-- `library/anima/pixel_head_compile.py` (new 2026-11-23, no test): checked on the card on ×1, alpha
-  and ×2 heads, 12 sizes, 2 graphs with the swap against 8 (the recompile limit) without, eager
-  gradients equal. Its fake output assumes padding = kernel // 2 and dilation 1, which
-  `opaque_dwconv_` does not assert.
-- `README.md` ("Alpha", Rules "RGBA") and `plan.md` ("RGBA" under P5 topics) where they describe
-  the alpha-only form.
-
-The review's output is a short list for the user: the form, the code that changes or goes, the
-first run. Nothing is written or queued before the user's word on it.
+- `PixelHead(channels=3 | 4)`; `load_pixel_head` reads the `channels` stamp. The skip linear is
+  out of the module: a `skip = 1` file no longer loads (one local bench head, `convnext_1119_0835`),
+  the unused `linear.*` weights of older files are dropped at load. All 24 local ×1 / ×2 files and
+  the catalog's decode as before.
+- `library/anima/pixel_rgba.py`: `rgba_from_rgb` (trunk and RGB rows copied, α rows fresh),
+  `RGBATrainer`, `save_rgba_head`, `straight_rgba` (the fringe step). `AlphaHead` is gone; R1 – R4
+  files no longer load.
+- `scripts/pixel_head/train_rgba.py` (was `train_alpha.py`): init `x1dll_1123_0821`, the frozen init
+  head's RGB on each rollout's features as the RGB target, `lambda_rgb` 1.0. The read and
+  `render_alpha.py` take the colour from the head and report RGB dB against the init head.
+- Open: the ComfyUI node (step 3); the vendored loader there still expects `linear.*` keys.
 
 ### 2. A first run of the agreed form (a candidate, not proposed for queueing)
 

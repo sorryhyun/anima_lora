@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""Train the alpha head: a frozen DiT forward on cached inputs each rollout.
+"""Train the RGBA head: a frozen DiT forward on cached inputs each rollout.
 
 The latents, caption embeds and alphas come from ``scripts/pixel_head/cache_alpha.py``;
 no VAE or TE is loaded here and no image folder is read. Each rollout draws σ and noise,
-runs the DiT once on a cached latent and pushes the feature into the ×1 trainer's replay
-buffer, ``opt_steps`` updates each; no feature is written to disk. The whole head trains
-from the ×1 base (its output layer fresh at one channel).
+runs the DiT once on a cached latent, runs the frozen init head on the feature for the RGB
+target, and pushes both into the ×1 trainer's replay buffer, ``opt_steps`` updates each;
+no feature is written to disk. The whole head trains from the init RGB head, the α rows
+of its output layer fresh (``library/anima/pixel_rgba.py``).
 
-Every flag is a :class:`TrainAlphaRequest` field; ``--config <file.toml>`` takes a flat
+Every flag is a :class:`TrainRGBARequest` field; ``--config <file.toml>`` takes a flat
 TOML of field names (field default → ``--config`` → CLI).
 
-    make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_alpha.py \
+    make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_rgba.py \
         --config project/pixel_decoder/configs/<train run>.toml"
 
-Writes ``<output_dir>/<output_name>/``: ``alpha_head.safetensors`` (with ``save_every``, also
-``alpha_head_r<N>.safetensors``), ``result.json`` and
-``GT | alpha head`` sheets of the read sets.
+Writes ``<output_dir>/<output_name>/``: ``rgba_head.safetensors`` (with ``save_every``, also
+``rgba_head_r<N>.safetensors``), ``result.json`` and ``GT | RGBA head`` sheets of the read
+sets.
 """
 
 from __future__ import annotations
@@ -39,14 +40,15 @@ _CKPTS = default_checkpoints()
 
 
 @dataclass
-class TrainAlphaRequest(Request):
-    """Train the alpha head on cached inputs."""
+class TrainRGBARequest(Request):
+    """Train the RGBA head on cached inputs."""
 
-    output_name: str = _f("alpha", "the run's name")
+    output_name: str = _f("rgba", "the run's name")
     output_dir: str = _f("output/pixel_head", "→ <output_dir>/<output_name>/")
     cache_dir: str = _f("post_image_dataset/pixel_alpha", "cache_alpha.py's output")
     init: str = _f(
-        "output/pixel_head/x1ll_1122_1000/head.safetensors", "the ×1 base head"
+        "output/pixel_head/x1dll_1123_0821/head.safetensors",
+        "the RGB head the file starts from and whose RGB it keeps",
     )
     rollouts: int = _f(1000, "DiT forwards, opt_steps updates each")
     opt_steps: int = _f(16, "head updates per rollout")
@@ -55,6 +57,7 @@ class TrainAlphaRequest(Request):
     replay: int = _f(64, "samples kept for the updates")
     lr: float = _f(5e-5, "LR, one cosine cycle")
     warmup: int = _f(200, "opt steps")
+    lambda_rgb: float = _f(1.0, "RGB term: rec against the init head's RGB")
     dino: str = _f(DINO_REPO, "DINOv3 repo of the DINO term (gated on the Hub)")
     lambda_dino: float = _f(
         331.6, "DINO term on the alpha as three channels (the ×1 weight); 0 = off"
@@ -64,7 +67,7 @@ class TrainAlphaRequest(Request):
     eval_every: int = _f(250, "rollouts")
     save_every: int = _f(
         0,
-        "rollouts; also keep alpha_head_r<N>.safetensors at each multiple, 0 = last only",
+        "rollouts; also keep rgba_head_r<N>.safetensors at each multiple, 0 = last only",
     )
     n_sheets: int = _f(8, "sheets at the end")
     compile: bool = _f(True, "compile the DiT, the head and the DINO term")
@@ -74,12 +77,12 @@ class TrainAlphaRequest(Request):
     device: str = _f("cuda", "torch device")
 
 
-def run(req: TrainAlphaRequest) -> Path:
+def run(req: TrainRGBARequest) -> Path:
     import torch
 
-    from library.anima.pixel_alpha import AlphaHead, AlphaTrainer, save_alpha_head
-    from scripts.pixel_head import _alpha_cache as C
     from library.anima.pixel_head import load_pixel_head
+    from library.anima.pixel_rgba import RGBATrainer, rgba_from_rgb, save_rgba_head
+    from scripts.pixel_head import _alpha_cache as C
     from library.anima.pixel_head_train import DinoFeat, DiTRollout
     from library.anima.pixel_head_train_x1 import X1TrainConfig
     from library.datasets.buckets import cluster_token_bands
@@ -95,7 +98,7 @@ def run(req: TrainAlphaRequest) -> Path:
         raise ValueError(f"{root}: no train rows")
     out_dir = Path(resolve_under_home(req.output_dir)) / req.output_name
     out_dir.mkdir(parents=True, exist_ok=True)
-    sink = open_sink(req, out_dir, "pixel_head_alpha")
+    sink = open_sink(req, out_dir, "pixel_head_rgba")
     device = torch.device(req.device)
 
     read_rows = [r for s in C.READ_SETS for r in sets[s]]
@@ -117,12 +120,15 @@ def run(req: TrainAlphaRequest) -> Path:
         f, lat = forward(*C.read_inputs(root, row), row.noise, sigma)
         f, lat = f.to("cpu", torch.bfloat16), lat.cpu()
         samples.append(read.to_sample(row, cut, comp, bg, sigma, f, lat))
-    base = load_pixel_head(resolve_under_home(req.init), device)
+    base = load_pixel_head(resolve_under_home(req.init), device).requires_grad_(False)
     for s in samples:
-        s["rgb"] = read.predict(base, s, device)  # the colour the decode unmixes
+        s["rgb"] = read.predict(base, s, device)  # the init head's RGB, for the read
 
-    head = AlphaHead.from_base(base, req.seed)
-    del base
+    def base_rgb(f, lat):
+        with torch.no_grad(), torch.autocast(device.type, dtype=torch.bfloat16):
+            return base(f, lat).float()
+
+    head = rgba_from_rgb(base, req.seed)
     cfg = X1TrainConfig(
         rollouts=req.rollouts,
         opt_steps=req.opt_steps,
@@ -136,7 +142,9 @@ def run(req: TrainAlphaRequest) -> Path:
     dn = (
         DinoFeat(device, req.dino, compile=req.compile) if req.lambda_dino > 0 else None
     )
-    trainer = AlphaTrainer(head, cfg, dino=dn, compile=req.compile)
+    trainer = RGBATrainer(
+        head, cfg, lambda_rgb=req.lambda_rgb, dino=dn, compile=req.compile
+    )
 
     rng, order = random.Random(req.seed + 1), []
     sigma_rng = random.Random(req.seed + 4)
@@ -150,7 +158,8 @@ def run(req: TrainAlphaRequest) -> Path:
     print(
         f"train rows {len(rows)} ({len({r.key for r in rows})} cutouts), read "
         f"{len(samples)}; whole head {n_params / 1e6:.1f}M; LR {req.lr:g}, "
-        f"{req.rollouts} rollouts x {req.opt_steps}, DINO {req.lambda_dino:g}  "
+        f"{req.rollouts} rollouts x {req.opt_steps}, RGB {req.lambda_rgb:g}, "
+        f"DINO {req.lambda_dino:g}  "
         f"(ready in {time.perf_counter() - t0:.0f}s)",
         flush=True,
     )
@@ -165,11 +174,12 @@ def run(req: TrainAlphaRequest) -> Path:
     done = 0
     waited = 0.0  # on the disk
     t1 = time.perf_counter()
-    path = out_dir / "alpha_head.safetensors"
+    path = out_dir / "rgba_head.safetensors"
     stamp = {
         "ls_init": "1.0",
         "sigma": f"{req.sigma_lo}-{req.sigma_hi}",
         "stream": req.stream,
+        "lambda_rgb": req.lambda_rgb,
         "lambda_dino": req.lambda_dino,
         "lr": req.lr,
         "rollouts": req.rollouts,
@@ -186,7 +196,8 @@ def run(req: TrainAlphaRequest) -> Path:
                 ahead.append(ex.submit(load, order[r + 8]))
             sigma = sigma_rng.uniform(req.sigma_lo, req.sigma_hi)
             f, lat = forward(latent, cross, noise0 + r, sigma)
-            trainer.push(f, lat, tgt.to(device), real=True)
+            tgt = torch.cat([base_rgb(f, lat), tgt.to(device)])
+            trainer.push(f, lat, tgt, real=True)
             for k, v in trainer.update().items():
                 ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
             done = r + 1
@@ -201,11 +212,11 @@ def run(req: TrainAlphaRequest) -> Path:
                     ev = read.quick_l1(samples, preds)
                     history.append({"rollout": done, **ev})
                     sink.val(ev, global_step=done)
-                save_alpha_head(head, path, stamp | {"rollouts_done": done})
+                save_rgba_head(head, path, stamp | {"rollouts_done": done})
                 sink.ckpt(global_step=done, path=str(path))
             if req.save_every and done % req.save_every == 0 and done < req.rollouts:
-                kept = out_dir / f"alpha_head_r{done}.safetensors"
-                save_alpha_head(head, kept, stamp | {"rollouts_done": done})
+                kept = out_dir / f"rgba_head_r{done}.safetensors"
+                save_rgba_head(head, kept, stamp | {"rollouts_done": done})
                 sink.ckpt(global_step=done, path=str(kept))
     train_sec = time.perf_counter() - t1
 
@@ -236,7 +247,7 @@ def run(req: TrainAlphaRequest) -> Path:
 
 
 def main() -> None:
-    req = TrainAlphaRequest.from_argv()
+    req = TrainRGBARequest.from_argv()
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     run(req)
 

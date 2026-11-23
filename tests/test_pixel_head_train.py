@@ -25,7 +25,7 @@ D_FEAT = 32
 
 def _head() -> PixelHeadX2:
     torch.manual_seed(0)
-    base = PixelHead(D_FEAT, 64, width=16, depth=3, ls_init=1.0, use_skip=False, up=1)
+    base = PixelHead(D_FEAT, 64, width=16, depth=3, ls_init=1.0, up=1)
     return PixelHeadX2(base, depth2=1)
 
 

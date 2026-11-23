@@ -185,7 +185,6 @@ def run(req: X1Request) -> Path:
             req.width,
             req.depth,
             ls_init=1.0,
-            use_skip=False,
             up=req.up,
         ).to(device)
         ls_init = "1.0"
