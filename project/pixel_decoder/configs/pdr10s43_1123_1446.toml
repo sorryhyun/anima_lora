@@ -1,0 +1,103 @@
+# Pixel-DINO arm, seed 43: pdr03s43_1123_1348 with pixel_dino_ratio 0.3 -> 1.0, nothing else changed.
+# Seed 43 on the CLI. Control: pdctls43_1123_1348 (its file and renders as in the 0.3 read).
+# Question: does ratio 1.0 move the read where 0.3 read level (reports/dino_lora_2026_11_23.md,
+#   15 - 15 over seeds 42 / 43)? The user (2026-11-23): "그러자 1.0으로".
+# Records it rests on:
+#   - project/pixel_decoder/reports/lpips_lora_2026_11_21.md: the same term with LPIPS-VGG, seed 42;
+#     the user's blind read ratio 0.3 ahead of the control 11 - 5, ratio 1.0 behind 5 - 11 (16 pairs
+#     each, p 0.21); a seed twin was owed.
+#   - project/pixel_decoder/reports/x1_dino_2026_11_22.md, x2_dino_2026_11_23.md: DinoFeat
+#     (ViT-S/16, 224-px tiles, blocks 3/6/9/12) as the pixel heads' perceptual term.
+#   - docs/anima/findings/lora_recipe.md: the recipe below, ama mitsuki 106 images, 424 updates.
+# Arms of the 0.3 read (the user, 2026-11-23: "0.3만 시드하나 더돌린걸로 해보자. 렌더시드는 바꿔서"):
+#   seed 42: control = lpctl_1121_1900's file (recipe unchanged since), arm pdr03s42_1123_1348;
+#   seed 43: control pdctls43_1123_1348, arm pdr03s43_1123_1348.
+# Read: renders at the `make test` recipe, the lora_recipe prompts p0 - p3 x render seeds 46 - 49
+#   (not 42 - 45, the LPIPS sets'), blind pair sets control | arm per training seed; the user's read
+#   decides. Paired training log pixel_dino/dist on seed 43 only (seed 42's control logged LPIPS).
+#   ||dW|| reported, not matched.
+# Bars: spread unknown; two (artist, seed) clusters put the sign-flip floor at 0.25.
+# Cost: ~12.5 min per run (the LPIPS arms), gradient checkpointing on.
+
+# gradient_checkpointing on in every arm: at the default preset the DiT's graph holds 14.3 GB when
+# the VAE window runs and the 16 GB card runs out (smoke 20261121-185603).
+gradient_checkpointing = true
+paired_step_rng = true
+pixel_dino_ratio = 1.0
+pixel_dino_sigma_max = 0.7
+pixel_dino_window = 24
+pixel_dino_margin = 4
+pixel_dino_tiles = 4
+
+# --- configs/methods/lora.toml, unchanged below except output_name and path_pattern ---
+# Rank 32 / alpha 128 / lr 5e-5: rank 16 and alpha 512 / lr 1.25e-5 tied blind at matched
+# ||dW||, with REPA and without (s34-s36, s41-s42; docs/anima/findings/lora_recipe.md).
+network_alpha = 128
+network_dim = 32
+
+learning_rate = 5e-5
+# Effective batch 2, constant lr after the base.toml warmup (5 %), adapter EMA 0.1
+# (the --ema_window default), and a clip at 2x the median of the last 50 micro-batch
+# norms, applied per micro-batch: spikes are bounded to their share without leaving
+# the set. Beat the 2e-5 cosine bs1 clip-1.0 recipe in a blind A/B over 4 seeds x 2
+# artists, 41-16, cluster p 0.0078 (s29). That A/B ran under the T-LoRA mask; rerun
+# without it at matched ||dW|| (s33), A led 52-42 (cluster p 0.17), so the win is not
+# the update direction.
+# The median is kept per σ band: edge-σ norms run ~2x mid-σ ones, so one window reads
+# normal edge draws as spikes. Beat the single window blind at matched ||dW||, 39-21,
+# cluster p 0.047 (s30). The σ profile holds without REPA (s39).
+lr_scheduler = "constant_with_warmup"
+gradient_accumulation_steps = 2
+clip_mode = "median"
+clip_k = 2.0
+clip_per_micro = true
+clip_sigma_bands = "0.2,0.4,0.6,0.8"
+max_train_epochs = 8
+save_every_n_epochs = 8
+checkpointing_epochs = 8
+
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+output_name = "pdr10s43_1123_1446"
+# lora_down init: "kaiming" | "weight_svd" (W0's top-r right singular vectors,
+# the default) | "grad_svd" (sketch THIS run's task gradient before the adapter
+# exists — costs one frozen-DiT backward pass per image, blocks_to_swap must be
+# 0) | "basis_file" (read a precomputed gradient basis; needs
+# network_args grad_basis_file=<path>). The gradient modes are seeded from where
+# the task pushes rather than where W is big; output is an ordinary LoRA either
+# way. docs/anima/methods/svd-down-lora.md, networks/grad_basis.py.
+down_init = "weight_svd"
+# weight_svd window: slice k seeds lora_down from W0's right singular vectors
+# [k*r, (k+1)*r) instead of the top-r. Slices are mutually orthogonal, so
+# adapters trained with different slices own disjoint input subspaces — give
+# each artist its own k (0, 1, 2, …) when the LoRAs are meant to be merged.
+# 0 = top-r (the shipped default). Cap: (k+1)*r must fit every targeted
+# layer — the 256-row adaln .1 Linears allow k <= 7 at r=32 (8 artists).
+# Stamped as ss_svd_slice in the adapter. adaln_up_* modules ignore the slice
+# and always take the top-r (their σ-only input lives in W0's top ~2 directions).
+svd_slice = 0
+# > 0: interleaved slices — slice k takes vectors {k, k+N, k+2N, …} so every
+# artist owns one of the top-N directions. Set it to the shard count (8 for
+# k = 0..7); needs N*r <= min(W.shape). 0 = contiguous windows.
+svd_slice_count = 0
+path_pattern = "ama_mitsuki/*"
+
+# T-LoRA rank mask, off by default since 2026-11-05: it masks in training only, while
+# inference runs every rank at every σ, so the shipped file trained one model and
+# rendered another. Masked training + masked inference (--lora_timestep_mask, the
+# published method) tied this file without the mask, 11-13 (s31, sweetonedollar).
+# use_timestep_mask = true
+# min_rank = 1
+# alpha_rank_scale = 1.0
+
+# REPA off by default since 2026-11-06: at alpha 512 / lr 1.25e-5 the same recipe
+# without it won blind on two artists, 32-16 (s37 + s38, pair p 0.015); at this file's
+# alpha 128 / lr 5e-5 on and off tied, 23-22 (s40). The knobs below apply when it is
+# turned back on.
+use_repa       = false
+repa_mode      = "relational"
+repa_weight    = 0.05
+repa_layer     = 8
+repa_encoder   = "pe_spatial"
