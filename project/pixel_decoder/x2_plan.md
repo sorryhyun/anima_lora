@@ -5,8 +5,19 @@
 - Done: `x2llgf512_1122_2209`, the same finetune at a 512 crop with the PE tower compiled
   ("The crop, 1024 against 512", at the end).
 - The crop is settled at 512 (the user, 2026-11-22: "512가 훨씬 낫다고 적어두자"; README, Rules).
-- Running: `x2dll_1123_1537`, B only 12k on the DINO term from `x1dll_1123_0821` (`plan.md`,
-  "LPIPS → DINO"). The fix below still waits on the user's word.
+- Done 2026-11-23: `x2dll_1123_1537` (B only 12k, DINO, from `x1dll_1123_0821`) and its GAN finish
+  `x2dgf512_1123_1701`, read on held-out sheets and 32 generated renders
+  ([report](reports/x2_dll_dgf_2026_11_23.md)). Every ×2 head writes token seams (border / within
+  first difference 1.23 – 1.28, chain 1.02).
+- Open, on the user's read of more sheets after the RGBA read (2026-11-23: "seam만 줄이면 사실 거의
+  해결된다고는 봐"): how to remove the token seams. Proposed, not queued:
+  1. decode twice with the token grid shifted half a token (one more DiT forward at the last step
+     on x_t shifted one latent pixel) and blend with weights at 0 on each decode's token borders;
+     no training; a probe on a few renders of `x2dll` / `x2dgf512`, read by the edge ratio and
+     sheets;
+  2. training: a border first-difference term against the target, or a full-resolution refine
+     stage at ×2.
+  Noise injection (below) addresses the stamp, not the seam.
 
 ## A fixed pattern after the GAN finetune (2026-11-22)
 

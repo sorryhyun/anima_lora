@@ -13,7 +13,8 @@ TOML of field names (field default → ``--config`` → CLI).
     make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_alpha.py \
         --config project/pixel_decoder/configs/<train run>.toml"
 
-Writes ``<output_dir>/<output_name>/``: ``alpha_head.safetensors``, ``result.json`` and
+Writes ``<output_dir>/<output_name>/``: ``alpha_head.safetensors`` (with ``save_every``, also
+``alpha_head_r<N>.safetensors``), ``result.json`` and
 ``GT | alpha head`` sheets of the read sets.
 """
 
@@ -61,6 +62,10 @@ class TrainAlphaRequest(Request):
     dino_tiles: int = _f(4, "224-px tiles per update")
     seed: int = _f(0, "output layer, sample order, σ, noise, replay draws")
     eval_every: int = _f(250, "rollouts")
+    save_every: int = _f(
+        0,
+        "rollouts; also keep alpha_head_r<N>.safetensors at each multiple, 0 = last only",
+    )
     n_sheets: int = _f(8, "sheets at the end")
     compile: bool = _f(True, "compile the DiT, the head and the DINO term")
     dit: str = _f(_CKPTS.dit, "frozen DiT")
@@ -198,6 +203,10 @@ def run(req: TrainAlphaRequest) -> Path:
                     sink.val(ev, global_step=done)
                 save_alpha_head(head, path, stamp | {"rollouts_done": done})
                 sink.ckpt(global_step=done, path=str(path))
+            if req.save_every and done % req.save_every == 0 and done < req.rollouts:
+                kept = out_dir / f"alpha_head_r{done}.safetensors"
+                save_alpha_head(head, kept, stamp | {"rollouts_done": done})
+                sink.ckpt(global_step=done, path=str(kept))
     train_sec = time.perf_counter() - t1
 
     # --- the scores (the file is written at the last read) ---

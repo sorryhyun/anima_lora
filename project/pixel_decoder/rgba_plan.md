@@ -216,6 +216,10 @@ Interpretation:
 
 ### R3. The full run (hour-scale, on the user's word)
 
+- Queued 2026-11-23, shortened on the user's word ("12k는 많고 4k 정도로, 체크포인트는 2k 한번만"):
+  `rgbar3_1123_1701`, 4,000 rollouts, a file at 2,000 (`save_every`), behind `x2dgf512_1123_1701`.
+  The 12,000 design below stays as written.
+
 Facts (as set):
 
 - R2's config with rollouts 1,000 → 12,000 and the DINO term in the place of LPIPS (the
@@ -272,7 +276,6 @@ Ship set, seeds 7, 8, read by no arm before R3:
   count goes into the vendored `pixel_head.py` at the ship step.
 - `p3_generated.py`: a prompt-set switch and the alpha read; `render_alpha.py` (scratchpad,
   2026-11-22) is the read to fold in, with its patch count.
-- `train_alpha.py`: a head file every N rollouts.
 - Decode, catalog, node and docs only after the ship read.
 
 ## Not in this plan
