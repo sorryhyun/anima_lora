@@ -345,6 +345,10 @@ class X1Trainer:
         self.head, self.cfg, self.dino = head, cfg, dino
         self.disc = disc if cfg.pegan_ratio > 0 else None
         self.dino_ema: float | None = None
+        if compile:  # one compile over every image size (pixel_head_compile)
+            from library.anima.pixel_head_compile import opaque_dwconv_
+
+            opaque_dwconv_(head)
         self.head_c = torch.compile(head, dynamic=True) if compile else head
         # without a skip the linear never runs: no updates and no weight decay on it
         params = [

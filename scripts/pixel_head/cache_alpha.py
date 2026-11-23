@@ -35,6 +35,13 @@ class CacheAlphaRequest(Request):
     """Cache the alpha head's inputs."""
 
     cutouts: str = _f("", "RGBA cutouts: <artist>/<id>.png + .txt")
+    extra_cutouts: str = _f(
+        "",
+        "comma-separated folders (<artist>/<id>.png or flat <id>.png) that only train",
+    )
+    thin: str = _f(
+        "", "<artist>:<frac>, keep a stable share of that artist's train-only cutouts"
+    )
     bg_source: str = _f("image_dataset", "whose simple backgrounds give the colours")
     cache_dir: str = _f("post_image_dataset/pixel_alpha", "the cache")
     draws: int = _f(1, "train draws per cutout and background kind")
@@ -112,7 +119,19 @@ def run(req: CacheAlphaRequest) -> Path:
     cuts = D.load_cutouts(
         Path(resolve_under_home(Path(req.cutouts).expanduser())), limit=req.limit
     )
-    fit, read = D.pick_stress(cuts, req.n_read)
+    fit, read = D.pick_stress(cuts, req.n_read)  # from `cutouts` alone: the read stays
+    if req.thin:
+        artist, frac = req.thin.rsplit(":", 1)
+        picked = {c.key for c in fit + read}
+        cuts = [
+            c
+            for c in cuts
+            if c.key in picked or D.thin_keep(c.key, artist, float(frac))
+        ]
+    for extra in filter(None, (e.strip() for e in req.extra_cutouts.split(","))):
+        cuts = D.dedup(
+            cuts + D.load_cutouts(Path(resolve_under_home(Path(extra).expanduser())))
+        )
     pack = default_vocab_pack()
     recipe = {
         "dit": C.file_id(resolve_under_home(req.dit)),

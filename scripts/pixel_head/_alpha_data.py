@@ -178,14 +178,21 @@ def _load_cutout(png: Path) -> Cutout:
 
 
 def load_cutouts(root: Path, limit: int = 0) -> list[Cutout]:
-    """``root``'s cutouts at decode size, reposts dropped; ``limit``: the first N files."""
-    files = sorted(root.glob("*/*.png"))
+    """``root``'s cutouts at decode size, reposts dropped; ``limit``: the first N files.
+
+    ``root`` holds ``<artist>/<id>.png``, or, flat, ``<id>.png`` (key ``<root name>_<id>``).
+    """
+    files = sorted(root.glob("*/*.png")) or sorted(root.glob("*.png"))
     if limit:
         files = files[:limit]
     if not files:
-        raise FileNotFoundError(f"{root}: no <artist>/<id>.png")
+        raise FileNotFoundError(f"{root}: no <artist>/<id>.png or <id>.png")
     with ThreadPoolExecutor(10) as ex:
-        cuts = list(ex.map(_load_cutout, files))
+        return dedup(list(ex.map(_load_cutout, files)))
+
+
+def dedup(cuts: list[Cutout]) -> list[Cutout]:
+    """Reposts and near-identical variants dropped: the first one stays."""
     out, small, seen = [], [], set()
     for c in cuts:  # reposts and near-identical variants: the first one stays
         if c.sha in seen:
@@ -197,6 +204,13 @@ def load_cutouts(root: Path, limit: int = 0) -> list[Cutout]:
         small.append(m)
         out.append(c)
     return out
+
+
+def thin_keep(key: str, artist: str, frac: float) -> bool:
+    """A stable ``frac`` share of ``artist``'s keys (``<artist>_<stem>``)."""
+    if not key.startswith(artist + "_"):
+        return True
+    return zlib.crc32(key.encode()) / 2**32 < frac
 
 
 def pick_stress(cuts: list[Cutout], n: int) -> tuple[list[Cutout], list[Cutout]]:

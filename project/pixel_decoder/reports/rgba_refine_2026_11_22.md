@@ -1,6 +1,7 @@
 # RGBA refine arm — a full-resolution refine stage on the alpha head (2026-11-22)
 
-`rgbarf_1122_2110` against its parent `rgbar2_1122_1550`, both in `../configs/`; the plan:
+`rgbarf_1122_2110` against its parent `rgbar2_1122_1550` (configs deleted 2026-11-23, in git up to
+`222d5dd0`); the plan:
 `../rgba_plan.md`. The refine code was reverted after this read; the config no longer parses.
 
 ## Facts
