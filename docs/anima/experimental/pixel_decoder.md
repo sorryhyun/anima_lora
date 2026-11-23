@@ -190,6 +190,7 @@ under a sin² window so no patch border carries a step).
 |---|---|---|
 | `anima_pixel_head` | `x1/anima_pixel_decoder_base.safetensors` | ×1, the default |
 | `anima_pixel_head_sharp` | `x1/anima_pixel_decoder_sharp.safetensors` | ×1 with a GAN finish at the base points |
+| `anima_pixel_head_rgba` | `x1/anima_pixel_decoder_rgba_preview.safetensors` | ×1 writing RGB and alpha (preview), base points only |
 | `anima_pixel_head_x2` | `x2/anima_pixel_head_x2.safetensors` | ×2 only, base points only |
 
 `load_pixel_head` builds the form from the file's metadata (`width`, `depth`, `up`, `channels`,

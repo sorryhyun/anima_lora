@@ -1,0 +1,30 @@
+# R6: rgbar5_1123_2305 with lr 2e-5 -> 5e-5, nothing else changed (cache pixel_alpha_r4, 4,000
+#   rollouts, warmup 200, seed 0, a file at 2,000, DINO 331.6 on RGB and alpha, init
+#   x1dll_1123_0821).
+# Question: is R5's alpha held back by the fit or by the data? The train images' alpha L1
+#   (new_bg) falls away from the unseen images' (other) -> the fit was the limit, and data is
+#   what closes the gap after it. Both stay near R5's -> the loss or the output form is next
+#   (a GAN term on alpha, overlapping output patches).
+# Records it rests on:
+#   - rgbar5_1123_2305 result.json, 4k, new_bg / other: transition 0.215 / 0.227, holes
+#     0.129 / 0.131, thin 0.170 / 0.193, all 0.0208 / 0.0300. new_bg's 16 images are in train.
+#   - reports/rgba_r0_r1_2026_11_22.md, R1 full (alpha-only head, the same 16 images, 5e-5, 375
+#     updates an image against 113 here): new_bg transition 0.099, holes 0.025, thin 0.095.
+#   - README.md, x1 training: a warm start at 5e-5 dips under its init about a quarter as deep
+#     as at 2e-4. RGB dB is read for it.
+# Read: rgba_head.safetensors and _r2000 against R5's, result.json history (new_bg / other by
+#   band, RGB dB); render_alpha.py on the 8 working renders (flat mid tiles, RGB dB against the
+#   init head), labelled; the user's read decides.
+# Bars: spread unknown.
+# Cost: 4,000 rollouts, about 41 min (R5: 2,487 s).
+output_name = "rgbar6_1124_0034"
+cache_dir = "post_image_dataset/pixel_alpha_r4"
+init = "output/pixel_head/x1dll_1123_0821/head.safetensors"
+rollouts = 4000
+lr = 5e-5
+warmup = 200
+lambda_rgb = 1.0
+lambda_dino = 331.6
+lambda_dino_alpha = 331.6
+seed = 0
+save_every = 2000

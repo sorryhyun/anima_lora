@@ -211,3 +211,6 @@ def test_catalog_row():
     assert x2.repo == asset.repo
     assert asset.dest.name == downloads.ANIMA_PIXEL_HEADS_DIR
     assert downloads.by_id()["anima_pixel_head_sharp"].dest == asset.dest
+    rgba = downloads.by_id()["anima_pixel_head_rgba"]
+    assert rgba.files == (downloads.ANIMA_PIXEL_HEAD_RGBA_FILE,)
+    assert (rgba.dest, rgba.subfolder) == (asset.dest, "x1")

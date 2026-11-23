@@ -1,8 +1,9 @@
 # RGBA output — plan (rewritten 2026-11-23)
 
 One ×1 head that writes RGB and alpha together, for renders on a white or light simple background.
-State: R5 `rgbar5_1123_2305` (the first run of the form) done, 2026-11-23 (Records); next, object
-cutouts into the cache (Next 1).
+State: R6 `rgbar6_1124_0034` (R5 at LR 5e-5) shipped as the preview, 2026-11-24: Hub
+`x1/anima_pixel_decoder_rgba_preview.safetensors`, catalog `anima_pixel_head_rgba`, node 0.4.0
+(Records); next, object cutouts into the cache (Next 1).
 The plan before this date (an alpha-only head in a file of its own, steps R0 – R4) is in git up to
 `222d5dd0`; its results are under Records below.
 
@@ -83,15 +84,15 @@ its cache's were never committed. R5's is `configs/rgbar5_1123_2305.toml`. Outpu
 - Flat mid 8 × 8 tiles (`scripts/pixel_head/render_alpha.py`; 4 prompts × seeds 0, 1, base 28
   steps CFG 4; n = 1 run per column, spread unknown):
 
-  | render | R3 2k | R3 4k | R4 2k | R4 4k | R5 2k | R5 4k |
-  |---|---|---|---|---|---|---|
-  | all 8 | 69 | 144 | 120 | 137 | 406 | 298 |
-  | oldman s0 | 0 | 3 | 0 | 0 | 0 | 0 |
-  | oldman s1 | 1 | 65 | 0 | 0 | 0 | 0 |
-  | bicycle s0 | 21 | 24 | 44 | 76 | 182 | 155 |
-  | bicycle s1 | 47 | 51 | 76 | 58 | 220 | 142 |
-  | maid s0 + s1 | 0 | 1 | 0 | 0 | 0 | 0 |
-  | glass s0 + s1 | 0 | 0 | 0 | 3 | 4 | 1 |
+  | render | R3 2k | R3 4k | R4 2k | R4 4k | R5 2k | R5 4k | R6 2k | R6 4k |
+  |---|---|---|---|---|---|---|---|---|
+  | all 8 | 69 | 144 | 120 | 137 | 406 | 298 | 292 | 264 |
+  | oldman s0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
+  | oldman s1 | 1 | 65 | 0 | 0 | 0 | 0 | 0 | 0 |
+  | bicycle s0 | 21 | 24 | 44 | 76 | 182 | 155 | 139 | 127 |
+  | bicycle s1 | 47 | 51 | 76 | 58 | 220 | 142 | 153 | 135 |
+  | maid s0 + s1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+  | glass s0 + s1 | 0 | 0 | 0 | 3 | 4 | 1 | 0 | 2 |
 
 - Held-out alpha L1 (`result.json` history, 16 images × 3 backgrounds a set), R3 → R4 at 4k:
   `other` all 0.0247 → 0.0279, transition 0.2219 → 0.2255, translucent 0.2656 → 0.2787, thin
@@ -121,6 +122,46 @@ its cache's were never committed. R5's is `configs/rgbar5_1123_2305.toml`. Outpu
   translucent grey in R5.
 - The user (2026-11-24), on the RGB loss and the α-band measure: "뭐 근데 괜찮은것 같은데?"; on
   the RGB target: "rgb는 그냥 rgb대로 놔두는게 맞지않나?"; on the R5 read: "ㅇㅋ 커밋하자".
+- The read set `new_bg` is 16 of the 567 train cutouts on backgrounds, σ and noise of its own;
+  `other` is 16 cutouts outside train (the cache manifest). R1's `full` arm fitted the same 16
+  `new_bg` images alone (an alpha-only head, 375 updates an image; R4 – R6 make 113 a cutout).
+- R6 `rgbar6_1124_0034` (config `configs/rgbar6_1124_0034.toml`; R5 with LR 2e-5 → 5e-5, on the
+  user's word, 2026-11-24: "5e-5 해보자"). Done 2026-11-24, rc 0, 2,456 s. Flat mid tiles: the
+  table above.
+- Alpha L1 at 4k (`result.json` summary, n = 1 run each, spread unknown):
+
+  | band | R1 `new_bg` | R5 `new_bg` | R6 `new_bg` | R5 `other` | R6 `other` |
+  |---|---|---|---|---|---|
+  | all | 0.0065 | 0.0208 | 0.0170 | 0.0300 | 0.0276 |
+  | transition | 0.099 | 0.215 | 0.197 | 0.227 | 0.218 |
+  | translucent | 0.075 | 0.218 | 0.209 | 0.272 | 0.272 |
+  | thin | 0.095 | 0.170 | 0.149 | 0.194 | 0.177 |
+  | holes | 0.025 | 0.129 | 0.068 | 0.131 | 0.115 |
+
+- R6 against R5 at the same rollout: `new_bg` transition 0.213 / 0.225 at 2k, 0.196 / 0.214 at
+  3k; training α rec, mean over rollouts 2,000 – 2,500, 0.039 / 0.059.
+- R6 RGB dB at 4k against R5: against the target 22.62 / 22.21 (`new_bg`), 21.97 / 21.75
+  (`other`); against the init head on the 8 renders 25.4 – 28.0 (maid, oldman, glass) and
+  22.4 / 22.3 (bicycle), R5 21.9 / 21.5 there.
+- Claude's read of R6 (labelled; bicycle s0 / s1 on green and as alpha, R5 4k beside R6 4k):
+  blocks between the spokes and under the wheels in both, about the same extent; outlines of
+  frame and tyres clean in both.
+- The user (2026-11-24), after R6: "내생각에 anima_pixel_decoder_rgba_preview 정도로 내도 될듯?".
+  R6's 4k file is `models/pixel_heads/anima_pixel_decoder_rgba_preview.safetensors` (local),
+  catalog row `anima_pixel_head_rgba`.
+- The ship set through that file (`inference.py --decoder pixel_head`, base 28 steps, CFG 4,
+  seeds 7 / 8, 832 × 1216; `output/pixel_head/rgbar6_1124_0034/ship/` (local)), flat mid tiles:
+  wizard 5 / 20, robot 0 / 0, horse 6 / 1, birdcage 309 / 199, jellyfish 351 / 109, dandelion
+  28 / 37. Every file is saved as an RGBA PNG.
+- Claude's read of the ship set (labelled, on a checker and as alpha): wizard, robot and horse
+  split with clean outlines, mane and tail strands kept; birdcage has blocks between the bars in
+  both seeds; the jellyfish's veil is opaque white with blocks at its rim; the dandelion's seed
+  head and stem hold, with small opaque patches at the ground.
+- The user (2026-11-24), on the ship set's sheets and the three steps: "ㅇㅇ 업로드 푸시 퍼블리시".
+  Hub `sorryhyun/anima-pixel-decoder` commit `f6fa1430` (the file, `samples/rgba_preview.png`, the
+  card's RGBA section); node `ComfyUI-Anima-PixelDecoder` 0.4.0 (`c3e4a67`, pushed and published).
+- In ComfyUI 0.43 (the user's running instance, base 28 steps, CFG 4, the maid prompt, seed 0):
+  Anima Pixel Decode with the file → Save Image wrote an RGBA PNG, α = 0 on 75.4 % of the pixels.
 
 ### Interpretation
 
@@ -133,6 +174,13 @@ its cache's were never committed. R5's is `configs/rgbar5_1123_2305.toml`. Outpu
   0 < α ≤ 0.1, which the composite does not carry; it shows little at that α.
 - R5's larger bicycle tile count is R4's blocks moved to mid α. The wheels are an object case, with
   no object cutouts in the cache: the RGB weight is not the lever for them.
+- R6, holes: the train images fell to about half of R5's and the unseen ones moved 0.016, so R5's
+  holes were held back by the fit, and what is left between 0.068 and 0.115 is the data's.
+- R6, transition and translucent: both sets stay near 0.2, twice what R1 reached on the same
+  images. The LR does not reach the edge band and more cutouts of the same kind would not either;
+  budget, a GAN term on α and overlapping output patches are the untried levers. No ceiling for
+  the band is measured.
+- RGB did not fall with the higher LR. 5e-5 is the candidate LR for the run on object cutouts.
 
 ## Data
 
@@ -153,10 +201,10 @@ its cache's were never committed. R5's is `configs/rgbar5_1123_2305.toml`. Outpu
 
 ### 1. Object cutouts
 
-- Object cutouts into the cache (the user's data), then R5's run on it.
-- The ComfyUI node: a four-channel file returns a four-channel IMAGE; `make vendor-sync` for the
-  pixel node. Local until the ship read; no publish, no Hub file.
-- Ship read on the second prompt set below. The user decides.
+- Object cutouts into the cache (the user's data), then the run on it: R6's config (the user
+  picks R5's LR or R6's).
+- The file that follows replaces the preview on the Hub under a name the user picks; its ship
+  read needs a prompt set no arm has been read on (the ship set below was read for R6).
 
 ## Prompt sets
 

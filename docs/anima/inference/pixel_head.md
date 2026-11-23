@@ -62,12 +62,31 @@ term from rollout 1000 of 4,000; on the turbo it decodes with a warning. Against
 image on held-out images: 29.82 / 25.52 dB, LPIPS 0.158 / 0.145 (test 12 / text 5). Records:
 `project/pixel_decoder/reports/x2_full_run_deploy_2026_11_21.md`.
 
+## RGBA output (preview)
+
+`anima_pixel_head_rgba` (Hub `x1/anima_pixel_decoder_rgba_preview.safetensors`, local
+`models/pixel_heads/anima_pixel_decoder_rgba_preview.safetensors`; run `rgbar6_1124_0034`) is the ×1
+head with a fourth output channel: one readout writes RGB and alpha, and the render is saved as a
+transparent PNG.
+
+```bash
+make test PIXEL=1 PIXEL_HEAD=models/pixel_heads/anima_pixel_decoder_rgba_preview.safetensors
+python inference.py … --decoder pixel_head --pixel_head <the RGBA file>
+```
+
+End the prompt with `white background` (or a light simple background): the head was trained on
+character cutouts laid on white and light backgrounds, at the base points only (shift-3 Euler
+20 … 50 steps), so on the turbo it decodes with a warning. The colour is straight (not
+premultiplied). A preview: people and single objects with a closed outline split cleanly; regions
+of background enclosed by thin structure (the space between a wheel's spokes) can come out as
+8-px blocks of mixed alpha. Records: `project/pixel_decoder/rgba_plan.md`.
+
 ## ComfyUI
 
 The node pack `ComfyUI-Anima-PixelDecoder` (`comfyui-anima-pixel-decoder` under
 `../comfy/custom_nodes/`): **Anima Pixel Head Tap** on the MODEL before the KSampler (stock or
 Spectrum), **Anima Pixel Decode** (tapped MODEL, the sampler's LATENT, head file) in place of VAE
-Decode; it decodes at the head file's own scale (no scale input since 0.3.1). The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
+Decode; it decodes at the head file's own scale (no scale input since 0.3.1). With the RGBA file the IMAGE has four channels (0.4.0), which Save Image writes as a transparent PNG. The head file goes in `models/pixel_heads/`, or in a VAE folder under a name containing
 `pixel_head`. Run the DiT on the fp32 stream (Anima Adapter Loader `stream = fp32`), as the head
 was trained. Turbo in ComfyUI 0.43: 1.127 s per image with VAE Decode, 1.005 s with the head
 (`bench/pixel_readout/comfy_e2e.py`, `project/pixel_decoder/archive/comfy_node_2026_11_19.md` (local)).

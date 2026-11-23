@@ -71,6 +71,8 @@ ANIMA_PIXEL_HEAD_SUBFOLDER = "x1"
 ANIMA_PIXEL_HEAD_FILE = "anima_pixel_decoder_base.safetensors"
 # The base with a GAN finish; never a default, picked with --pixel_head / PIXEL_HEAD=.
 ANIMA_PIXEL_HEAD_SHARP_FILE = "anima_pixel_decoder_sharp.safetensors"
+# RGBA preview: RGB and alpha from one readout, base points only; picked like the sharp file.
+ANIMA_PIXEL_HEAD_RGBA_FILE = "anima_pixel_decoder_rgba_preview.safetensors"
 # The ×2 file (``--pixel_scale 2``): decodes and 2× upscales in one readout, no ×1 output.
 ANIMA_PIXEL_HEAD_X2_SUBFOLDER = "x2"
 ANIMA_PIXEL_HEAD_X2_FILE = "anima_pixel_head_x2.safetensors"
@@ -484,6 +486,19 @@ def anima_catalog() -> tuple[Asset, ...]:
             used_by="inference.py --decoder pixel_head --pixel_head <this file> (PIXEL=1 PIXEL_HEAD=…)",
             notes="~95 MB. The ×1 head with a GAN finish at the base points: sharper "
             "detail, further from the VAE decode; on the turbo it decodes like the base file.",
+        ),
+        Asset(
+            id="anima_pixel_head_rgba",
+            pack="anima-pixel-head",
+            title="Anima pixel head RGBA (preview)",
+            repo=ANIMA_PIXEL_HEAD_REPO,
+            files=(ANIMA_PIXEL_HEAD_RGBA_FILE,),
+            subfolder=ANIMA_PIXEL_HEAD_SUBFOLDER,
+            dest=models_dir() / ANIMA_PIXEL_HEADS_DIR,
+            used_by="inference.py --decoder pixel_head --pixel_head <this file> (PIXEL=1 PIXEL_HEAD=…)",
+            notes="~95 MB. Preview. The ×1 head with a fourth output channel: a render on "
+            "a white or light simple background comes out as a transparent PNG. Trained "
+            "on the base DiT at shift-3 Euler 20-50 steps only, on character cutouts.",
         ),
         Asset(
             id="anima_pixel_head_x2",
