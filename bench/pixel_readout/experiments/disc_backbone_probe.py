@@ -254,13 +254,12 @@ def main() -> None:
                 x = torch.cat([z(rtr), z(ftr)])
                 y = torch.cat([torch.ones(len(rtr)), torch.zeros(len(ftr))]).to(device)
                 w, b = fit(x, y, bias=True)
-                acc = lambda r, f: (
-                    0.5
-                    * (  # noqa: E731
-                        ((z(r) @ w + b) > 0).float().mean()
-                        + ((z(f) @ w + b) <= 0).float().mean()
-                    ).item()
-                )
+
+                def acc(r, f, w=w, b=b):
+                    real_ok = ((z(r) @ w + b) > 0).float().mean()
+                    fake_ok = ((z(f) @ w + b) <= 0).float().mean()
+                    return 0.5 * (real_ok + fake_ok).item()
+
                 un_tr, un_te = acc(rtr, ftr), acc(rte, fte)
                 # paired: w · (φ(real) − φ(head)) > 0 at the same place
                 d = (rtr - ftr) / sd
