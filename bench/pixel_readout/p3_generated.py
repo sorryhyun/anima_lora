@@ -80,7 +80,17 @@ from library.anima.pixel_head import (
     lat_patches,
     load_pixel_head,
 )
-from library.anima.pixel_head_train import (
+from library.anima.vocab_pack import default_vocab_pack
+from library.anima.weights import _attach_vocab_pack_if_set
+from library.env import resolve_under_home
+from library.inference.args import build_default_args
+from library.inference.generation import generate_body
+from library.inference.models import load_text_encoder
+from library.inference.sampling import get_timesteps_sigmas
+from library.inference.text import prepare_text_inputs
+from library.models import qwen_vae
+from scripts.pixel_head.train._setup import DINO_REPO
+from scripts.pixel_head.train._common import (
     DinoFeat,
     attach_adapter,
     compile_dit,
@@ -90,16 +100,6 @@ from library.anima.pixel_head_train import (
     tone_stats,
     zoom_sheet,
 )
-from library.anima.vocab_pack import default_vocab_pack
-from library.anima.weights import _attach_vocab_pack_if_set
-from library.env import resolve_under_home
-from scripts.pixel_head._setup import DINO_REPO
-from library.inference.args import build_default_args
-from library.inference.generation import generate_body
-from library.inference.models import load_text_encoder
-from library.inference.sampling import get_timesteps_sigmas
-from library.inference.text import prepare_text_inputs
-from library.models import qwen_vae
 
 HEAD_RUN = "bench/pixel_readout/results/20261119-0959-convnext_1119_0938"
 

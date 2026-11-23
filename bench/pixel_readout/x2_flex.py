@@ -49,10 +49,10 @@ from PIL import Image, ImageOps
 
 from bench._common import make_run_dir, write_result
 from bench.pixel_readout._masters import master_of, target_2x
-from library.anima.pixel_head_train_x1 import TEST_ARTISTS, TEXT_ARTISTS
 from library.env import resolve_under_home
 from library.io.cache import TE_CACHE_SUFFIX
 from library.preprocess.latents import get_latents_npz_path
+from scripts.pixel_head.train._x1_data import split_artists
 
 Image.MAX_IMAGE_PIXELS = None
 TOK_LO = band_for_tier(768)[0]
@@ -199,13 +199,14 @@ def main():
 
     # held-out: the P1 test artists out of training; the read set from their down rows
     rng = random.Random(args.seed)
+    test_artists = split_artists("test_artists")
     for row in kept_rows:
-        row["split"] = "heldout" if row["artist"] in TEST_ARTISTS else "train"
-    for a in TEST_ARTISTS:
+        row["split"] = "heldout" if row["artist"] in test_artists else "train"
+    for a in test_artists:
         downs = [r for r in kept_rows if r["artist"] == a and r["kind"] == "down"]
         for r in rng.sample(downs, min(args.per_test_artist, len(downs))):
             r["split"] = "test"
-    for a in TEXT_ARTISTS:
+    for a in split_artists("text_artists"):
         downs = [r for r in kept_rows if r["artist"] == a and r["kind"] == "down"]
         best = max(
             downs,

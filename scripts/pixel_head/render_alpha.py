@@ -19,7 +19,6 @@ from PIL import Image
 from bench._anima import DEFAULT_NEG
 from bench._common import start_heartbeat
 from library.anima.pixel_head import PATCH, PixelTap, load_pixel_head
-from library.anima.pixel_rgba import straight_rgba
 from library.anima.vocab_pack import default_vocab_pack
 from library.anima.weights import _attach_vocab_pack_if_set
 from library.env import default_checkpoints, resolve_under_home
@@ -27,8 +26,8 @@ from library.inference.args import build_default_args
 from library.inference.generation import generate_body
 from library.inference.models import load_text_encoder
 from library.inference.text import prepare_text_inputs
-from scripts.pixel_head._alpha_read import on_checker, rgb_db
-from scripts.pixel_head._setup import load_models
+from scripts.pixel_head.train._alpha_read import on_checker, rgb_db
+from scripts.pixel_head.train._setup import load_models
 
 Q = "masterpiece, best quality, score_7, safe. "
 TALL = (1216, 832)
@@ -173,7 +172,7 @@ for (name, _, (h, w)), (ctx, null) in zip(PROMPTS, ctxs):
         for t, head in heads.items():
             x = decode(head)
             c, a = x[..., :3], x[..., 3]
-            rgba = straight_rgba(c, a)
+            rgba = x.clip(0, 1)  # straight colour and α, as the head writes them
             Image.fromarray(np.round(rgba * 255).astype(np.uint8)).save(
                 out / t / f"{name}_s{seed}.png"
             )

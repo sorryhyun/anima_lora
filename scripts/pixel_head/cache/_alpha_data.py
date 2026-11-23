@@ -19,7 +19,6 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from library.anima.pixel_rgba import affine_grid, border_mask, fit_field
 from library.anima.pixel_head import PATCH
 
 BG_KINDS = ("white", "flat", "field")
@@ -30,6 +29,37 @@ LUMA = np.array([0.299, 0.587, 0.114], np.float32)
 
 
 # ---------------------------------------------------------------- backgrounds
+
+
+def affine_grid(h: int, w: int) -> np.ndarray:
+    y, x = np.mgrid[0:h, 0:w].astype(np.float32)
+    return np.stack([np.ones_like(x), x / (w - 1) - 0.5, y / (h - 1) - 0.5], -1)
+
+
+def fit_field(c: np.ndarray, mask: np.ndarray):
+    """Robust affine colour fit on ``mask`` → (coef, inlier share, residual std)."""
+    X, C = affine_grid(*mask.shape)[mask], c[mask]
+    if len(C) > 40000:
+        pick = np.linspace(0, len(C) - 1, 40000).astype(int)
+        X, C = X[pick], C[pick]
+    keep = np.abs(C - np.median(C, 0)).max(1) < 40 / 255
+    if keep.mean() < 0.2:
+        return None
+    for th in (30, 18, 12, 8):
+        k = np.linalg.lstsq(X[keep], C[keep], rcond=None)[0]
+        new = np.abs(C - X @ k).max(1) < th / 255
+        if new.mean() < 0.2:
+            break
+        keep = new
+    res = float((C[keep] - X[keep] @ k).std())
+    return k.astype(np.float32), float(keep.mean()), res
+
+
+def border_mask(h: int, w: int) -> np.ndarray:
+    b = max(4, round(0.025 * max(h, w)))
+    m = np.ones((h, w), bool)
+    m[b:-b, b:-b] = False
+    return m
 
 
 def _border_fit(txt: Path):
@@ -126,6 +156,12 @@ class Cutout:
     def composite(self, bg: np.ndarray) -> np.ndarray:
         x = self.premul + (1 - self.alpha[..., None]) * bg
         return np.round(x.clip(0, 1) * 255).astype(np.float32) / 255
+
+    def target(self, comp: np.ndarray) -> np.ndarray:
+        """The RGBA head's target (H, W, 4) in [0, 1]: the image's own colour where α > 0,
+        ``comp`` (the background it was laid on) where α = 0, and α."""
+        rgb = np.where(self.a[..., None] > 0, self.fg.astype(np.float32) / 255, comp)
+        return np.dstack([rgb, self.alpha]).astype(np.float32)
 
     def rng(self, *salt) -> np.random.Generator:
         return np.random.default_rng(

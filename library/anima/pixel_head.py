@@ -21,9 +21,8 @@ Pieces:
 - :func:`out_of_range` — whether a decode point lies outside the σ ranges the head was
   trained at (``sigma`` in the metadata); callers warn, never refuse.
 
-Training: ``scripts/pixel_head/`` (``base_x1.py``, ``train_x1.py``, ``train_x2.py``) on
-``library/anima/pixel_head_train_x1.py`` and ``pixel_head_train.py``. Evals and probes:
-``bench/pixel_readout/``.
+Training (×1, ×2, RGBA): ``scripts/pixel_head/`` (entry points; modules in ``train/``,
+``cache/``). Evals and probes: ``bench/pixel_readout/``.
 """
 
 from __future__ import annotations

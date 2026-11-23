@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from library.lines.requests import request_field as _f
-from scripts.pixel_head._x1 import X1Request
+from scripts.pixel_head.train._x1_run import X1Request
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
@@ -74,15 +74,12 @@ def main() -> None:
 
     from bench._common import make_run_dir, start_heartbeat, write_result
     from library.anima.pixel_head import load_pixel_head
-    from library.anima.pixel_head_train_x1 import (
-        X1Rollout,
-        held_out_split,
-        item_tokens,
-    )
     from library.datasets.buckets import cluster_token_bands
     from library.env import resolve_under_home
     from library.inference.text import prepare_text_inputs
-    from scripts.pixel_head._setup import load_models
+    from scripts.pixel_head.train._setup import load_models
+    from scripts.pixel_head.train._x1_data import held_out_split
+    from scripts.pixel_head.train._x1_trainer import X1Rollout, item_tokens
 
     req = ProbeRequest.from_argv()
     start_heartbeat()

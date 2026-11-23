@@ -133,7 +133,7 @@ Web-SSL (Fan et al., arXiv:2504.01017):
 - Code: `DinoFeat` (`library/anima/pixel_head_train.py`), the term and its weight rule in
   `X1Trainer` (`library/anima/pixel_head_train_x1.py`) and `X2Trainer`, the fields `dino`, `lambda_dino`,
   `dino_tiles`, `dino_match_lpips` and the read columns `dino_*`, `lpips_null`, `dino_null` in
-  `scripts/pixel_head/_x1.py`. Test: `tests/test_pixel_dino.py`.
+  `scripts/pixel_head/train/_x1_run.py`. Test: `tests/test_pixel_dino.py`.
 - Run 2026-11-22: `x1dv3s_1122_2240` (DINOv3 ViT-S/16), `x1lp_1122_2240` (the LPIPS control),
   `x1dv3sb28_1122_2240` (generated renders through both heads). Design, question, read and
   bars: the header of `configs/x1dv3s_1122_2240.toml`. Result:

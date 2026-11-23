@@ -66,7 +66,6 @@ from library.anima.pixel_head import (
     lat_patches,
     load_pixel_head,
 )
-from library.anima.pixel_head_train import attach_adapter, compile_dit, psnr
 from library.anima.vocab_pack import default_vocab_pack
 from library.anima.weights import _attach_vocab_pack_if_set
 from library.env import resolve_under_home
@@ -76,6 +75,7 @@ from library.inference.models import load_text_encoder
 from library.inference.sampling import get_timesteps_sigmas
 from library.inference.text import prepare_text_inputs
 from library.models import qwen_vae
+from scripts.pixel_head.train._common import attach_adapter, compile_dit, psnr
 from scripts.tasks.inference import _spectrum_flags
 
 HEAD_RUN = "bench/pixel_readout/results/20261119-1527-mixr_1119_1455"

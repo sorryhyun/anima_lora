@@ -8,14 +8,14 @@ import torch
 from transformers import DINOv3ViTConfig, DINOv3ViTModel
 
 from library.anima.pixel_head import PATCH, PixelHead, PixelHeadX2, drop_x1_output
-from library.anima.pixel_head_train import (
-    DinoFeat,
+from scripts.pixel_head.train._common import DinoFeat
+from scripts.pixel_head.train._x1_trainer import X1TrainConfig, X1Trainer
+from scripts.pixel_head.train._x2_trainer import (
     Window,
     X2TrainConfig,
     X2Trainer,
     pick_window,
 )
-from library.anima.pixel_head_train_x1 import X1TrainConfig, X1Trainer
 
 D_FEAT = 32
 GH = GW = 6  # 96-px images: one tile is the whole image

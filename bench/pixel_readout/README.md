@@ -11,12 +11,12 @@ library and this package's `_*.py`, never another script: `_shared.py` (run look
 `_prompts.py` (P3's prompts), `_teacher.py` (the ResShift ×2 student), `_masters.py` (real 2×
 targets).
 
-Training of the settled recipes is in `scripts/pixel_head/`:
+Training of the settled recipes is in `scripts/pixel_head/` (entry points; their modules in `train/`):
 
 - ×1 base: `base_x1.py` (`configs/pixel_head/base_x1.toml`)
 - ×1 GAN finish on the base: `train_x1.py` (`configs/pixel_head/x1.toml`)
 - ×2: `train_x2.py` (`configs/pixel_head/x2.toml`; the real 2× image as the target, PE-GAN
-  from a start rollout), on `library/anima/pixel_head_train.py`
+  from a start rollout), on `train/_x2_trainer.py` and `train/_common.py`
 
 The heads' perceptual term is the DINOv3 ViT-S/16 tile distance (`DinoFeat`); LPIPS is gone
 from training and from the reads (`project/pixel_decoder/plan.md`, "LPIPS → DINO"). The arms
@@ -58,7 +58,7 @@ git up to `370ae506`, the last three up to `cfc75c5d`). They import this package
 | `pegan_speed.py` | PE-GAN update time: token reuse, batched noised crops, compiled tower | `archive/x2_gan_micro_2026_11_21.md` (local) |
 | `x2_dmd.py` | `X2Critic`: the SR line's RSD critic on the ×2 output (frozen ResShift ×2 teacher, fake critic, GAN head, VQ-f4 encoder); a module, no CLI | `archive/x2_critic_2026_11_20.md` (local) |
 | `x2_dprobe.py` | discriminator probes behind `x2_head.py --dprobe`: one PE-Spatial discriminator per fake source or frequency band, the head frozen | `archive/x2_disc_probes_2026_11_21.md` (local) |
-| `x2_pegan.py` | the PE-Spatial discriminator's first copy; now `PEDisc` in `library/anima/pixel_head_train.py` | `archive/x2_arm_b_2026_11_20.md` (local) |
+| `x2_pegan.py` | the PE-Spatial discriminator's first copy; now `PEDisc` in `scripts/pixel_head/train/_common.py` | `archive/x2_arm_b_2026_11_20.md` (local) |
 
 ### Archived (2026-11-23, LPIPS → DINO)
 
@@ -71,7 +71,7 @@ git up to `f839c1b0`). The recipes they ran live on in `scripts/pixel_head/`.
 | `experiments/x2_head.py` | ×2 head on windows against ResShift ×2 of VAE(x̂0) or the real 2× image (arm B), `--chain` teacher reads, `--pegan*` | `archive/x2_arm_a_2026_11_19.md` (local), `archive/x2_lpips_dc_2026_11_19.md` (local), `archive/x2_critic_2026_11_20.md` (local) |
 | `experiments/lpips_grad_probe.py` | ∂LPIPS/∂v through a head against the VAE decode of a token window | `reports/lpips_grad_2026_11_21.md` |
 
-Every script compiles through `library/anima/pixel_head_train.py::compile_dit` (a compile cache per seq-band
+Every script compiles through `scripts/pixel_head/train/_common.py::compile_dit` (a compile cache per seq-band
 signature; a shared cache replayed head training's 4032–4200 guard into the 3952–4096 P3 renders).
 
 All run through the daemon, e.g.:

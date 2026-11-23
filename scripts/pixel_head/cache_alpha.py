@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Cache the alpha head's inputs: cutouts on light backgrounds, up to the DiT's door.
+"""Cache the RGBA head's inputs: cutouts on light backgrounds, up to the DiT's door.
 
 Composite (white | flat light colour | light gradient with grain) → VAE latent, caption →
-TE + llm_adapter embed, and the alpha (``scripts/pixel_head/_alpha_cache.py``). No DiT
+TE + llm_adapter embed, and the cutout itself, colour and α
+(``scripts/pixel_head/cache/_alpha_cache.py``). No DiT
 forward and no feature on disk: training runs the DiT (``scripts/pixel_head/train_rgba.py``).
-A rerun encodes only what changed, and loads no model when nothing did.
+A rerun encodes only what changed (a cutout file without colour is rewritten, its latent
+kept), and loads no model when nothing did.
 
 Every flag is a :class:`CacheAlphaRequest` field; ``--config <file.toml>`` takes a flat
 TOML of field names (field default → ``--config`` → CLI).
@@ -32,7 +34,7 @@ _CKPTS = default_checkpoints()
 
 @dataclass
 class CacheAlphaRequest(Request):
-    """Cache the alpha head's inputs."""
+    """Cache the RGBA head's inputs."""
 
     cutouts: str = _f("", "RGBA cutouts: <artist>/<id>.png + .txt")
     extra_cutouts: str = _f(
@@ -58,7 +60,7 @@ def encode_captions(req: CacheAlphaRequest, root: Path, pack, rows: list, device
     """One embed file per row of ``rows``; the TE and the llm_adapter are freed after."""
     import torch
 
-    from scripts.pixel_head import _alpha_cache as C
+    from scripts.pixel_head.cache import _alpha_cache as C
     from library.anima.models import Anima
     from library.anima.weights import load_llm_adapter
     from library.inference.models import load_text_encoder
@@ -104,8 +106,8 @@ def run(req: CacheAlphaRequest) -> Path:
     import numpy as np
     import torch
 
-    from scripts.pixel_head import _alpha_cache as C
-    from scripts.pixel_head import _alpha_data as D
+    from scripts.pixel_head.cache import _alpha_cache as C
+    from scripts.pixel_head.cache import _alpha_data as D
     from library.anima.vocab_pack import default_vocab_pack
     from library.datasets.image_utils import IMAGE_TRANSFORMS
     from library.models import qwen_vae
@@ -143,6 +145,9 @@ def run(req: CacheAlphaRequest) -> Path:
     }
     rows = C.plan_rows(cuts, fit, read, req.draws, recipe)
     todo = [r for r in rows if not C.is_current(root, r)]
+    recut = {r.key for r in todo} | {
+        k for k in {r.key for r in rows} if not C.cutout_current(root, k)
+    }
     texts = [
         r
         for r in {r.text: r for r in todo}.values()
@@ -150,11 +155,11 @@ def run(req: CacheAlphaRequest) -> Path:
     ]
     print(
         f"cutouts {len(cuts)}, never train {len(read)}; backgrounds {len(palette)} light "
-        f"of {pal['found']}; rows {len(rows)}, to encode {len(todo)}, captions "
-        f"{len(texts)}  ({time.perf_counter() - t0:.0f}s)",
+        f"of {pal['found']}; rows {len(rows)}, to encode {len(todo)}, cutout files "
+        f"{len(recut)}, captions {len(texts)}  ({time.perf_counter() - t0:.0f}s)",
         flush=True,
     )
-    if not todo:
+    if not todo and not recut:
         C.write_manifest(root, recipe, rows)
         print(f"cache current → {root}", flush=True)
         return root
@@ -162,10 +167,12 @@ def run(req: CacheAlphaRequest) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     C.drop_manifest(root)  # no half-rebuilt cache behind a finished manifest
     by_key = {c.key: c for c in cuts}
-    stale = {r.key for r in todo}
-    coloured = {r.key for r in rows if r.set in C.READ_SETS}  # the read needs fg
     with ThreadPoolExecutor(4) as io:
-        list(io.map(lambda k: C.write_cutout(root, by_key[k], k in coloured), stale))
+        list(io.map(lambda k: C.write_cutout(root, by_key[k]), recut))
+    if not todo:
+        C.write_manifest(root, recipe, rows)
+        print(f"cutout files written → {root}", flush=True)
+        return root
 
     device = torch.device(req.device)
     if texts:

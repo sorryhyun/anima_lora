@@ -54,7 +54,8 @@ There is no linear skip from f. Output layers run in fp32. A ×2 file has no ×1
   of the LPIPS-VGG term it replaced (0.05 on ×1, 0.1 on ×2), read on a trained head
   (`reports/x1_dino_2026_11_22.md`, `reports/x2_dino_2026_11_23.md`). The heads trained before
   2026-11-23 carry the LPIPS term.
-- The scripts are in `scripts/pixel_head/`, their values in `configs/pixel_head/`.
+- The entry points are in `scripts/pixel_head/` (modules in `train/`), their values in
+  `configs/pixel_head/`.
 
 ### GAN term
 
@@ -251,9 +252,12 @@ The user's calls on how this line is run and recorded.
 
 - Backgrounds are white and the light colours of the dataset's simple backgrounds.
 - The whole head trains; no arm trains a part of it. A submit report names the arm list.
-- The cache holds the DiT's inputs only (VAE latent, TE, alpha); the frozen DiT runs in the
-  training loop.
-- `library/anima/` keeps the head and the decode; cache, data and eval code live in
-  `scripts/pixel_head/_alpha_*.py`.
+- The cache holds the DiT's inputs only (VAE latent, TE, the cutout with its colour); the frozen
+  DiT runs in the training loop.
+- `library/anima/` keeps the head and the decode only. The entry points are
+  `scripts/pixel_head/*.py`; the training modules (trainers, losses, data splits, the RGBA
+  read) `scripts/pixel_head/train/`, the RGBA cache and its data `scripts/pixel_head/cache/`.
+- Artist names stay out of the code: the ×1 held-out split is the local
+  `output/pixel_head/x1_split.json`.
 - A read leads with the transparent / opaque split, translucency second (`rgba_plan.md`
   Priority).

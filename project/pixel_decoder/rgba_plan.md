@@ -1,8 +1,7 @@
 # RGBA output — plan (rewritten 2026-11-23)
 
 One ×1 head that writes RGB and alpha together, for renders on a white or light simple background.
-State: the design and the pixel head code are under review; no run is queued or proposed for
-queueing until the review is read by the user.
+State: the code is written to the user's form (2026-11-23); nothing is queued.
 The plan before this date (an alpha-only head in a file of its own, steps R0 – R4) is in git up to
 `222d5dd0`; its results are under Records below.
 
@@ -32,37 +31,31 @@ The plan before this date (an alpha-only head in a file of its own, steps R0 –
 ### Facts (as set by the user, 2026-11-23)
 
 - One head, one file, four output channels: RGB and α.
-- RGB is left as it is: the target and the output of the RGB head it starts from. No premultiplied
-  or background-free colour target.
+- The target is the RGBA image itself: "투명 a 채널이 붙어있는 이미지의 rgb는 그대로 동일하게 쓰고 a는
+  추가로 하는건데". Where α = 0 the image has no colour; there the target is the composite's, the
+  background the cutout was laid on (the user: "a=0이면 배경색 어 맞아").
+- No extra measurement of the RGB (the user: "측정은 하지마 굳이 할필요 없는듯").
 
-### A candidate (Claude's; not agreed, part of the review below)
+### As written (2026-11-23)
 
 - `PixelHead`'s upsampled form with the output layer 512 → 8 × 8 × 4. Trunk and the RGB rows of the
   output layer from the init head, the α rows fresh (32,832 parameters more than the RGB head).
-- Init `x1dll_1123_0821`, the head behind Hub `x1/anima_pixel_decoder_base.safetensors`, so the
-  file's RGB is the shipped decoder's. R1 – R4 started from `x1ll_1122_1000`.
-- RGB term: `rec_loss` between the head's RGB and the frozen init head's RGB on the same features,
-  weight 1 (not measured). It is 0 at the start and needs no cutout colour in the cache.
-- α term: R4's, unchanged. Target a = 2α − 1, `rec_loss` + the DINO term on a as three channels,
-  λ 331.6 (the ×1 weight; not measured on alpha).
+- Init `x1dll_1123_0821`, the head behind Hub `x1/anima_pixel_decoder_base.safetensors`. R1 – R4
+  started from `x1ll_1122_1000`.
+- Target (`Cutout.target`): RGB = the cutout's straight colour where α > 0, the composite where
+  α = 0; a = 2α − 1.
+- Loss: `lambda_rgb` · rec(RGB) + rec(a) + 331.6 · DINO(RGB) + 331.6 · DINO(a as three channels).
+  331.6 is the ×1 weight on both (the base head trained its RGB with it); not measured on alpha.
 - The whole head trains (`README.md`, Rules).
-- Decode: α = clamp((a + 1) / 2, 0, 1), colour C = the head's RGB. A PNG's straight colour comes
-  from the fringe step below, done at decode and not learned:
-
-      B = affine colour field fitted on C where α ≤ 0.02
-      P = clamp(C − (1 − α) · B, 0, α)
-      F = P / α where α > 0, else 0
+- Decode: the head's RGB is straight colour; saved with α = clamp((a + 1) / 2, 0, 1) as it is.
+  No fringe step.
 
 ### Interpretation
 
-- α alone on a trunk of its own is the easier fit by a little: the trunk is free to move. The
-  shared trunk has to keep RGB while it moves; what that costs α is not measured. It is R5's
-  question.
-- In a pixel with 0 < α < 1, C still holds the background's colour. Saved as it is and laid on a
-  dark background, that is a light rim 1 – 2 px wide. The fringe step removes it; R1 measured the
-  estimated B within 0.01 levels of the true B.
-- The RGB term holds RGB on what the run sees: cutouts on white and light backgrounds. On scenic
-  renders the file's RGB is not held to the base's.
+- At α = 1 and at α = 0 the RGB target is the composite, what the base head was trained to write;
+  only the partly transparent pixels move to the image's own colour.
+- The trunk is shared: what keeping RGB costs α is not measured. It is R5's question.
+- RGB is held on what the run sees: cutouts on white and light backgrounds.
 
 ## Records
 
@@ -124,29 +117,31 @@ its cache's were never committed. Outputs: `output/pixel_head/<run>/` (local).
 - Cache `post_image_dataset/pixel_alpha_r4` (local), built by `scripts/pixel_head/cache_alpha.py`
   with `cutouts` the first folder, `extra_cutouts` the second, `thin = "ootomo_takuji:0.1"` (the
   user, 2026-11-23: "10%만"), `bg_source = "image_dataset"`, `draws = 1`, `n_read = 16`, `seed = 0`:
-  the DiT's inputs only (VAE latent of the composite, TE, alpha), 1,701 train rows, read sets
+  the DiT's inputs only (VAE latent of the composite, TE, the cutout), 1,701 train rows, read sets
   `new_bg` and `other` of 16 images × 3 backgrounds. Backgrounds: white, a flat light colour, a
   light affine field with grain, from `image_dataset`'s simple backgrounds.
-- Train cutouts are stored as alpha alone (colour only for the read images). The candidate form
-  needs no colour; a form with a colour target would.
+- Up to 2026-11-23 the train cutouts were stored as alpha alone. `cache_alpha.py` now stores every
+  cutout with its colour, and a rerun on an old cache rewrites the colourless cutout files only
+  (no latent is re-encoded). R4's cache needs that rerun before R5.
 
 ## Next
 
-### 1. Code for the candidate form (written 2026-11-23)
+### 1. Code (written 2026-11-23)
 
 Facts (the user, 2026-11-23: "rgba 픽셀 헤드 코드 수정해줘", "채널 3이나 4 받도록", "스킵리니어
-자체를 없애", "학습코드 짜봐"):
+자체를 없애", "학습코드 짜봐"; then the target above, and "library core 코드인데 … 정리좀 해줘"):
 
 - `PixelHead(channels=3 | 4)`; `load_pixel_head` reads the `channels` stamp. The skip linear is
   out of the module: a `skip = 1` file no longer loads (one local bench head, `convnext_1119_0835`),
   the unused `linear.*` weights of older files are dropped at load. All 24 local ×1 / ×2 files and
   the catalog's decode as before.
-- `library/anima/pixel_rgba.py`: `rgba_from_rgb` (trunk and RGB rows copied, α rows fresh),
-  `RGBATrainer`, `save_rgba_head`, `straight_rgba` (the fringe step). `AlphaHead` is gone; R1 – R4
-  files no longer load.
-- `scripts/pixel_head/train_rgba.py` (was `train_alpha.py`): init `x1dll_1123_0821`, the frozen init
-  head's RGB on each rollout's features as the RGB target, `lambda_rgb` 1.0. The read and
-  `render_alpha.py` take the colour from the head and report RGB dB against the init head.
+- `library/anima/` holds `pixel_head.py` alone. Training modules: `scripts/pixel_head/train/`
+  (`_common.py`, `_x1_trainer.py`, `_x1_data.py`, `_x2_trainer.py`, `_rgba_trainer.py`, …); the
+  RGBA cache's: `scripts/pixel_head/cache/`; entry points stay in `scripts/pixel_head/`.
+- `train_rgba.py`: init `x1dll_1123_0821`, the target and loss under "The form", `lambda_rgb` 1.0,
+  `lambda_dino` (RGB) and `lambda_dino_alpha` 331.6. The read reports RGB dB against the target;
+  `render_alpha.py` saves the head's RGBA as it is and keeps its RGB dB against the init head.
+  `AlphaHead` and `straight_rgba` are gone; R1 – R4 files no longer load.
 - Open: the ComfyUI node (step 3); the vendored loader there still expects `linear.*` keys.
 
 ### 2. A first run of the agreed form (a candidate, not proposed for queueing)
@@ -154,16 +149,17 @@ Facts (the user, 2026-11-23: "rgba 픽셀 헤드 코드 수정해줘", "채널 3
 Facts (as a candidate, on the form above):
 
 - Parent `rgbar4_1123_2053` (settings under Records). Changed together, not separated: the output
-  form (1 → 4 channels), the RGB term, the init (`x1ll_1122_1000` → `x1dll_1123_0821`). Cache,
-  rollouts, LR, schedule, seed and the α term as R4.
+  form (1 → 4 channels), the RGB term and its DINO term, the init (`x1ll_1122_1000` →
+  `x1dll_1123_0821`). Cache (rerun for colour), rollouts, LR, schedule, seed and the α term as R4.
 - Question: does α on the shared trunk hold R4's, with RGB held at the base?
 - Read, per file, beside R4:
   1. flat mid tiles on the 8 working renders (table above), with the on-black + alpha sheets of
      oldman s1 and bicycle s0 / s1, labelled;
   2. held-out alpha L1, the same regions;
-  3. RGB against the init head's RGB, dB, on the read sets and on the 8 renders.
+  3. RGB dB as the scripts print it: against the target on the read sets, against the init head on
+     the 8 renders.
 - Bars: spread unknown (no seed twin). The user's read decides.
-- Cost: about 36 min (R4: 2,075 s) plus one more head forward an update.
+- Cost: about 36 min (R4: 2,075 s) plus one more DINO forward an update.
 
 Interpretation:
 

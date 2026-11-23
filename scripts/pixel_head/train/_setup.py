@@ -28,8 +28,8 @@ def load_models(req, device, seq_bands: list, adapter: str = ""):
 def load_dit(req, device, seq_bands: list, adapter: str = ""):
     """→ (frozen DiT, adapter network or None), in the order the hooks need:
     build → stream change → adapter → compile."""
-    from library.anima.pixel_head_train import attach_adapter, compile_dit
     from library.runtime.harness import build_anima
+    from scripts.pixel_head.train._common import attach_adapter, compile_dit
 
     ns = SimpleNamespace(
         dit=req.dit,

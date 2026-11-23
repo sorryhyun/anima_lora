@@ -1,7 +1,7 @@
 """The ×1 run behind ``base_x1.py`` and ``train_x1.py``: request, loop and read.
 
-The pieces are in ``library.anima.pixel_head_train_x1``; the two entry points differ in
-the request's defaults and the finish's GAN fields.
+The pieces are in ``_x1_trainer.py`` and ``_x1_data.py`` beside this file; the two entry
+points differ in the request's defaults and the finish's GAN fields.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pathlib import Path
 from library.env import default_checkpoints, resolve_under_home
 from library.lines.requests import Request
 from library.lines.requests import request_field as _f
-from scripts.pixel_head._setup import DINO_REPO, load_models, open_sink
+from scripts.pixel_head.train._setup import DINO_REPO, load_models, open_sink
 
 _CKPTS = default_checkpoints()
 TURBO = "output/ckpt/release/anima_turbo_4step_v4_longer.safetensors"
@@ -54,7 +54,7 @@ class X1Request(Request):
     )
     adapter: str = _f(TURBO, "LoRA switched on at the :adapter points")
     eval_points: str = _f("0.03 0.25", "read, not trained on: SIGMA[:adapter]")
-    # the loop (library.anima.pixel_head_train_x1.X1TrainConfig)
+    # the loop (_x1_trainer.X1TrainConfig)
     rollouts: int = _f(12000, "DiT forwards")
     opt_steps: int = _f(16, "head updates per rollout")
     replay: int = _f(64, "rollouts kept for the updates")
@@ -97,25 +97,25 @@ def run(req: X1Request) -> Path:
         PixelHeadX2,
         load_pixel_head,
     )
-    from library.anima.pixel_head_train import (
+    from library.datasets.buckets import cluster_token_bands
+    from library.inference.text import prepare_text_inputs
+    from library.runtime.progress import run_scope
+    from scripts.pixel_head.train._common import (
         DinoFeat,
         PEDisc,
         densest_window,
         psnr,
         zoom_sheet,
     )
-    from library.anima.pixel_head_train_x1 import (
+    from scripts.pixel_head.train._x1_data import held_out_split
+    from scripts.pixel_head.train._x1_trainer import (
         X1Rollout,
         X1TrainConfig,
         X1Trainer,
-        held_out_split,
         item_tokens,
         parse_points,
         save_x1_head,
     )
-    from library.datasets.buckets import cluster_token_bands
-    from library.inference.text import prepare_text_inputs
-    from library.runtime.progress import run_scope
 
     # base_x1's request has no pegan_* fields: the term's default is off
     fields = {f.name for f in dataclasses.fields(req)}

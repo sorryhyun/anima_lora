@@ -37,8 +37,6 @@ from safetensors.torch import save_file
 from bench._anima import add_common_args, add_model_args, build_anima
 from bench._common import make_run_dir, start_heartbeat, write_result
 from library.anima.pixel_head import PATCH, from_patches
-from library.anima.pixel_head_train import compile_dit, psnr, zoom_sheet
-from library.anima.pixel_head_train_x1 import pick_samples
 from library.env import resolve_under_home
 from library.inference.sampling import get_timesteps_sigmas
 from library.io.cache import (
@@ -46,6 +44,8 @@ from library.io.cache import (
     load_cached_text_features,
 )
 from library.models import qwen_vae
+from scripts.pixel_head.train._common import compile_dit, psnr, zoom_sheet
+from scripts.pixel_head.train._x1_data import pick_samples
 
 
 def to_patches(img: torch.Tensor) -> torch.Tensor:

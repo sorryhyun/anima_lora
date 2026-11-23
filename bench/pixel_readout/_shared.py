@@ -1,7 +1,7 @@
 """What the pixel_readout scripts share that is the bench's own: run lookup and sizes.
 
 Model code is ``library/anima/pixel_head.py``; training pieces, losses and sheets are
-``library/anima/pixel_head_train.py`` and ``pixel_head_train_x1.py``. A script here
+``scripts/pixel_head/train/_common.py``, ``_x1_trainer.py``, ``_x1_data.py`` and ``_x2_trainer.py``. A script here
 imports those and this package's ``_*.py``, never another script.
 """
 

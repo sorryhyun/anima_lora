@@ -2,26 +2,22 @@
 
 The recipe (``project/pixel_decoder/plan.md``): one DiT forward per rollout at a decode
 point, the points taken in turn. A ``:real`` point trains the head against the image the
-latent was encoded from (with the DINO feature term, and the PE-GAN term in a finish), any other point against ``target`` (the VAE's decode of x̂0 or x0). A share of the rollouts are manga
-pages. Whole images go into a replay buffer, and each update draws one of them.
+latent was encoded from (with the DINO feature term, and the PE-GAN term in a finish), any
+other point against ``target`` (the VAE's decode of x̂0 or x0). A share of the rollouts
+are manga pages. Whole images go into a replay buffer, and each update draws one of them.
 
-Pieces, in the order a run uses them:
-
-- :func:`held_out_split` / :func:`pick_samples` / :func:`pick_text` — the line's held-out
-  images; every other cached pair trains.
 - :func:`parse_points` — ``"0.0577-0.1364:real 0.5:adapter"`` → the trained and read points.
 - :class:`X1Rollout` — (item, point) → (features, x_t patches, the targets asked for).
 - :class:`X1Trainer` — replay buffer, schedule, the DINO term, the PE-GAN weight rule.
 - :func:`save_x1_head` — the file :func:`library.anima.pixel_head.load_pixel_head` reads.
 
-The shared pieces are in :mod:`library.anima.pixel_head_train`.
+The held-out split is ``_x1_data.py``; the shared pieces are in ``_train.py``.
 """
 
 from __future__ import annotations
 
 import math
 import random
-import re
 from collections import deque
 from dataclasses import dataclass
 from glob import escape as glob_escape
@@ -31,8 +27,12 @@ from typing import NamedTuple
 import numpy as np
 import torch
 
-from library.anima.pixel_head import PATCH, PixelHead
-from library.anima.pixel_head_train import (
+from library.anima.pixel_head import (
+    PATCH,
+    PixelHead,
+)
+from library.io.cache import CachedImage
+from scripts.pixel_head.train._common import (
     DinoFeat,
     DiTRollout,
     PEDisc,
@@ -40,106 +40,10 @@ from library.anima.pixel_head_train import (
     npz_tokens,
     rec_loss,
 )
-from library.env import resolve_under_home
-from library.io.cache import CachedImage, discover_cached_pairs
-
-# --------------------------------------------------------------------------- data
-
-# P1's held-out artists (readout_1118_2219): what pick_samples returns at its defaults
-def _local_split(key: str) -> tuple[str, ...]:
-    """An artist list of the local split file (``output/pixel_head/x1_split.json``, kept
-    out of the repo); () when it is absent."""
-    import json
-
-    from library.env import resolve_under_home
-
-    path = resolve_under_home("output/pixel_head/x1_split.json")
-    return tuple(json.loads(path.read_text())[key]) if path.exists() else ()
-
-
-TEST_ARTISTS = _local_split("test_artists")
-TEXT_ARTISTS = _local_split("text_artists")  # most "Japanese text" captions in post_image_dataset/resized
+from scripts.pixel_head.train._x1_data import caption_path
 
 # a cached pair, or a page of bench/pixel_readout/build_pages.py
 Item = CachedImage | Path
-
-
-def pick_samples(
-    cache_root: Path,
-    n_train: int = 256,
-    n_test_artists: int = 8,
-    per_artist: int = 4,
-    max_tokens: int = 4608,
-    seed: int = 0,
-):
-    """P1's picker → (its train images, test images, test artists)."""
-    rng = random.Random(seed)
-    artists = sorted(d.name for d in cache_root.iterdir() if d.is_dir())
-    rng.shuffle(artists)
-    test_artists, train_artists = artists[:n_test_artists], artists[n_test_artists:]
-
-    def ok(ci):
-        return npz_tokens(ci.npz_path) <= max_tokens
-
-    test = []
-    for a in test_artists:
-        pairs = [p for p in discover_cached_pairs(str(cache_root / a)) if ok(p)]
-        rng.shuffle(pairs)
-        test += pairs[:per_artist]
-    pool = []
-    for a in train_artists:
-        pool += [p for p in discover_cached_pairs(str(cache_root / a)) if ok(p)]
-    rng.shuffle(pool)
-    return pool[:n_train], test, test_artists
-
-
-def caption_path(ci: CachedImage) -> Path:
-    artist = Path(ci.npz_path).parent.name
-    return Path(
-        resolve_under_home(f"post_image_dataset/resized/{artist}/{ci.stem}.txt")
-    )
-
-
-def pick_text(cache_root: Path, exclude: set[str]) -> list[CachedImage]:
-    """Per text artist, the image whose quoted caption text is longest."""
-    out = []
-    for a in TEXT_ARTISTS:
-        best, best_len = None, 0
-        for ci in discover_cached_pairs(str(cache_root / a)):
-            if ci.npz_path in exclude:
-                continue
-            p = caption_path(ci)
-            if not p.exists():
-                continue
-            cap = p.read_text(encoding="utf-8")
-            if "japanese text" not in cap.lower():
-                continue
-            n = sum(len(s) for s in re.findall(r'"([^"]*)"', cap))
-            if n > best_len:
-                best, best_len = ci, n
-        if best is not None:
-            out.append(best)
-    return out
-
-
-def held_out_split(cache_root: Path) -> dict[str, list[CachedImage]]:
-    """{"train" | "test" | "text": cached pairs}: P1's test images, one text image per
-    text artist, and every pair outside those images and the test artists."""
-    p1_train, test, artists = pick_samples(cache_root)
-    assert tuple(artists) == TEST_ARTISTS, (
-        f"held-out set did not reproduce: the picker shuffles {cache_root}'s artist "
-        f"dirs, and they gave {artists}"
-    )
-    text = pick_text(cache_root, {ci.npz_path for ci in p1_train})
-    held = {ci.npz_path for ci in text}
-    train = [
-        ci
-        for a in sorted(d.name for d in cache_root.iterdir() if d.is_dir())
-        if a not in TEST_ARTISTS
-        for ci in discover_cached_pairs(str(cache_root / a))
-        if ci.npz_path not in held
-    ]
-    return {"train": train, "test": test, "text": text}
 
 
 def page_tokens(path: Path) -> int:
@@ -345,8 +249,8 @@ class X1Trainer:
         self.head, self.cfg, self.dino = head, cfg, dino
         self.disc = disc if cfg.pegan_ratio > 0 else None
         self.dino_ema: float | None = None
-        if compile:  # one compile over every image size (pixel_head_compile)
-            from library.anima.pixel_head_compile import opaque_dwconv_
+        if compile:  # one compile over every image size (_head_compile.py)
+            from scripts.pixel_head.train._head_compile import opaque_dwconv_
 
             opaque_dwconv_(head)
         self.head_c = torch.compile(head, dynamic=True) if compile else head

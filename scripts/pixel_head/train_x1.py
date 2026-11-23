@@ -22,7 +22,7 @@ import os
 from dataclasses import dataclass
 
 from library.lines.requests import request_field as _f
-from scripts.pixel_head._x1 import X1Request, run
+from scripts.pixel_head.train._x1_run import X1Request, run
 
 BASE = "output/pixel_head/x1ll_1122_1000/head.safetensors"
 

@@ -53,14 +53,6 @@ from library.anima.pixel_head import (
     lat_patches,
     load_pixel_head,
 )
-from library.anima.pixel_head_train import (
-    attach_adapter,
-    crop_margin,
-    pair_sheet,
-    psnr,
-    rec_loss,
-)
-from library.anima.pixel_head_train_x1 import pick_samples, pick_text
 from library.env import resolve_under_home
 from library.inference.text import prepare_text_inputs
 from library.io.cache import (
@@ -69,6 +61,9 @@ from library.io.cache import (
     load_cached_text_features,
 )
 from library.models import qwen_vae
+from scripts.pixel_head.train._common import attach_adapter, pair_sheet, psnr, rec_loss
+from scripts.pixel_head.train._x1_data import pick_samples, pick_text
+from scripts.pixel_head.train._x2_trainer import crop_margin
 
 ARMS = {  # name: (depth2, width2, base frozen)
     "x2a": (2, 256, False),

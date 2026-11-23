@@ -117,7 +117,7 @@ def main_():
     from bench._anima import DEFAULT_NEG
     from bench._common import make_run_dir, start_heartbeat, write_result
     from bench.pixel_readout._prompts import PROMPTS
-    from library.anima.pixel_head_train import psnr, to_pil
+    from scripts.pixel_head.train._common import psnr, to_pil
 
     start_heartbeat(label="comfy_e2e")
     folder_paths.add_model_folder_path("loras", str(resolve_under_home("models/loras")))
@@ -167,8 +167,8 @@ def main_():
     pixel_decode = mapping["AnimaPixelDecode"]()
     dn = rsd = up = None
     if args.scale == 2:
-        from library.anima.pixel_head_train import DinoFeat
-        from scripts.pixel_head._setup import DINO_REPO
+        from scripts.pixel_head.train._setup import DINO_REPO
+        from scripts.pixel_head.train._common import DinoFeat
 
         rsd = mapping["ResShiftLoader"]().load(
             "x2", "rsd_student_18k.safetensors", "bf16"

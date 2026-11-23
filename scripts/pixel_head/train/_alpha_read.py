@@ -1,5 +1,6 @@
 """The RGBA head's read on the cache's read sets: α L1 per region, the RGB's dB against the
-init head's RGB, and the GT | head sheets."""
+target's RGB (:meth:`_alpha_data.Cutout.target`), and the GT | head sheets. The head's
+RGB is straight colour: on black it is RGB · α."""
 
 from __future__ import annotations
 
@@ -9,10 +10,27 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 
-from library.anima.pixel_rgba import estimate_bg, unmix
-from scripts.pixel_head import _alpha_data as D
+from scripts.pixel_head.cache import _alpha_data as D
 
 NEAR = 5 / 255  # "the same colour as the background"
+
+
+def estimate_bg(c: np.ndarray, a: np.ndarray) -> np.ndarray:
+    """An affine B from the pixels the alpha calls background."""
+    cs, sub = c[2::4, 2::4], a[2::4, 2::4]  # an affine field needs no full grid
+    mask = sub <= 0.02
+    if mask.sum() < 256:
+        mask = D.border_mask(*sub.shape)
+    fit = D.fit_field(cs, mask)
+    if fit is None:
+        return np.broadcast_to(np.median(cs[mask], 0), c.shape).astype(np.float32)
+    return (D.affine_grid(*a.shape) @ fit[0]).clip(0, 1).astype(np.float32)
+
+
+def unmix(c: np.ndarray, a: np.ndarray, bg: np.ndarray) -> np.ndarray:
+    """P = clamp(C − (1 − α)·B, 0, α), the premultiplied foreground."""
+    a = a[..., None]
+    return np.clip(c - (1 - a) * bg, 0, a).astype(np.float32)
 
 
 def regions(cut: D.Cutout, comp: np.ndarray, bg: np.ndarray) -> dict[str, np.ndarray]:
@@ -49,6 +67,7 @@ def to_sample(row, cut: D.Cutout, comp, bg, sigma: float, f, lat) -> dict:
         "bg": bg,
         "sigma": sigma,
         "regs": regions(cut, comp, bg),
+        "tgt": cut.target(comp),
         "f": f,
         "lat": lat,
     }
@@ -64,7 +83,7 @@ def predict(head, s: dict, device) -> np.ndarray:
 
 
 def rgb_db(c: np.ndarray, ref: np.ndarray) -> float:
-    """PSNR of the head's RGB against the init head's, peak 1."""
+    """PSNR of ``c`` against ``ref``, peak 1."""
     mse = float(((c - ref) ** 2).mean())
     return 10 * np.log10(1 / max(mse, 1e-12))
 
@@ -73,7 +92,9 @@ def quick_l1(samples: list[dict], preds: list[np.ndarray]) -> dict[str, float]:
     """The eval line during training."""
     vals: dict[str, list[float]] = {}
     for s, x in zip(samples, preds):
-        vals.setdefault(f"{s['set']}_rgb_db", []).append(rgb_db(x[..., :3], s["rgb"]))
+        vals.setdefault(f"{s['set']}_rgb_db", []).append(
+            rgb_db(x[..., :3], s["tgt"][..., :3])
+        )
         err = np.abs(x[..., 3] - s["cut"].alpha)
         for reg in ("all", "transition", "translucent", "thin"):
             m = s["regs"][reg]
@@ -83,14 +104,15 @@ def quick_l1(samples: list[dict], preds: list[np.ndarray]) -> dict[str, float]:
 
 
 def score(s: dict, x: np.ndarray) -> list[dict]:
-    """The head and the flood null (B handed, without grain, on the init head's RGB) on
-    one sample; each unmixes its own colour."""
+    """The head and the flood null (B handed, without grain, on the composite) on one
+    sample. On black: the head's straight colour · α; the flood unmixes the composite."""
     a, c = x[..., 3], x[..., :3]
     smooth = estimate_bg(s["bg"], np.zeros(a.shape, np.float32))
+    fa = flood_alpha(s["comp"], smooth)
     out = []
-    for name, alpha, col in (
-        ("head", a, c),
-        ("flood", flood_alpha(s["rgb"], smooth), s["rgb"]),
+    for name, alpha, p in (
+        ("head", a, c * a[..., None]),
+        ("flood", fa, unmix(s["comp"], fa, estimate_bg(s["comp"], fa))),
     ):
         err = np.abs(alpha - s["cut"].alpha)
         row = {
@@ -103,10 +125,9 @@ def score(s: dict, x: np.ndarray) -> list[dict]:
         for reg, m in s["regs"].items():
             if m.sum() >= 64:
                 row[f"l1_{reg}"] = float(err[m].mean())
-        p = unmix(col, alpha, estimate_bg(col, alpha))
         row["black_l1"] = float(np.abs(p - s["cut"].premul).mean() * 255)
         if name == "head":
-            row["rgb_db"] = rgb_db(c, s["rgb"])
+            row["rgb_db"] = rgb_db(c, s["tgt"][..., :3])
         out.append(row)
     return out
 
@@ -181,7 +202,7 @@ def write_sheets(
             s, x = samples[i], preds[i]
             a, c = x[..., 3], x[..., :3]
             gt, p_gt = s["cut"].alpha, s["cut"].premul
-            p = unmix(c, a, estimate_bg(c, a))
+            p = c * a[..., None]
             win = _window(s["regs"]["transition" if group == "white_fg" else group])
             checker = (on_checker(p_gt, gt)[win], on_checker(p, a)[win])
             rows = [

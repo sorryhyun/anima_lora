@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train a ×2 pixel head on the ``x2flex`` set (pieces: ``library.anima.pixel_head_train``).
+"""Train a ×2 pixel head on the ``x2flex`` set (pieces: ``_x2_trainer.py``, ``_train.py``).
 
 A frozen Anima DiT gives the features; the head (a released ×1 head plus a second 2×
 stage, or a ×2 file to continue from) is trained against the real 2× image with the
@@ -31,7 +31,7 @@ from pathlib import Path
 
 from library.env import default_checkpoints, resolve_under_home
 from library.lines.requests import Request
-from scripts.pixel_head._setup import DINO_REPO, load_models, open_sink
+from scripts.pixel_head.train._setup import DINO_REPO, load_models, open_sink
 
 _CKPTS = default_checkpoints()
 
@@ -53,7 +53,7 @@ class X2TrainRequest(Request):
     # border step); a --resume file with the 8×8 layer is converted (edge-repeat init)
     overlap: bool = False
     sigma: str = "0.0577-0.1364"  # decode-point range, drawn per rollout
-    # the loop (library.anima.pixel_head_train.X2TrainConfig)
+    # the loop (_x2_trainer.X2TrainConfig)
     rollouts: int = 4000
     opt_steps: int = 16
     replay: int = 64
@@ -103,22 +103,24 @@ def run(req: X2TrainRequest) -> Path:
         load_pixel_head,
         resolve_pixel_head_path,
     )
-    from library.anima.pixel_head_train import (
+    from library.datasets.buckets import cluster_token_bands
+    from library.runtime.progress import run_scope
+    from scripts.pixel_head.train._common import (
         DinoFeat,
         DiTRollout,
         PEDisc,
-        X2TrainConfig,
-        X2Trainer,
         densest_window,
-        load_x2flex,
         pair_sheet,
-        pick_window,
         psnr,
-        save_x2_head,
         tone_stats,
     )
-    from library.datasets.buckets import cluster_token_bands
-    from library.runtime.progress import run_scope
+    from scripts.pixel_head.train._x2_trainer import (
+        X2TrainConfig,
+        X2Trainer,
+        load_x2flex,
+        pick_window,
+        save_x2_head,
+    )
 
     cfg = X2TrainConfig(
         **{f.name: getattr(req, f.name) for f in dataclasses.fields(X2TrainConfig)}

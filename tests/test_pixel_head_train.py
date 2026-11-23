@@ -1,5 +1,5 @@
-"""×2 pixel-head training pieces (library/anima/pixel_head_train.py): the window and its
-margins, the loss terms, the schedule, the GAN term's start, the saved file. CPU only."""
+"""×2 pixel-head training pieces (scripts/pixel_head/{_x2_trainer,_train}.py): the window
+and its margins, the loss terms, the schedule, the GAN term's start, the saved file. CPU only."""
 
 import json
 import random
@@ -7,16 +7,14 @@ import random
 import torch
 
 from library.anima.pixel_head import PATCH, PixelHead, PixelHeadX2, load_pixel_head
-from library.anima.pixel_head_train import (
+from scripts.pixel_head.train._common import cosine_lr, dc_loss, rec_loss
+from scripts.pixel_head.train._x2_trainer import (
     Window,
     X2TrainConfig,
     X2Trainer,
-    cosine_lr,
     crop_margin,
-    dc_loss,
     load_x2flex,
     pick_window,
-    rec_loss,
     save_x2_head,
 )
 

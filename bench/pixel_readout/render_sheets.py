@@ -37,7 +37,6 @@ from bench._anima import (
 from bench._common import make_run_dir, start_heartbeat, write_result
 from bench.pixel_readout._shared import P1_RUN, fit_size, load_head
 from library.anima.pixel_head import PATCH, from_patches, lat_patches
-from library.anima.pixel_head_train import densest_window, psnr, zoom_sheet
 from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.env import resolve_under_home
 from library.inference.sampling import get_timesteps_sigmas
@@ -48,6 +47,7 @@ from library.io.cache import (
     load_cached_text_features,
 )
 from library.models import qwen_vae
+from scripts.pixel_head.train._common import densest_window, psnr, zoom_sheet
 
 
 def main():

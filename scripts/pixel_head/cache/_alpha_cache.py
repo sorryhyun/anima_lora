@@ -1,20 +1,21 @@
-"""The alpha head's input cache: what the DiT and the head's loss take, no DiT output.
+"""The RGBA head's input cache: what the DiT and the head's loss take, no DiT output.
 
 ``<root>/manifest.json`` lists the rows.
 
     <set>/<row>.safetensors     latent (16, H/8, W/8) bf16, the VAE's, of the composite
     text/<digest>.safetensors   cross (n, 1024) bf16: the caption after llm_adapter, its
                                 zero padding cut off; :func:`read_inputs` pads it back
-    cutout/<key>.png            the alpha (L); RGBA for the images that are read
+    cutout/<key>.png            the cutout, RGBA (straight colour): the target's source
 
 A composite and its background are redrawn from the palette and the seed
-(:func:`compose`), so neither is stored. Sets: ``train`` (every cutout outside the read
+(:func:`compose`), so neither is stored; the target is made from the cutout and the
+composite (``Cutout.target``). Sets: ``train`` (every cutout outside the read
 images, ``draws`` times on each background kind), ``new_bg`` (R1's fit images on
 backgrounds of their own, read) and ``other`` (images that never train, read).
 
 Every latent is stamped with a digest of what made it (models, seed, palette, cutout,
-caption). The builder re-encodes a file whose stamp differs, and drops the manifest
-until it is done.
+caption). The builder re-encodes a file whose stamp differs, rewrites a cutout file
+that holds no colour (:func:`cutout_current`), and drops the manifest until it is done.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from scripts.pixel_head._alpha_data import BG_KINDS, Cutout, bg_caption, draw_bg
+from scripts.pixel_head.cache._alpha_data import BG_KINDS, Cutout, bg_caption, draw_bg
 
 FORMAT = 2
 MANIFEST = "manifest.json"
@@ -156,10 +157,20 @@ def _save(tensors: dict, path: Path, metadata: dict | None = None) -> None:
     os.replace(tmp, path)
 
 
-def write_cutout(root: Path, cut: Cutout, colour: bool) -> None:
+def cutout_current(root: Path, key: str) -> bool:
+    """The cutout file exists and holds colour (caches before 2026-11-23 kept α alone
+    for the train cutouts)."""
+    path = cutout_path(root, key)
+    if not path.exists():
+        return False
+    with Image.open(path) as im:
+        return im.mode == "RGBA"
+
+
+def write_cutout(root: Path, cut: Cutout) -> None:
     path = cutout_path(root, cut.key)
     path.parent.mkdir(parents=True, exist_ok=True)
-    x = np.dstack([cut.fg, cut.a]) if colour else cut.a
+    x = np.dstack([cut.fg, cut.a])
     tmp = path.with_suffix(".tmp")
     Image.fromarray(x).save(tmp, format="PNG", compress_level=3)
     os.replace(tmp, path)
@@ -188,13 +199,8 @@ def read_inputs(root: Path, row: Row) -> tuple[torch.Tensor, torch.Tensor]:
     return latent, out
 
 
-def read_alpha(root: Path, key: str) -> np.ndarray:
-    x = np.array(Image.open(cutout_path(root, key)))
-    return x if x.ndim == 2 else x[..., 3]
-
-
 def read_cutout(root: Path, row: Row) -> Cutout:
-    """A read row's cutout."""
+    """A row's cutout (colour and α)."""
     x = np.array(Image.open(cutout_path(root, row.key)))
     fg, a = x[..., :3].copy(), x[..., 3].copy()
     return Cutout(row.key, fg, a, row.caption, "", {}, row.group)

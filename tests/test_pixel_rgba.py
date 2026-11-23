@@ -1,16 +1,17 @@
-"""RGBA head (library/anima/pixel_rgba.py, scripts/pixel_head/{train_rgba,*alpha*}.py): a
-changed input re-encodes, the read images never train, the init keeps the RGB head's output,
-and training needs no VAE or TE."""
+"""RGBA head (scripts/pixel_head/{train_rgba,cache_alpha}.py, train/, cache/): a changed
+input re-encodes, a cutout file without colour is rewritten, the read images never train,
+the target is the image's colour where α > 0 and the composite where α = 0, the init keeps
+the RGB head's output, and training needs no VAE or TE."""
 
 import numpy as np
 import pytest
 import torch
 
-from scripts.pixel_head import _alpha_cache as C
-from scripts.pixel_head import _alpha_data as D
 from library.anima.pixel_head import LAT_PATCH_DIM, PixelHead, load_pixel_head
-from library.anima.pixel_rgba import rgba_from_rgb, straight_rgba
-from library.anima.pixel_head_train_x1 import save_x1_head
+from scripts.pixel_head.cache import _alpha_cache as C
+from scripts.pixel_head.cache import _alpha_data as D
+from scripts.pixel_head.train._rgba_trainer import rgba_from_rgb
+from scripts.pixel_head.train._x1_trainer import save_x1_head
 
 D_FEAT = 32
 PALETTE = [
@@ -33,8 +34,7 @@ def _build(root, recipe, cuts, fit, read):
     by_key = {c.key: c for c in cuts}
     for row in rows:
         (root / row.set).mkdir(parents=True, exist_ok=True)
-        colour = row.key in {c.key for c in [*fit, *read]}
-        C.write_cutout(root, by_key[row.key], colour)
+        C.write_cutout(root, by_key[row.key])
         cross = torch.zeros(C.TEXT_TOKENS, 1024, dtype=torch.bfloat16)
         cross[:5] = 1
         cross[2] = 0  # a zero inside the text stays
@@ -85,15 +85,26 @@ def test_rgba_init_keeps_the_rgb():
         assert x[3].std() > 0  # the α rows are not zero
 
 
-def test_straight_rgba_takes_out_the_background():
-    a = np.zeros((64, 64), np.float32)
-    a[16:48, 16:48] = 1
-    a[16:48, 44:48] = 0.5  # a soft rim
-    bg, fg = np.array([0.9, 0.95, 1.0]), np.array([0.2, 0.4, 0.1])
-    c = (a[..., None] * fg + (1 - a[..., None]) * bg).astype(np.float32)
-    x = straight_rgba(c, a)
-    assert np.allclose(x[..., 3], a)
-    assert np.allclose(x[16:48, 44:48, :3], fg, atol=0.02)
+def test_target_is_the_image_and_its_background():
+    cut = _cut("x")
+    bg = np.full((96, 128, 3), 0.9, np.float32)
+    comp = cut.composite(bg)
+    x = cut.target(comp)
+    assert x.shape == (96, 128, 4) and np.allclose(x[..., 3], cut.alpha)
+    assert np.array_equal(x[0, 0, :3], comp[0, 0])  # α = 0: the composite (background)
+    assert np.allclose(x[40, 50, :3], 90 / 255)  # α 0.5: the image's own colour
+    assert np.allclose(x[20, 30, :3], 90 / 255)
+
+
+def test_colourless_cutout_is_rewritten(cache):
+    from PIL import Image
+
+    root, *_, rows = cache
+    key = rows[0].key
+    assert C.cutout_current(root, key)
+    Image.fromarray(_cut(key).a).save(C.cutout_path(root, key))  # α alone
+    assert not C.cutout_current(root, key)
+    assert C.is_current(root, rows[0])  # the latent stays
 
 
 def test_cached_inputs_are_max_padded(cache):
@@ -102,7 +113,9 @@ def test_cached_inputs_are_max_padded(cache):
     assert latent.shape == (1, 16, 12, 16) and cross.shape == (1, C.TEXT_TOKENS, 1024)
     assert [i for i in range(512) if cross[0, i].any()] == [0, 1, 3, 4]
     for row in rows:
-        assert np.array_equal(C.read_alpha(root, row.key), _cut(row.key).a)
+        cut = C.read_cutout(root, row)
+        assert np.array_equal(cut.a, _cut(row.key).a)
+        assert np.array_equal(cut.fg, _cut(row.key).fg)
 
 
 class _FakeDiT(torch.nn.Module):
@@ -121,7 +134,7 @@ class _FakeDiT(torch.nn.Module):
 def test_training_loads_no_vae_or_te(cache, tmp_path, monkeypatch):
     from library.inference import models
     from library.models import qwen_vae
-    from scripts.pixel_head import _setup
+    from scripts.pixel_head.train import _setup
     from scripts.pixel_head.train_rgba import TrainRGBARequest, run
 
     def refuse(*a, **k):
@@ -143,6 +156,7 @@ def test_training_loads_no_vae_or_te(cache, tmp_path, monkeypatch):
         replay=2,
         warmup=1,
         lambda_dino=0.0,
+        lambda_dino_alpha=0.0,
         eval_every=3,
         compile=False,
         device="cpu",

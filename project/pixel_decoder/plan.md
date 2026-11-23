@@ -27,7 +27,7 @@ ones in `archive/` (local; an index in each `README.md`):
   λ (the weight rule `dino_match_lpips` read LPIPS's gradient and went with it); `Lpips` is
   deleted. Defaults and shipped configs: ×1 (`base_x1.toml`, `x1.toml`) λ 331.6, ×2 (`x2.toml`)
   245.2, RGBA 331.6 (the ×1 weight, not measured on alpha). The reads are dB + the DINO distance
-  (`_x1.py`, `train_x2.py`, `p3_generated.py`, `comfy_e2e.py`). The LoRA term
+  (`_x1_run.py`, `train_x2.py`, `p3_generated.py`, `comfy_e2e.py`). The LoRA term
   (`library/training/pixel_lpips.py`, `--pixel_lpips_*`) is removed; `convnext_head.py`,
   `x2_head.py`, `lpips_grad_probe.py` are archived (`bench/pixel_readout/README.md`); `lpips` is
   out of the core dependencies.
