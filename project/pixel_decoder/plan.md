@@ -323,10 +323,11 @@ replaces LPIPS: "LPIPS → DINO" at the top of this file.
 
 The head as the decode for losses that train the DiT or a LoRA did not pass its gradient probe
 (`reports/lpips_grad_2026_11_21.md`); such a term decodes through the windowed bf16 VAE
-(`library/training/pixel_lpips.py`, removed 2026-11-23 with LPIPS). On the LoRA, the user's
-blind read put ratio 0.3 ahead and ratio 1.0 behind (`reports/lpips_lora_2026_11_21.md`). The
-seed-43 twin proposed then cannot run on the current tree; a DINO term through the VAE window
-would be new code. Other uses named for it: cjk_rl arm D (its D0 cost probe
+(`library/training/pixel_dino.py` since 2026-11-23, DINOv3 in place of LPIPS). On the LoRA, the
+user's blind read put LPIPS ratio 0.3 ahead and ratio 1.0 behind (`reports/lpips_lora_2026_11_21.md`,
+one seed); DINO at ratio 0.3 over seeds 42 / 43 read level, 15 – 15
+(`reports/dino_lora_2026_11_23.md`). Proposed, not queued: DINO ratio 1.0 at both seeds against
+the same controls and render seeds. Other uses named for it: cjk_rl arm D (its D0 cost probe
 rerun against the VAE-window path), a term for the turbo
 student. Idea: `idea.md`.
 
