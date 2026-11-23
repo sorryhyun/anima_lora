@@ -36,6 +36,9 @@ the review page and its procedure are in the README's § Rules.
 - The label follows the crop as shown, not the page and not the annotation.
 - Text cut by the crop edge is typed as far as it shows. What only the page shows (the rest of a
   cut line, a neighbouring balloon outside the box) is not typed.
+- A mark that cannot be told apart from drawing (a stroke cut by the edge, a symbol in the art)
+  is not typed; a crop whose only other marks are of that kind has an empty sub (the user,
+  2026-11-23: "그림인지 글자인지 모르면 출력 안하는게 맞는듯").
 
 ### Empty labels
 
