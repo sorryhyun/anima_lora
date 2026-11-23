@@ -372,6 +372,59 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "λ_ema ← (1−β)·λ_ema + β·λ_batch. Default 0.01 over typically B=4.",
     )
 
+    # DINOv3 distance on the VAE-decoded x̂0 window (library/training/pixel_dino.py;
+    # experimental).
+    parser.add_argument(
+        "--pixel_dino_ratio",
+        type=float,
+        default=0.0,
+        help="> 0: add the DINOv3 tile distance between VAE(x_t − σ·v) and VAE(x0) on one "
+        "token window per sample, weighted per sample so its gradient into v has this "
+        "ratio to the FM gradient's norm. 0 = off (default).",
+    )
+    parser.add_argument(
+        "--pixel_dino_weight",
+        type=float,
+        default=0.0,
+        help="A fixed weight for the same term instead of the ratio rule.",
+    )
+    parser.add_argument(
+        "--pixel_dino_measure",
+        action="store_true",
+        help="Log the term's distance on its windows without adding it to the loss "
+        "(an A/B's control arm).",
+    )
+    parser.add_argument(
+        "--pixel_dino_sigma_max",
+        type=float,
+        default=0.7,
+        help="The term runs on samples at σ ≤ this (PixelGen's gate).",
+    )
+    parser.add_argument(
+        "--pixel_dino_window",
+        type=int,
+        default=24,
+        help="Compared window side in DiT tokens (16 px each).",
+    )
+    parser.add_argument(
+        "--pixel_dino_margin",
+        type=int,
+        default=4,
+        help="Context strip around the window, tokens: decoded, left out of the distance.",
+    )
+    parser.add_argument(
+        "--pixel_dino_tiles",
+        type=int,
+        default=4,
+        help="224-px DINO tiles drawn inside the compared window per sample.",
+    )
+    parser.add_argument(
+        "--pixel_dino_repo",
+        type=str,
+        default="facebook/dinov3-vits16-pretrain-lvd1689m",
+        help="The frozen DINOv3 tower (the pixel heads' DINO_REPO).",
+    )
+
     # Memorization-aware training: per-sample low-σ Δ-gap reweight. LoRA-family
     # train.py only; requires blocks_to_swap=0 (see models.build_mem_tracker).
     parser.add_argument(

@@ -383,6 +383,19 @@ def _xattn_align_loss(ctx: LossContext) -> torch.Tensor:
     return weight * term.float()
 
 
+def _pixel_dino_loss(ctx: LossContext) -> torch.Tensor:
+    """DINOv3 distance on the VAE-decoded x̂0 window (``library/training/pixel_dino.py``).
+
+    ``PixelDinoMethodAdapter`` stashes the term under ``aux["pixel_dino"]`` with its
+    weight already applied (fixed, or the per-sample gradient-ratio rule); steps whose σ
+    is above the gate carry none.
+    """
+    term = ctx.aux.get("pixel_dino")
+    if not ctx.is_train or term is None:
+        return ctx.model_pred.new_zeros(())
+    return term.float()
+
+
 def _soft_tokens_contrastive_loss(ctx: LossContext) -> torch.Tensor:
     """SoftREPA-style contrastive term on the soft-tokens bank.
 
@@ -426,6 +439,7 @@ LOSS_REGISTRY: dict[str, LossFn] = {
     "soft_tokens_contrastive": _soft_tokens_contrastive_loss,
     "repa": _repa_loss,
     "xattn_align": _xattn_align_loss,
+    "pixel_dino": _pixel_dino_loss,
 }
 
 
@@ -448,6 +462,8 @@ _LIVENESS_PROBES: dict[str, Callable[[dict], bool]] = {
     "repa": lambda aux: aux.get("repa") is not None,
     # Partial by construction: only text items at σ ≥ the gate carry it.
     "xattn_align": lambda aux: aux.get("xattn_align") is not None,
+    # Partial by construction: only samples at σ ≤ the gate carry it.
+    "pixel_dino": lambda aux: aux.get("pixel_dino") is not None,
 }
 
 
@@ -540,6 +556,7 @@ _STAGE_SCALAR_BROADCAST = (
     "soft_tokens_contrastive",
     "repa",
     "xattn_align",
+    "pixel_dino",
 )
 _STAGE_SCALAR_POST = ("multiscale",)
 __all__ = [
@@ -649,5 +666,10 @@ def build_loss_composer(
         active.append("repa")
     if float(getattr(network, "_xattn_align_weight", 0.0) or 0.0) > 0.0:
         active.append("xattn_align")
+    if (
+        float(getattr(args, "pixel_dino_ratio", 0.0) or 0.0) > 0.0
+        or float(getattr(args, "pixel_dino_weight", 0.0) or 0.0) > 0.0
+    ):
+        active.append("pixel_dino")
 
     return LossComposer(active_losses=active, ledger=ledger)
