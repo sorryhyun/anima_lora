@@ -26,7 +26,7 @@ is in `_archive/ocr_reader/history/` (local; `README.md` there). In git, the sam
 | `v6/` (`57e7c650`) | `vl16_p2b_kozh_nl_swaprelax` | 0.9.8 | + `pseudo_swaprelax_v5` (20,745 KO speech lines) | K3 KO 22 → 28 (z +2.1); JA flat | `history/README.md` § v6 |
 | `v7_preview/` (`1987992e`, off the head) | `sfxpc_1118_0412` | opt-in until 0.15.0 | two prompts, `OCR:` speech / `SFX:` SFX | — | `history/proposals/ocr_sfx_prefix.md` |
 | `v7/` (`59768fc6`) | `mainsub_1124_0151` | 0.14.0 | main / sub (`OCR:` / `OCR2:`), detector boxes at 4 px | vs v6: doujin SFX strict 294 → 334 (+95 / −55); Manga109 test SFX 85.2 → 80.8 % (+83 / −196), speech 88.4 → 89.0 %; K3 KO 28 → 30, ZH 30 → 33 | [`mainsub_1124_0151.md`](reports/mainsub_1124_0151.md) |
-| `v7/` (`169eacbc`) | `mainsub_1124_1923` | 0.15.0 | the same recipe on the 11-24 labels, batch 8 × 2 (RunPod) | vs the first v7, paired on today's labels: doujin SFX 334 → 350 (+58 / −42, p 0.13); Manga109 test SFX 80.8 → 81.9 % (+118 / −89, p 0.05), speech 89.0 → 89.1 %; K3 KO 29 → 32, ZH 36 → 36 | — |
+| `v7/` (`169eacbc`) | `mainsub_1124_1923` | 0.15.0 | the same recipe on the 11-24 labels, batch 8 × 2 (RunPod) | vs the first v7, paired on today's labels: doujin SFX 334 → 350 (+58 / −42, p 0.13); Manga109 test SFX 80.8 → 81.9 % (+118 / −89, p 0.05), speech 89.0 → 89.1 %; K3 KO 29 → 32, ZH 36 → 36 | [`mainsub_1124_1923.md`](reports/mainsub_1124_1923.md) |
 
 K3 figures in the table are on the labels before the 2026-11-24 review (`assets/k3_gelnote.pre_review.tsv`).
 On the reviewed labels (`review_1124b`: 53 edits, mostly line breaks, 91 rows → `checked`; 48 KO + 48 ZH
