@@ -11,9 +11,10 @@ Every crop is an axis-aligned quad in page coordinates. Each COO polygon and
   reading order;
 * ``0.05 … 0.8`` — partly visible (``part``): shown as a hint (cut text the reviewer
   types as far as it is visible, e.g. a speech edge in an SFX crop). One exception: a
-  crop with nothing whole inside takes the speech box ≥ 0.5 in as its main (``trim``: the
-  detector split lettering the annotation joins), cut to the lines the crop shows
-  (``trim_lines``, ``trim_cut`` = lines dropped); the reviewer checks the rest.
+  crop with nothing whole inside and no label of its own takes the speech box ≥ 0.3 in as
+  its main (``trim``: the detector split lettering the annotation joins), cut to the lines
+  the crop shows (``trim_lines``, ``trim_cut`` = lines dropped); the reviewer checks the
+  rest.
 
 The crop's own label stays as the manifests hold it (line breaks, review edits): a
 speech item's text comes from ``manifest_sfxp_speech`` when that row exists, a det crop
@@ -60,7 +61,7 @@ from linebreak_auto import (  # noqa: E402
     segment,
 )
 
-INCLUDE, PART, TRIM = 0.8, 0.05, 0.5
+INCLUDE, PART, TRIM = 0.8, 0.05, 0.3
 SAME = 0.7
 HANGUL = re.compile(r"[가-힣ㄱ-ㅎㅏ-ㅣ]")
 SOFT = set("!！?？・…‥~〜ー-―.．、。")
@@ -240,10 +241,10 @@ def book_rows(args) -> list[dict]:
         items = pages.get(int(r["page"]), [])
         fr = {it.id: it.frac(quad) for it in items}
         main, sub, inc, part = propose(items, fr, own, own_text)
-        # nothing whole inside but a speech box half in (the detector split what the
+        # nothing whole inside but a speech box ≥ 0.3 in (the detector split what the
         # annotation joined): its text as main, for the reviewer to cut down
         trim, cut = None, 0
-        if not inc:
+        if not inc and not main:
             half = [it for it in part if it.kind == "speech" and fr[it.id] >= TRIM]
             if half:
                 trim = max(half, key=lambda it: fr[it.id])

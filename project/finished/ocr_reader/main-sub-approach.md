@@ -89,7 +89,7 @@ reviewed row (`assets/m109_mainsub.tsv`: source, id, status, main, sub) replaces
   `sqrt(hull area / glyphs)`.
 - sub (`subp`): per `<text>` box, the furigana first (the agents' fix where they reviewed it, else
   the ruby read), then the other items in the crop.
-- With no item whole inside, a speech box at least half inside becomes the main, cut to the
+- With no item whole inside, a speech box at least 0.3 inside becomes the main, cut to the
   columns and glyphs that show (`trim`).
 - An unreviewed main takes the line breaks agents read off its crop (`assets/m109_breaks.tsv`);
   its characters stay the proposal's.

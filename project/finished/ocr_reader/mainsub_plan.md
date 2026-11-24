@@ -35,6 +35,10 @@ leaves this file for a report.
   ([report](reports/hayai_first_pass_2026_11_24.md)). Pending: `load_mainsub` reading the
   reviewed ones (their crops are cut; the loader reads `manifest_sfxp_det_all` only), and the
   val boxes (1,955 + 168, not on the page).
+- The `hayai disagrees` rows after tier 1 (861 agent-checked, 734 applied,
+  [report](reports/hayai_agent_tier1_2026_11_24.md)): tier 2 (distance ≤ 0.4, dakuten / longer /
+  shorter read, about 620) and tier 3 (same length, other glyphs, about 2,900) not run; the 2
+  held rows (`BEMADER_P_047_27`, `ToutaMairimasu_037_11`: furigana untyped) wait for the user.
 - `AosugiruHaru_028_21`: the main `アハハハ` covers only part of the SFX (a `キ…` column beside
   it); no one has read the whole. Trains as proposed.
 - 141 speech mains held by the line-break agents (15+ characters: 76 label and crop differ, 9
@@ -73,5 +77,8 @@ leaves this file for a report.
 - [`hayai_first_pass_2026_11_24.md`](reports/hayai_first_pass_2026_11_24.md): hayai v2.7 over
   all 164,090 detector boxes; 12,947 of the 122,853 main / sub rows differ from the main; the
   25,396 no-label rows on the page.
+- [`hayai_agent_tier1_2026_11_24.md`](reports/hayai_agent_tier1_2026_11_24.md): the user's 70-row
+  review of the hayai sort and 22 Sonnet agents over the next 861 rows (734 applied); trim gate
+  0.5 → 0.3.
 - [`mainsub_sfx_agents_2026_11_23.md`](reports/mainsub_sfx_agents_2026_11_23.md): the SFX-only
   check (190 / 2 / 8 of 200) and the agent subs of the 636 SFX crops with speech partly inside.

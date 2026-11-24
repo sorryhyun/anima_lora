@@ -48,7 +48,9 @@ logprob first by default.
 ``--hayai`` (``hayai_read.py``'s reads of every detector box, hayai-ocr v2.7 Supernova): a
 ``mainsub_*`` row shows the read under its meta line, and the ``hayai disagrees`` sort lists
 the rows whose main the read does not match (whitespace-blind, with ``exact_key``'s folds; a
-read equal to main + sub counts as a match), largest distance first. hayai reads a crop as
+read equal to main + sub counts as a match; a main of one kana, or one kana two or three times,
+compares with hiragana = katakana and small = large: ``へへへ`` / ``ヘヘヘ``, ``ぁ`` / ``あ``),
+largest distance first. hayai reads a crop as
 one string with no line breaks, so it says nothing about a row's breaks. ``mainsub_nolabel``:
 the detector boxes with no label (``neg_other``: no annotation inside; ``drop``: an SFX cut
 partway; train), the main box holding hayai's read as a first pass; their crops are cut on
@@ -745,11 +747,38 @@ def hayai_reads(path: Path | None) -> dict[str, dict]:
     return {x["id"]: x for x in map(json.loads, open(path, encoding="utf-8"))}
 
 
+_SMALL_KANA = str.maketrans(
+    "ぁぃぅぇぉゃゅょゎゕゖァィゥェォャュョヮヵヶ",
+    "あいうえおやゆよわかけアイウエオヤユヨワカケ",
+)
+_KANA = re.compile(r"[ぁ-ゖァ-ヺ]")
+_NOT_KANA_LINE = re.compile(r"[^\sぁ-ゖァ-ヺー〜~!?！？・…‥.っッ゛゜\u3099\u309a]")
+
+
+def kana_fold(s: str) -> str:
+    """Katakana → hiragana, small kana → large."""
+    s = s.translate(_SMALL_KANA)
+    return "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in s)
+
+
+def short_kana(main: str) -> bool:
+    """A main of one kana, or the same kana two or three times (``へへへ``, ``あぁ…``):
+    ``っ`` / ``ー`` / punctuation do not count, nothing but kana and those."""
+    if _NOT_KANA_LINE.search(main):
+        return False
+    core = [c for c in exact_key(main) if _KANA.match(c) and c not in "っッ"]
+    return 1 <= len(core) <= 3 and len({kana_fold(c) for c in core}) == 1
+
+
 def hayai_distance(read: str, main: str, sub: str) -> float:
     """0 where hayai's read is the main, or the main and the sub's items in either order
-    (whitespace-blind, ``exact_key``'s folds); else 1 − the similarity to the main."""
+    (whitespace-blind, ``exact_key``'s folds; :func:`kana_fold` on both when the main is
+    :func:`short_kana`: a lone へ / ヘ or ぁ / あ looks the same in the crop); else 1 − the
+    similarity to the main."""
     h, m = exact_key(read), exact_key(main)
     s = exact_key(sub)
+    if short_kana(main):
+        h, m, s = kana_fold(h), kana_fold(m), kana_fold(s)
     if h in (m, m + s, s + m):
         return 0.0
     return round(1.0 - SequenceMatcher(None, h, m, autojunk=False).ratio(), 3) or 0.001
