@@ -48,9 +48,12 @@ Open:
    margin ends at 7.08 in both; the unpaired arm reads amp 0.675 / 0.672 against 0.723 / 0.688
    with stamp32 0.583 / 2.428 against 0.607 / 2.800 and the same grid on flat colour. Pair
    sheets wait on the user's read (local,
-   `bench/pixel_readout/results/20261124-1333-tex_x2unp_1124_1256/`). Proposed, not queued: a
-   high-pass penalty on the tokens whose target is flat, on `x2gf1k`'s recipe (18 min + the
-   read), for the pattern the user read on flat colour.
+   `bench/pixel_readout/results/20261124-1333-tex_x2unp_1124_1256/`).
+   `x2flat_1124_1341`, the control with no GAN gradient into the flat cells of the crop (the
+   user: "평탄한쪽은 gan을 빼는거 좋다"; same record): flat-token grain 0.37 against the control's
+   0.41 and `x2ovll`'s 0.23, the sky patch's 8-px fold 0.25 against 0.27 and 0.09, amp
+   unchanged; not passed. Proposed, not queued: a high-pass penalty on the pixels whose target
+   is flat, on `x2gf1k`'s recipe (18 min + the read).
 4. The noise inputs again with a nonzero init and their own LR, if 3 moves the margin: only then
    does a loss reward the draw.
 5. `x2lora_1124_1113`, the GAN finish as a rank-8 LoRA on the frozen `x2ovll` (LR 2e-4, 1,000

@@ -77,6 +77,7 @@ class X2TrainRequest(Request):
     pegan_lambda_max: float = 1.0
     pegan_crop: int = 512
     pegan_unpaired: bool = False  # the real crop from another replay window
+    pegan_flat_level: float = 0.0  # > 0: no GAN gradient into flat-target cells
     seed: int = 0
     # the discriminator
     pegan_layers: str = "3,7,11"  # PE blocks tapped, 0-based
@@ -294,6 +295,7 @@ def run(req: X2TrainRequest) -> Path:
         "pegan_ratio": req.pegan_ratio,
         "pegan_start": req.pegan_start,
         **({"pegan_unpaired": 1} if req.pegan_unpaired else {}),
+        **({"pegan_flat_level": req.pegan_flat_level} if req.pegan_flat_level else {}),
         "rollouts": req.rollouts,
         "run": req.output_name,
     }

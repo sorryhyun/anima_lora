@@ -7,7 +7,12 @@ import random
 import torch
 
 from library.anima.pixel_head import PATCH, PixelHead, PixelHeadX2, load_pixel_head
-from scripts.pixel_head.train._common import cosine_lr, dc_loss, rec_loss
+from scripts.pixel_head.train._common import (
+    cosine_lr,
+    dc_loss,
+    flat_cells,
+    rec_loss,
+)
 from scripts.pixel_head.train._x2_trainer import (
     Window,
     X2TrainConfig,
@@ -161,6 +166,40 @@ def test_unpaired_real_crop_comes_from_another_window():
     assert crops[False][0].eq(0).all()  # the window's own target
     assert crops[True][0].eq(1).all()  # the other window's
     assert crops[False][1] == crops[True][1]  # the fake crop's place is drawn alike
+
+
+def test_flat_cells_cut_the_gan_gradient():
+    """``pegan_flat_level``: cells whose target is flat are found per 32 px, and the
+    generator's crop carries no gradient there; the weight rule sees the whole crop."""
+    torch.manual_seed(0)
+    target = torch.full((3, 64, 96), 0.2)
+    target[:, :, 64:] = torch.rand(3, 64, 32) * 2 - 1  # the right third is textured
+    flat = flat_cells(target, 1.0)
+    assert flat.shape == (1, 64, 96)
+    assert flat[:, :, :32].all() and not flat[:, :, 64:].any()
+    fake = torch.randn(1, 3, 64, 96, requires_grad=True)
+    cut = X2Trainer.cut_flat(fake, flat)
+    assert torch.equal(cut, fake)
+    cut.sum().backward()
+    assert fake.grad[..., :32].eq(0).all() and fake.grad[..., 64:].eq(1).all()
+
+    kw = dict(
+        rollouts=1, opt_steps=1, replay=2, window=4, margin=1, warmup=1,
+        lambda_dino=0.0, pegan_ratio=2.0, pegan_start=0, pegan_crop=64,
+    )  # fmt: skip
+    tr = X2Trainer(_head(), X2TrainConfig(pegan_flat_level=1.0, **kw), disc=_StubDisc())
+    f, lat = torch.randn(8, 8, D_FEAT), torch.randn(8, 8, 64)
+    flat_target = torch.full((3, 8 * 2 * PATCH, 8 * 2 * PATCH), 0.2)
+    tr.push(f, lat, flat_target, pick_window(8, 8, 4, 1, random.Random(0)))
+    tr.gan_live = True
+
+    def push(flat_off: bool) -> float:  # the GAN term's gradient norm over the head
+        t = tr.terms(tr.replay[0], compiled=False, flat_off=flat_off)
+        assert ("flat_share" in t) == flat_off
+        g = torch.autograd.grad(t["pegan"], tr.params, allow_unused=True)
+        return sum(float(v.abs().sum()) for v in g if v is not None)
+
+    assert push(True) == 0 and push(False) > 0
 
 
 def test_save_load_round_trip(tmp_path):

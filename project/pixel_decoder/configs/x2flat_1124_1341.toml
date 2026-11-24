@@ -1,0 +1,46 @@
+# x2 GAN finish with no GAN gradient into flat cells: x2gf1k_1124_1256 with pegan_flat_level 0 ->
+#   1.0, nothing else changed (the 32-px cells of the crop whose real target is flat, by
+#   tile_dict.py's rule at 1 level, are detached before the discriminator; the term's weight is
+#   set on the whole crop as in the control, so the other cells take the push they take there).
+# The user (2026-11-24): "오 그쪽으로 하자 평탄한쪽은 gan을 빼는거 좋다".
+# Question: does the pattern on flat colour come from the GAN's push on the flat pixels
+#   themselves? The flat-token grain and the sky patch's 8-px fold near x2ovll's with amp at the
+#   control's -> the mask goes on the 4,000-rollout finish, read against x2ovgf. The grain down
+#   and a step visible where masked cells meet the others (the user's read) -> a softer mask (a
+#   feathered edge or a lower level). The grain where the control's is -> the pattern reaches
+#   flat pixels through the head from the push on the others; a mask cannot remove it and a
+#   penalty on flat tokens is what is left. amp under the control's -> the flat cells carried
+#   part of the sharpening; read with the above.
+# Records it rests on:
+#   - reports/x2_unpaired_2026_11_24.md: the control reads amp 0.723 / 0.688, stamp32 0.607 /
+#     2.800, flat-token grain 0.41, sky patch 0.45 / 8-px fold 0.27, held out 29.91 / 25.66 dB;
+#     x2ovll 0.603 / 0.620, 0.414 / 1.573, 0.23, 0.28 / 0.09.
+#   - tile_dict.py on the 32 renders: 32,601 flat tokens by the same rule on the bicubic column.
+# Not known before the run: the share of flat cells in the training crops (logged as
+#   flat_share); how much of the flat pixels' pattern arrives through shared weights.
+# Read: flat_share and the margin beside the control's; evals beside the control's;
+#   p3_generated.py --x2 on the 32 renders with the control | this arm, sheet_texture.py --x2
+#   --pairs, tile_dict.py, the sky patch's 8-px fold; labelled pair sheets with the two regions
+#   the user read on x2ovgf; the user's read decides.
+# Bars: spread unknown; no twin of a 1,000-rollout finish.
+# Cost: 1,000 rollouts at about 0.96 s: about 18 min, + a 5-min render read.
+# make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_x2.py --config <this file>"
+
+output_name = "x2flat_1124_1341"
+resume = "output/pixel_head/x2ovll_1124_0139/head_x2.safetensors"
+x2flex = "post_image_dataset/x2flex/manifest_w32.json"
+rollouts = 1000
+lr = 2e-5
+eval_every = 500
+window = 32
+overlap = true
+
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 245.2
+dino_tiles = 4
+
+pegan_crop = 512
+pegan_ratio = 2.0
+pegan_start = 0
+pegan_flat_level = 1.0
+seed = 0

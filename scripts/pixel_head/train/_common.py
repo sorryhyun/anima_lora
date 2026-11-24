@@ -147,6 +147,21 @@ def rec_loss(pred: torch.Tensor, tgt: torch.Tensor):
     return 0.5 * l1 + 5.0 * mse + 0.05 * (gh + gw), mse
 
 
+def flat_cells(img: torch.Tensor, level: float, cell: int = 32) -> torch.Tensor:
+    """(3, H, W) in [-1, 1] → (1, H, W) bool: the ``cell``-px cells where the gradient of
+    the luma, smoothed by a Gaussian at σ 2 px, stays under ``level`` 8-bit levels (the
+    flat tokens of ``bench/pixel_readout/experiments/tile_dict.py``)."""
+    y = luma8(img)[None, None]
+    k = torch.exp(-0.5 * (torch.arange(-6, 7, device=y.device) / 2.0) ** 2)
+    k = (k / k.sum()).to(y.dtype)
+    y = F.conv2d(F.pad(y, (6, 6, 0, 0), mode="reflect"), k.view(1, 1, 1, -1))
+    y = F.conv2d(F.pad(y, (0, 0, 6, 6), mode="reflect"), k.view(1, 1, -1, 1))
+    gy, gx = torch.gradient(y[0, 0])
+    flat = F.max_pool2d(torch.hypot(gy, gx)[None, None], cell, ceil_mode=True) < level
+    h, w = img.shape[-2:]
+    return flat.repeat_interleave(cell, -2).repeat_interleave(cell, -1)[0, :, :h, :w]
+
+
 def dc_loss(a: torch.Tensor, b: torch.Tensor, k: int) -> torch.Tensor:
     """L1 on ``k``-px block means (the tone term); both (3, H, W) in [-1, 1]."""
     return F.l1_loss(F.avg_pool2d(a[None], k), F.avg_pool2d(b[None], k))

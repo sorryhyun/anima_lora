@@ -36,6 +36,7 @@ from scripts.pixel_head.train._common import (
     _grad_norm,
     cosine_lr,
     dc_loss,
+    flat_cells,
     npz_tokens,
     rec_loss,
 )
@@ -160,6 +161,10 @@ class X2TrainConfig:
     # the discriminator's real crop comes from another replay window, at its own place:
     # no logit can rest on comparing the two crops pixel by pixel
     pegan_unpaired: bool = False
+    # > 0: the GAN term sends no gradient into the 32-px cells whose target is flat
+    # (flat_cells at this many levels). Its weight is still set on the whole crop, so
+    # the other cells take the push they take without the mask.
+    pegan_flat_level: float = 0.0
     seed: int = 0
 
 
@@ -210,8 +215,11 @@ class X2Trainer:
             )
         )
 
-    def terms(self, sample, compiled: bool = True) -> dict[str, torch.Tensor]:
-        """Unweighted loss terms on one replay window."""
+    def terms(
+        self, sample, compiled: bool = True, flat_off: bool = True
+    ) -> dict[str, torch.Tensor]:
+        """Unweighted loss terms on one replay window. ``flat_off`` = apply
+        ``pegan_flat_level`` (off where the term's weight is set)."""
         bf, blat, b2, mar = sample
         cfg = self.cfg
         with torch.autocast(bf.device.type, dtype=torch.bfloat16):
@@ -231,11 +239,20 @@ class X2Trainer:
             assert min(h, w) >= c, (h, w, c)
             y, x = self._crop_rng.randint(0, h - c), self._crop_rng.randint(0, w - c)
             sl = (..., slice(y, y + c), slice(x, x + c))
-            real = t2[None][sl]
+            fake, real = p2[None].float()[sl], t2[None][sl]
+            if cfg.pegan_flat_level > 0 and flat_off:
+                flat = flat_cells(real[0], cfg.pegan_flat_level)
+                fake = self.cut_flat(fake, flat)
+                out["flat_share"] = flat.float().mean()
             if cfg.pegan_unpaired:
                 real = self._other_real(sample, c)
-            out["pegan"] = self.disc.gen_term(p2[None].float()[sl], real)
+            out["pegan"] = self.disc.gen_term(fake, real)
         return out
+
+    @staticmethod
+    def cut_flat(fake: torch.Tensor, flat: torch.Tensor) -> torch.Tensor:
+        """``fake`` with its values kept and no gradient through the ``flat`` pixels."""
+        return torch.where(flat, fake.detach(), fake)
 
     def _other_real(self, sample, c: int) -> torch.Tensor:
         """A ``c``-px crop of the real 2× image of another replay window (of this one
@@ -259,7 +276,9 @@ class X2Trainer:
     def _set_gan_weight(self) -> None:
         """λ = ratio · ‖∇ regression‖ / ‖∇ pegan‖ over the head, eager, one window."""
         params = self.params
-        t = self.terms(self._replay_rng.choice(self.replay), compiled=False)
+        t = self.terms(
+            self._replay_rng.choice(self.replay), compiled=False, flat_off=False
+        )
         g_reg = torch.autograd.grad(
             self.regression(t), params, retain_graph=True, allow_unused=True
         )
