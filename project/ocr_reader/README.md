@@ -138,6 +138,10 @@ so older commands still resolve.
   the loader does not train them yet.
 - A `mainsub_*` row shows hayai's read (one string, no line breaks); the `hayai disagrees` sort
   lists the rows whose main it does not match, largest distance first.
+- A `mainsub_*` row in `assets/m109_mainsub.tsv` (the user's or an agent pass's) shows the applied
+  main and sub and starts reviewed; hayai's distance is to them, and an applied drop leaves the
+  hayai sorts. Before 2026-11-24 the page showed the annotation's proposal on these rows. The
+  page shows no proposal text.
 - The `has` filter lists rows by what the boxes hold (main only, sub only, both, partly visible
   text). The default `suspicion` sort puts `trim`, then partly visible text, first.
 - A row holding one `<text>` box with ruby starts from its furigana row's sub edits.

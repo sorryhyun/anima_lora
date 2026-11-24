@@ -60,7 +60,12 @@ the first build to ``crops_sfxp/det_nolabel/``. ``apply_review.py`` writes these
 ``gelnote_ko`` / ``swaprelax_v5`` / ``hito_v4_*`` rows, against the label. hayai often slips
 kana or hanja into a Hangul line (and Hangul into a JA one): a read holding a script the
 label does not (``hyx``) goes behind the others in the ``hayai disagrees`` sorts. The
-``hayai near miss`` sort lists the disagreeing rows smallest distance first.
+``hayai near miss`` sort lists the disagreeing rows smallest distance first. The ``hayai:
+likely label errors first`` sort orders them by ``hayai_kind`` (the read is the label plus a
+dakuten, the label reordered, or the label plus text the sub lacks, first; the read short of
+the label's marks or characters, or the sub alone, last), rows with partly visible text after
+the rest of their group, then smallest distance first. The distance takes small kana = large
+and a run of dashes / waves, or of dots, as one (``loose_key``).
 
 A row whose main label is over the training cap (``crop_dataset.MAX_TARGET_CHARS``, which
 drops it) is not listed or counted (``mark_over_cap``); it stays in the page's data, so
@@ -99,6 +104,7 @@ import argparse
 import json
 import os
 import re
+import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -204,6 +210,7 @@ header .pager { margin:0; }
     <option value="furisus">furigana suspicious: most doubtful ruby first (mainsub)</option>
     <option value="hy">hayai disagrees with the main, largest distance first</option>
     <option value="hyn">hayai near miss: disagrees, smallest distance first</option>
+    <option value="hyl">hayai: likely label errors first (added mark / reordered / missing text), then near misses</option>
     <option value="id">id</option><option value="todo">unreviewed first</option></select></label>
   <label>has <select id="has"><option value="">all</option><option value="main">main only</option>
     <option value="sub">sub only</option><option value="both">main + sub</option>
@@ -284,6 +291,16 @@ function changed(k, x) {
   const op = k in subs ? subs[k] : (st && st !== "drop" ? subOf(k, x) : null);
   return op != null && norm(op) !== norm(APPLIED.subs[k] || "");
 }
+// rows m109_mainsub.tsv holds (x.ap) start reviewed as applied; these states are re-derived on
+// every load (ap: 1), so a later apply shows through, and a touch of the row replaces them
+(() => {
+  for (const k of Object.keys(store)) if (store[k] && store[k].ap) delete store[k];
+  for (const [s, rows] of Object.entries(DATA)) for (const x of rows) {
+    const k = s + ":" + x.id;
+    if (x.ap && !store[k]) store[k] = {status: x.ap === "drop" ? "drop" : "ok", text: null, ap: 1};
+  }
+  save();
+})();
 // edits already applied to the manifests come back as the label itself: keep them as reviewed
 (() => {
   let n = 0;
@@ -347,6 +364,8 @@ function rows() {
   else if (k === "furisus") r = r.filter(x => x.rb).sort((a, b) => b.rsus - a.rsus || a.id.localeCompare(b.id));
   else if (k === "hy") r = r.filter(x => x.hyd > 0).sort((a, b) => (a.hyx || 0) - (b.hyx || 0) || b.hyd - a.hyd || a.id.localeCompare(b.id));
   else if (k === "hyn") r = r.filter(x => x.hyd > 0).sort((a, b) => (a.hyx || 0) - (b.hyx || 0) || a.hyd - b.hyd || a.id.localeCompare(b.id));
+  else if (k === "hyl") r = r.filter(x => x.hyd > 0).sort((a, b) => (a.hyx || 0) - (b.hyx || 0) || (b.hyk ?? 1) - (a.hyk ?? 1)
+    || (a.part > 0) - (b.part > 0) || a.hyd - b.hyd || a.id.localeCompare(b.id));
   else if (k === "id") r = r.slice().sort((a, b) => a.id.localeCompare(b.id));
   else r = r.slice().sort((a, b) => !!store[s + ":" + a.id] - !!store[s + ":" + b.id]);
   // has: what the row's boxes hold now (a drop holds nothing)
@@ -393,7 +412,7 @@ function render() {
       ${x.twin_img ? `<div class="twin"><img loading="lazy" src="${x.twin_img}"><div class="meta">twin (${esc(x.twin_lang)}) v4: ${esc(x.twin || "—").replace(/\n/g, " ⏎ ")}</div></div>` : ""}
       ${x.ms ? `<div class="meta">main (OCR:) · the largest text</div>` : ""}
       <textarea class="mainta" rows="${Math.max(2, x.text.split("\n").length + 1)}"></textarea>
-      <div class="subbox" hidden><div class="meta">sub (OCR2:) · same crop · one item per line, reading order${x.sub ? " · proposal: " + esc(x.sub).replace(/\n/g, " ⏎ ") : ""}</div>
+      <div class="subbox" hidden><div class="meta">sub (OCR2:) · same crop · one item per line, reading order</div>
         <textarea class="subta" rows="2"></textarea></div>
       <div class="btns"><button class="okb">✓ ok</button><button class="drb">✗ drop row</button>
         <button class="rsb">reset</button><button class="subb">+ sub</button>
@@ -572,7 +591,11 @@ def hayai_fields(hk: dict, src: str, rid: str, text: str) -> dict:
         return {}
     alien = HANGUL if src == "hito_v4_ja" else KANA_HANJA
     hyx = int(bool(alien.search(read)) and not alien.search(text))
-    return dict(hy=read, hyd=hayai_distance(read, text, ""), hyx=hyx)
+    hyd = hayai_distance(read, text, "")
+    out = dict(hy=read, hyd=hyd, hyx=hyx)
+    if hyd:
+        out["hyk"] = hayai_kind(read, text, "")
+    return out
 
 
 def hito_rows(d: Path, flags: dict, hk: dict) -> dict[str, list[dict]]:
@@ -881,18 +904,86 @@ def short_kana(main: str) -> bool:
     return 1 <= len(core) <= 3 and len({kana_fold(c) for c in core}) == 1
 
 
+_LOOSE = [
+    (re.compile(r"[ー―─—‐－~〜-]+"), "ー"),
+    (re.compile(r"…+"), "…"),
+    (re.compile(r"!+"), "!"),
+    (re.compile(r"\?+"), "?"),
+    (re.compile(r"。"), ""),
+]
+
+
+def loose_key(s: str) -> str:
+    """``exact_key`` with small kana = large (``ォ`` / ``オ``; ``っ`` stays), a run of
+    dashes and waves as one ``ー`` (a drawn long sound reads as either), a run of dots,
+    ``!`` or ``?`` as one; ``。`` dropped."""
+    s = exact_key(s).translate(_SMALL_KANA)
+    for rx, to in _LOOSE:
+        s = rx.sub(to, s)
+    return s
+
+
 def hayai_distance(read: str, main: str, sub: str) -> float:
     """0 where hayai's read is the main, or the main and the sub's items in either order
-    (whitespace-blind, ``exact_key``'s folds; :func:`kana_fold` on both when the main is
-    :func:`short_kana`: a lone へ / ヘ or ぁ / あ looks the same in the crop); else 1 − the
+    (whitespace-blind, :func:`loose_key`'s folds; :func:`kana_fold` on both when the main
+    is :func:`short_kana`: a lone へ / ヘ looks the same in the crop); else 1 − the
     similarity to the main."""
-    h, m = exact_key(read), exact_key(main)
-    s = exact_key(sub)
+    h, m, s = loose_key(read), loose_key(main), loose_key(sub)
     if short_kana(main):
         h, m, s = kana_fold(h), kana_fold(m), kana_fold(s)
     if h in (m, m + s, s + m):
         return 0.0
     return round(1.0 - SequenceMatcher(None, h, m, autojunk=False).ratio(), 3) or 0.001
+
+
+def _marks(s: str) -> tuple[str, int]:
+    """``s`` with its dakuten / handakuten taken off, and how many letters held one as a
+    composed glyph (``ゔ``, ``じ``, ``ぱ``). A mark NFC leaves standing (``あ゙``, a voiced
+    vowel drawn for a scream) does not count: hayai adds those where the crop has none."""
+    marks = "\u3099\u309a"
+    bare = "".join(c for c in unicodedata.normalize("NFD", s) if c not in marks)
+    n = sum(
+        c not in marks and unicodedata.normalize("NFD", c)[-1] in marks
+        for c in unicodedata.normalize("NFC", s)
+    )
+    return unicodedata.normalize("NFC", bare), n
+
+
+def _subseq(a: str, b: str) -> bool:
+    """``a`` is ``b`` with characters left out."""
+    it = iter(b)
+    return len(a) < len(b) and all(c in it for c in a)
+
+
+def hayai_kind(read: str, main: str, sub: str) -> int:
+    """Where a disagreeing hayai read points (the ``hayai: label errors first`` sort):
+    2 = at the label (the read is the label plus a dakuten / handakuten, the label's
+    characters reordered, or the label plus text the empty sub lacks), 0 = at hayai (the
+    read is the label short of a mark or of characters, or is the sub alone: a misread or
+    text the box cuts), 1 = neither."""
+    h, m, s = loose_key(read), loose_key(main), loose_key(sub)
+    if not h or not m:
+        return 1
+    (hb, hn), (mb, mn) = _marks(h), _marks(m)
+    if hb == mb:
+        return 2 if hn > mn else 0 if hn < mn else 1
+    if len(m) > 1 and sorted(h) == sorted(m):
+        return 2
+    # text the label lacks: new characters (not hayai repeating the label), and not a
+    # runaway read
+    extra = h.replace(m, "", 1)
+    if (
+        not s
+        and len(m) > 1
+        and m in h
+        and len(extra) >= 2
+        and set(extra) - set(m)
+        and len(h) <= 3 * len(m) + 10
+    ):
+        return 2
+    if _subseq(h, m) or (s and (h == s or h in s)):
+        return 0
+    return 1
 
 
 def nolabel_rows(d: Path, hayai: dict[str, dict]) -> dict[str, list[dict]]:
@@ -954,8 +1045,12 @@ def mainsub_rows(
     path: Path | None,
     ruby: list[dict] | None = None,
     hayai: dict[str, dict] | None = None,
+    applied: dict | None = None,
 ) -> dict[str, list[dict]]:
-    """``m109_mainsub.py``'s crops, one source each, every row. A crop holding
+    """``m109_mainsub.py``'s crops, one source each, every row. A row in
+    ``m109_mainsub.tsv`` (``applied["ms"]``) shows the applied main and sub, not the
+    proposal (``ap`` = its status; the page counts it reviewed), and hayai is measured
+    against them; an applied drop has no hayai distance. A crop holding
     ``<text>`` boxes the furigana source holds (``sp``) takes their ruby reads (the
     agent's where it reviewed the row) as the head of its sub proposal; with one such box,
     ``fk`` points the page at that furigana row's sub box state.
@@ -1025,9 +1120,22 @@ def mainsub_rows(
                 if len(hits) == 1:
                     extra["fk"] = "furigana:" + hits[0]["id"]
                 n_rb += 1
-            if (hy := (hayai or {}).get(x["id"])) and hy["read"] is not None:
+            if ap := ((applied or {}).get("ms") or {}).get(f"{src}:{x['id']}"):
+                for f in ("raw", "lbs", "fk"):
+                    extra.pop(f, None)
+                note = f"applied {ap[0]} · " + note
+                extra["ap"] = ap[0]
+                if ap[0] != "drop":
+                    main, sub = ap[1], ap[2]
+            if (
+                (hy := (hayai or {}).get(x["id"]))
+                and hy["read"] is not None
+                and extra.get("ap") != "drop"
+            ):
                 extra["hy"] = hy["read"]
                 extra["hyd"] = hayai_distance(hy["read"], extra.get("raw", main), sub)
+                if extra["hyd"]:
+                    extra["hyk"] = hayai_kind(hy["read"], extra.get("raw", main), sub)
             rows.append(
                 dict(
                     id=x["id"],
@@ -1277,11 +1385,11 @@ def main():
     # proposals (and their earlier sub edits carry over through ``fk``)
     fur = furigana_rows(d, a.ruby, a.ruby_fix).get("furigana")
     hayai = hayai_reads(a.hayai)
-    data.update(mainsub_rows(d, a.mainsub, fur, hayai))
+    applied = applied_state()
+    data.update(mainsub_rows(d, a.mainsub, fur, hayai, applied))
     data.update(nolabel_rows(d, hayai))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
-    applied = applied_state()
     mark_over_cap(data, applied)
     a.out.mkdir(parents=True, exist_ok=True)
     html = (
