@@ -70,6 +70,59 @@ Open:
    | `1151` (local,
    `bench/pixel_readout/results/20261124-1210-tex_x2lora_1124_1151/`). Proposed, not queued:
    rank 64 with nothing else changed (18 min + the read), or the finish stays a full finetune.
+6. `x2r05_1124_1908`, the control `x2gf1k_1124_1256` with `pegan_ratio` 2.0 → 0.5 (the user:
+   "gan + dino(lpips) + mse 가 정석 upscaler잖아", "ㅇㅋ 1번 해보자"), ran with its read
+   ([record](reports/x2_ratio_2026_11_24.md)): amp 0.687 / 0.659 against the control's 0.723 /
+   0.688, stamp32 0.519 / 1.861 against 0.607 / 2.800, flat-token grain 0.29 against 0.41, the
+   sky patch's 8-px fold 0.15 against 0.27, margin 7.29 against 7.05. By its config's rule the
+   first outcome (under the α line at its amp). Waiting on the user's read of the pair sheets
+   control | arm (local,
+   `bench/pixel_readout/results/20261124-1931-tex_x2r05_1124_1908/`).
+   The 4,000-rollout finish `x2r05gf_1124_1941` (the user: "4k 먼저 돌려보자") ran with its
+   read (same record), against `x2ovgf_1124_0920`: amp 0.710 / 0.646 against 0.771 / 0.698,
+   stamp32 0.494 / 1.799 against 0.657 / 2.678, grain 0.29 against 0.39, the sky patch's 8-px
+   fold 0.11 against 0.32, held out 30.20 / 25.94 dB against 29.69 / 25.62, margin 7.53. By
+   its config's rule the first outcome on colour: the ×2 ship candidate in `x2ovgf`'s place,
+   waiting on the user's read of the pair sheets `x2ovgf` | arm (local,
+   `bench/pixel_readout/results/20261124-2049-tex_x2r05gf_1124_1941/`). The convolution tail
+   is not proposed while this holds.
+7. The reference code against this GAN term (2026-11-24; the user: "fastframes repo 한번
+   구경해볼래? 처음에 구현할때 이게 반영됐는진 모르겠다만"). Read:
+   `github.com/apple-aiml-research/ml-fastframes` at `a65c592`
+   (`fastframes/training/dinov3_discriminator.py`, `configs/ffs_decoder_gan.yaml`) and the
+   paper's §3.2 / App. C from its PDF. The paper gives λ_center 0.01, λ_slope 0.25, ε 0.01 on
+   25 % of the clips and "a cap" on the adversarial RGB gradient; the cap's value, the crop
+   and the slope's form are in the code only.
+
+   | | reference code | here (`PEDisc`, `_x2_trainer.py`) |
+   |---|---|---|
+   | R1 / R2 | 0.25 · mean(((D(x + εn) − D(x)) / ε)²), ε 0.01: 2,500 · Δ² | 0.1 · mean(Δ²), σ 0.01 |
+   | centring | 0.01 · mean((D(y) + D(ŷ))²) | none |
+   | generator weight | the adversarial RGB gradient capped per sample at 0.2 × the reconstruction's (mean abs); scaled down only | the gradient norm over the head set to `pegan_ratio` × the regression's (2.0; 0.5 in Open 6) |
+   | start | 25 discriminator-only updates, then the cap ramps over 250 | the term at its ratio from update 0 |
+   | tower | DINOv3 ViT-S/16, layers 4 / 8 / 12, ImageNet-normalised input | PE-Spatial-B16, blocks 3 / 7 / 11 |
+   | heads | LayerNorm, Linear 128, SiLU, Linear 1 per token | a convolutional head of width 256 per tap |
+   | crops per update | 16 of 224 px per GPU, 8 GPUs | 1 of 512 px |
+   | real crop | from real videos, another clip (the regression target is the VAE's decode) | the regression target at the same place |
+   | head LR / length | 1e-5, 20,000 updates | 2e-5, 16,000 – 64,000 updates |
+   | regression | L1, MSE, gradient (+ temporal, motion); no perceptual term | the same three + DINO 245.2 + dc |
+   | decoder | ConvNeXt blocks at the token grid, one linear 16 × 16 unpatchify | two upsample stages, the overlapping patch output |
+
+   Logged here: `d_r1` / `d_r2` 0.05 – 0.10 over a run (Δ about 0.2 – 0.3 logits for noise of
+   1.3 levels), margin 7.0 – 7.3 in every arm.
+   Claude's reading (not measured): the slope term here is 25,000 times lighter than the
+   reference's, so the discriminator is free to separate on sub-level high-frequency content,
+   which is the scale of the pattern on flat colour (0.3 – 0.5 levels) and of the grain; the
+   saturated margin fits it. The reference decoder has no convolution at pixel resolution, so
+   the tail of Open 6 is not what the reference relies on.
+   The user (2026-11-24, after `x2r05gf_1124_1941`'s read, with a screenshot of a dot grid on
+   a grey gradient; which head's sheet is not stated): "내생각에 slope 항을 2500으로 거는게
+   중요한것 같아. 문제가... 그 32픽셀 격자? 같은게 더 심해져서 slope를 거는게 맞을듯".
+   Queued on that: `x2slope_1124_2055`, `x2gf1k_1124_1256` with `pegan_r` 0.1 → 2500 (the
+   reference's slope term on this σ), nothing else changed, 18 min + the read; read by the
+   margin (under 7 or not) and by stamp32 (mono first) / grain / fold at its amp against the α
+   line. The cap at 0.2 in RGB space, the centring term and the DINO tower at 224 px are
+   later single changes.
 
 ## A fixed pattern after the GAN finetune (2026-11-22)
 
