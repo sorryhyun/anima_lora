@@ -241,12 +241,15 @@ def target_loss(model, enc, K: int | None = None) -> torch.Tensor:
     return torch.nn.functional.cross_entropy(logits[keep].float(), tgt[keep])
 
 
-def train_loss(model, enc, K: int) -> torch.Tensor:
+def train_loss(model, enc, K: int, crop_mean: bool = False) -> torch.Tensor:
     """``target_loss`` for this reader with no host sync: every index, position and mask
     is worked out on the CPU batch and copied up non-blocking. The stock forward reads
     each off the card (``get_rope_index``, the placeholder check, the causal mask's
     ``all()``, boolean indexing and its backward), and each read drains the queue, so
-    the GPU idles while the host dispatches what follows."""
+    the GPU idles while the host dispatches what follows.
+
+    ``crop_mean`` averages the CE inside each crop first and then over the crops, so a
+    crop weighs the same whatever its label length (a token mean weighs it by length)."""
     from transformers.masking_utils import create_causal_mask
     from transformers.vision_utils import (
         get_vision_cu_seqlens,
@@ -307,7 +310,15 @@ def train_loss(model, enc, K: int) -> torch.Tensor:
         logits_to_keep=K,
     )
     picked = out.logits[:, :-1][up(row), up(col)]
-    return torch.nn.functional.cross_entropy(picked.float(), up(tgt[row, col]))
+    if not crop_mean:
+        return torch.nn.functional.cross_entropy(picked.float(), up(tgt[row, col]))
+    # weights from the CPU labels: 1 / (the crop's target tokens × crops holding a target)
+    per_crop = torch.bincount(row, minlength=tgt.shape[0])
+    w = 1.0 / (per_crop[row].float() * int((per_crop > 0).sum()))
+    ce = torch.nn.functional.cross_entropy(
+        picked.float(), up(tgt[row, col]), reduction="none"
+    )
+    return (ce * up(w)).sum()
 
 
 @torch.no_grad()
@@ -507,6 +518,13 @@ def main():
         default=3072,
         help="cap each batch's padded patch tokens (largest crop × crops; "
         "crop_dataset.token_batches); 0 = fixed --bs area batches",
+    )
+    ap.add_argument(
+        "--loss_mean",
+        default="token",
+        choices=["token", "crop"],
+        help="token: CE averaged over the batch's target tokens (a crop weighs by its "
+        "label length); crop: averaged inside each crop, then over the crops",
     )
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--seed", type=int, default=0)
@@ -900,7 +918,7 @@ def main():
                     "K": K,
                 }
             n = enc["input_ids"].shape[0]
-            raw = train_loss(model, enc, K)
+            raw = train_loss(model, enc, K, crop_mean=a.loss_mean == "crop")
             # a short (token-budget) batch weighs by its crops, as if part of a --bs batch
             loss = raw * (min(n, a.bs) / a.bs) / a.grad_accum
             loss.backward()

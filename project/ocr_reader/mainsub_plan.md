@@ -74,6 +74,9 @@ leaves this file for a report.
 - [`mainsub_1124_0151.md`](reports/mainsub_1124_0151.md): the 2-epoch run (whole val main
   91.8 %, sub 54.7 %; doujin SFX 334 / 593, Manga109 test SFX 80.8 %, speech 89.0 %, K3 KO 30,
   ZH 33) against `sfxpc_1121_0117` and v6; shipped as Hub `v7/` (`59768fc6`).
+- [`mainsub_1124_1503.md`](reports/mainsub_1124_1503.md): token-mean against per-crop-mean loss
+  at 1k on the labels of 11-24 (`--loss_mean`; Manga109 test SFX 65.4 % against 66.4 %, 107 / 133
+  paired, p 0.11; speech 86.2 % against 86.4 %).
 - [`hayai_first_pass_2026_11_24.md`](reports/hayai_first_pass_2026_11_24.md): hayai v2.7 over
   all 164,090 detector boxes; 12,947 of the 122,853 main / sub rows differ from the main; the
   25,396 no-label rows on the page.
