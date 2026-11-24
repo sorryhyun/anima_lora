@@ -97,8 +97,11 @@ rows back to the TSV (``ok`` / edit → ``checked``, drop → ``skip``), line br
 
 ``anima_lowconf`` (``--anima_lowconf``, ``anima_lowconf.py``'s ``rows.jsonl``): the v7 reads
 of the Anima training set at or under its score cut, the main box holding the read as a first
-pass, the meta line the read's score and det. The ``v7 score`` sort lists them lowest score
-first. ``apply_review.py`` writes them to ``assets/anima_mainsub.tsv`` (the
+pass, the meta line the read's score and det. With ``--anima_agents`` (``label_agent.md``'s
+``*/out.tsv``, three agents per batch) the main box holds the agents' majority read where two
+agree, the meta line every agent's read and confidence, and the ``agents unsure`` sort lists the
+rows the agents were not unanimous and sure on, Hangul first. The ``v7 score`` sort lists them
+lowest score first. ``apply_review.py`` writes them to ``assets/anima_mainsub.tsv`` (the
 ``m109_mainsub.tsv`` columns); a row applied there starts reviewed.
 
     python project/ocr_reader/labeling/review_page.py --out ~/ko_label_review
@@ -205,10 +208,7 @@ header .pager { margin:0; }
   <label>min run <input id="minrun" type="number" min="0" max="20"></label>
   <label>sort <select id="sort"><option value="sus">suspicion</option>
     <option value="lp">lowest logprob first (hito)</option>
-    <option value="sfx">SFX-marked only</option>
-    <option value="rsfx">__READER__ read under SFX: only</option>
     <option value="nolf">no line break, longest first</option>
-    <option value="edge">edge text (label beyond __READER__'s read)</option>
     <option value="dis">__READER__ disagrees, lowest confidence first</option>
     <option value="run">longest run first</option>
     <option value="ell">한글 + …: most … first</option>
@@ -219,6 +219,7 @@ header .pager { margin:0; }
     <option value="hyn">hayai near miss: disagrees, smallest distance first</option>
     <option value="hyl">hayai: likely label errors first (added mark / reordered / missing text), then near misses</option>
     <option value="sc">v7 score, lowest first (anima_lowconf)</option>
+    <option value="ag">agents unsure: Hangul first, then most disagreement (anima_lowconf)</option>
     <option value="id">id</option><option value="todo">unreviewed first</option></select></label>
   <label>has <select id="has"><option value="">all</option><option value="main">main only</option>
     <option value="sub">sub only</option><option value="both">main + sub</option>
@@ -354,11 +355,8 @@ function rows() {
   const s = srcSel.value, n = +minIn.value || 0;
   let r = listed(s).filter(x => x.run >= n);
   const k = sortSel.value;
-  if (k === "sfx") r = r.filter(x => marks[s + ":" + x.id]);
-  else if (k === "rsfx") r = r.filter(x => x.rsfx).sort((a, b) => a.conf - b.conf);
-  else if (k === "lp") r = r.slice().sort((a, b) => (a.lp ?? 0) - (b.lp ?? 0) || a.id.localeCompare(b.id));
+  if (k === "lp") r = r.slice().sort((a, b) => (a.lp ?? 0) - (b.lp ?? 0) || a.id.localeCompare(b.id));
   else if (k === "sus") r = r.slice().sort((a, b) => b.sus - a.sus || a.id.localeCompare(b.id));
-  else if (k === "edge") r = r.filter(x => x.edge).sort((a, b) => b.edge.length - a.edge.length);
   else if (k === "dis") r = r.filter(x => x.rd != null && !x.agree && x.rd.replace(/\s/g, "") !== x.text.replace(/\s/g, ""))
                              .sort((a, b) => a.conf - b.conf);
   else if (k === "nolf") r = r.slice().sort((a, b) => (a.lf - b.lf) || (b.len - a.len));
@@ -374,6 +372,8 @@ function rows() {
   else if (k === "hyn") r = r.filter(x => x.hyd > 0).sort((a, b) => (a.hyx || 0) - (b.hyx || 0) || a.hyd - b.hyd || a.id.localeCompare(b.id));
   else if (k === "hyl") r = r.filter(x => x.hyd > 0).sort((a, b) => (a.hyx || 0) - (b.hyx || 0) || (b.hyk ?? 1) - (a.hyk ?? 1)
     || (a.part > 0) - (b.part > 0) || a.hyd - b.hyd || a.id.localeCompare(b.id));
+  else if (k === "ag") r = r.filter(x => x.unc > 0).sort((a, b) => (b.hg || 0) - (a.hg || 0)
+    || b.unc - a.unc || (a.sc ?? 1) - (b.sc ?? 1) || a.id.localeCompare(b.id));
   else if (k === "sc") r = r.slice().sort((a, b) => (a.sc ?? 1) - (b.sc ?? 1) || a.id.localeCompare(b.id));
   else if (k === "id") r = r.slice().sort((a, b) => a.id.localeCompare(b.id));
   else r = r.slice().sort((a, b) => !!store[s + ":" + a.id] - !!store[s + ":" + b.id]);
@@ -1049,16 +1049,71 @@ def nolabel_rows(d: Path, hayai: dict[str, dict]) -> dict[str, list[dict]]:
     return {"mainsub_nolabel": rows}
 
 
-def anima_rows(path: Path | None, applied: dict) -> dict[str, list[dict]]:
-    """``anima_lowconf``: ``anima_lowconf.py``'s crops, the main box holding the v7 read
-    (or the applied main and sub of ``anima_mainsub.tsv``)."""
+def agent_votes(d: Path | None) -> dict[str, list[dict]]:
+    """Every ``out.tsv`` under ``d`` (``label_agent.md``'s output, one folder per agent
+    and batch): ``{id: [{main, sub, conf, note}, …]}``, ``\\n`` unescaped."""
+    out: dict[str, list[dict]] = {}
+    if not d or not d.is_dir():
+        return out
+    for f in sorted(d.glob("*/out.tsv")):
+        df = pd.read_csv(f, sep="\t", dtype=str, keep_default_na=False, quoting=3)
+        for r in df.itertuples():
+            out.setdefault(r.id, []).append(
+                dict(
+                    main=r.main.replace("\\n", "\n").strip(),
+                    sub=r.sub.replace("\\n", "\n").strip(),
+                    conf=r.conf.strip().lower(),
+                    note=r.note,
+                )
+            )
+    return out
+
+
+def vote(votes: list[dict]) -> tuple[str | None, str, float]:
+    """The agents' majority ``(main, sub, uncertainty)``: main ``None`` when no two agree
+    (whitespace-blind). Uncertainty 0 = every agent wrote the same main at ``high``; each
+    extra distinct main adds 1, each ``mid`` 0.25 and each ``low`` 0.5."""
+    key = lambda t: re.sub(r"\s", "", t)  # noqa: E731
+    groups: dict[str, list[dict]] = {}
+    for v in votes:
+        groups.setdefault(key(v["main"]), []).append(v)
+    best = max(groups.values(), key=len)
+    main = best[0]["main"] if len(best) >= 2 else None
+    subs = [v["sub"] for v in best]
+    sub = max(set(subs), key=subs.count) if main is not None else ""
+    unc = (len(groups) - 1) + sum(
+        {"high": 0.0, "mid": 0.25}.get(v["conf"], 0.5) for v in votes
+    )
+    return main, sub, unc
+
+
+def anima_rows(
+    path: Path | None, applied: dict, agents: Path | None = None
+) -> dict[str, list[dict]]:
+    """``anima_lowconf``: ``anima_lowconf.py``'s crops, the main box holding the agents'
+    majority read when two or more agree (``label_agent.md``, ``--anima_agents``), else
+    the v7 read; the applied main and sub of ``anima_mainsub.tsv`` over both."""
     if not path:
         return {}
+    votes = agent_votes(agents)
     res = REPO / "post_image_dataset/resized"
     rows = []
     for x in map(json.loads, open(path, encoding="utf-8")):
         main, sub, extra = x["read"], "", {}
-        note = f"v7 read · score {x['score']:.3f} · det {x['det']:.2f}"
+        note = f"v7 read: {x['read']!r} · score {x['score']:.3f} · det {x['det']:.2f}"
+        if vs := votes.get(x["id"]):
+            m, sb, unc = vote(vs)
+            if m is not None:
+                main, sub = m, sb
+            extra["unc"] = round(unc, 2)
+            extra["hg"] = int(
+                bool(HANGUL.search(x["read"] + "".join(v["main"] for v in vs)))
+            )
+            note += " · agents: " + " / ".join(
+                f"{v['main'] or '∅'!r} ({v['conf']})" for v in vs
+            )
+            if m is None:
+                note += " · no majority: the box holds the v7 read"
         if ap := applied["ms"].get(f"anima_lowconf:{x['id']}"):
             extra["ap"] = ap[0]
             note = f"applied {ap[0]} · " + note
@@ -1378,6 +1433,12 @@ def main():
         help="anima_lowconf.py's rows.jsonl (bare flag: the default root's): the Anima "
         "training set's low-confidence v7 reads",
     )
+    ap.add_argument(
+        "--anima_agents",
+        type=Path,
+        default=REPO / "output/ocr/anima_lowconf/agents",
+        help="folder of label_agent.md outputs (*/out.tsv) for the anima_lowconf rows",
+    )
     a = ap.parse_args()
     d = m109.derived_root()
     kz = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
@@ -1448,7 +1509,7 @@ def main():
     applied = applied_state()
     data.update(mainsub_rows(d, a.mainsub, fur, hayai, applied))
     data.update(nolabel_rows(d, hayai))
-    data.update(anima_rows(a.anima_lowconf, applied))
+    data.update(anima_rows(a.anima_lowconf, applied, a.anima_agents))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     mark_over_cap(data, applied)

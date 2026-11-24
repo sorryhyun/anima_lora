@@ -42,7 +42,7 @@ Report paths under `history/` are in `_archive/ocr_reader/` (local). Sincos figu
 |---|---|
 | `core/` | the library every script imports (package `project.ocr_reader.core`): `paths.py` (repo and dataset paths, `ANIMA_*_ROOT` overrides), `manga109.py` (corpus access), `crop_dataset.py` (`load_mainsub`, the training set) + `augment.py`, `textnorm.py` (targets and keys), `readers.py` (`READERS`, `Vl16Reader` with its `task` prompt), `scoring.py` (`score` / `summary` / `exact_key` / `normalize_ja`), `crops.py` (`deskew_crop`, `margin_box`, ink projection), `labels.py` (`ellipsis_fold`, `line_broken`, `agent_subs`), `regions.py` (main / sub `Item`), `det_types.py` (detector-box `classify`), `hayai_beam.py`, `vl16_compile.py` |
 | `ocr/` | training and eval scripts: `finetune_vl16_lora.py`, `build_sfx_prefix.py` (the detector crops and their manifests), `build_manga109_crops.py` (the grey `manifest.parquet` the others start from), `eval_sfx.py` / `eval_k3.py` / `eval_manga109.py`, `rescore_eval.py` |
-| `labeling/` | the review page and the label pipeline: `review_page.py` (builds the page), `apply_review.py` (applies an export), `m109_mainsub.py` (Manga109 main / sub proposals), `furigana_find.py`, `linebreak_auto.py`, `hayai_read.py`, `ko_read.py` (reader flags for the KO rows), `anima_lowconf.py` (the Anima training set's v7 reads at score <= 0.85 as a label source, `sincos/` left out) |
+| `labeling/` | the review page and the label pipeline: `review_page.py` (builds the page), `apply_review.py` (applies an export), `m109_mainsub.py` (Manga109 main / sub proposals), `furigana_find.py`, `linebreak_auto.py`, `hayai_read.py`, `ko_read.py` (reader flags for the KO rows), `anima_lowconf.py` (the Anima training set's v7 reads at score <= 0.85 as a label source, `sincos/` left out), `label_agent.md` (the labeling-review agent prompt: crop + context zoom, the label rules, `out.tsv` with a confidence) |
 | `probes/` | main / sub measurements: `eval_mainsub.py`, `eval_subneg.py`, `sfxonly_suspect.py`, `mainsub_text.py`, `sfxp_crop_sheet.py` (sheets of the `core.det_types` types), `build_hf_mainsub.py` (the local HF dataset build) |
 | `gate/` | builders of the frozen gate sets: `build_eval_data.py`, `k3_gelnote.py` |
 | `assets/` | label TSVs; local except `k3_gelnote.tsv`, `kozh_sfx.tsv`, `sfx_labels_sincos_597.tsv` |
@@ -156,6 +156,13 @@ so older commands still resolve.
   source. Its crops and `rows.jsonl` are under `ANIMA_LOWCONF_ROOT`
   (`/media/sorryhyun/new/dataset/anima_ocr_lowconf`); apply writes its rows to
   `assets/anima_mainsub.tsv` (the `m109_mainsub.tsv` columns). Training does not read it yet.
+- Agent first pass (the user, 2026-11-24): three Sonnet agents per batch of ~32 rows run
+  `labeling/label_agent.md`, each in its own `output/ocr/anima_lowconf/agents/b<NN>_a<k>/`
+  folder (`batch.tsv` in, `out.tsv` out). The page puts the majority main in the box where two
+  agree and lists every agent's read; the `agents unsure` sort puts the rows that were not
+  unanimous at `high` first, Hangul first. On the user's first 13 edits the agents matched 7–9:
+  the non-text crops, signatures and Latin right, hand-lettered Korean SFX wrong (챱 → 잡,
+  루 → 르).
 
 ### After each export
 
