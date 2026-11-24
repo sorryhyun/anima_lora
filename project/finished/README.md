@@ -18,7 +18,7 @@ duplicate code or bench tables — canonical sources stay where they live.
 (docs, reports, dead probes; `cjk_renderable_anima/` and `cjk_anima_scale/` whole) from ripgrep, so
 Grep / Glob / Explore stay on live code; the `archive-explorer` agent searches
 it (`rg --no-ignore-dot`). What stays visible is what code outside
-`finished/` reads or runs, and `ocr_reader/` whole (its v7 / main-sub work goes on there): `sr/`, `mod_guidance/`, `cjk_aware_anima/{assets,
+`finished/` reads or runs: `sr/`, `mod_guidance/`, `cjk_aware_anima/{assets,
 probes}/` (the reseed line's eval prompts, `bench/grad_init`'s `blind_pairs.py`) and
 `moss_lora/src/` (named in `library/moss` docstrings; its logs are hidden) and `int8_train/src/`
 (the GPTQ builders the int8 docs run, `_archive/bench/anima_stream`'s prompts), and `qwen21_lora/src/` +
@@ -99,14 +99,6 @@ Finished lines:
   runnable by path (`project/finished/cjk_anima_scale/scale.py`). Its outputs
   stay at `output/cjk_anima_scale/` (reseed reads the seed rows, scene pools
   and EN refs there). Digest: [`cjk_anima_scale/README.md`](cjk_anima_scale/README.md).
-- [`ocr_reader/`](ocr_reader/) — the PaddleOCR-VL reader v4 (JA + KO + ZH),
-  opened 2026-10-10 out of `cjk_aware_anima_dit`'s reader half, moved here
-  2026-10-15. Shipped: v4 = `vl16_p2b_kozh_ep2` (tower LoRA + LM full FT,
-  gelnote KO/ZH pseudo rows, 2 epochs) on the Hub reader repo's `v4/`, pinned
-  by `anime_tools` v0.7.12. Ceiling: more labels and more data (hitocrawl
-  twins, Opus relabel + v4 self-labels) did not beat v4. Gates and code
-  runnable by path (`ocr/`, `gate/`, `hito/`); gate images in the gitignored
-  `eval_data/`. Digest: [`ocr_reader/README.md`](ocr_reader/README.md).
 - [`moss_lora/`](moss_lora/) — the MOSS-Image line (not Anima; `library/moss/CLAUDE.md`),
   opened 2026-10-16, moved here 2026-10-28. Shipped: the port, Spectrum, LoRA training
   (Muon + kaiming + EMA), DAVE, the INT8 TE (SmoothQuant + GPTQ), the GUI / ComfyUI

@@ -93,7 +93,7 @@ workspace/
 !gui/fonts/*.ttf
 
 # ocr_reader gate images
-project/finished/ocr_reader/eval_data/
+project/ocr_reader/eval_data/
 
 # scratch list at the repo root
 /candidates.txt
@@ -102,7 +102,7 @@ project/finished/ocr_reader/eval_data/
 project/**/assets/*.json
 project/**/assets/*.csv
 # ocr_reader assets (label sets, label reviews) stay local
-project/finished/ocr_reader/assets/
+project/ocr_reader/assets/
 # ocr_reader eval reports, written by the eval scripts on every run
-project/finished/ocr_reader/reports/ocr_eval_*.md
+project/ocr_reader/reports/eval/
 bench/turbo/judge_random_1118.txt

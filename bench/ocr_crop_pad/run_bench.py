@@ -43,7 +43,7 @@ import pandas as pd
 from bench._common import make_run_dir, write_result
 from library.env import resolve_under_home
 
-LINE = resolve_under_home("project/finished/ocr_reader")
+LINE = resolve_under_home("project/ocr_reader")
 sys.path.insert(0, str(LINE / "ocr"))
 import textnorm  # noqa: E402
 

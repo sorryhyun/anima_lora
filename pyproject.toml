@@ -104,7 +104,7 @@ dependencies = [
     # LyCORIS LoKr / LoHa weight math for the MOSS adapters (library/moss/lora.py).
     "lycoris-lora==4.0.0",
     "flash-linear-attention>=0.5.2 ; sys_platform == 'linux'",
-    # OCR reader train / eval / gate scripts (project/finished/ocr_reader/).
+    # OCR reader train / eval / gate scripts (project/ocr_reader/).
     "pandas>=3.0.3",
     "datasets>=4.8.5",
 ]

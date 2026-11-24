@@ -4,7 +4,7 @@
 
 Readers: ``stock`` (PaddleOCR-VL 1.6, ``common.readers.StockVl16``) and
 ``v4`` (anime_tools 0.7.10's ``OcrReader``: the manga reader, tower LoRA +
-fine-tuned decoder, trained with KO / ZH SFX crops — ``project/finished/ocr_reader``).
+fine-tuned decoder, trained with KO / ZH SFX crops — ``project/ocr_reader``).
 Every image is cut as the ruler cuts it (``ko_reader_cal.crops``: each
 detector box padded 12 %, then the whole image). By default ``v4`` reads
 free only (``--readers v4,stock`` / ``--forced`` add the others; ``--forced``
@@ -381,9 +381,7 @@ def main() -> None:
     del det
     print(f"{len(items)} images, {len(flat)} crops", flush=True)
     recs = [dict(m) for m, _ in items]
-    out = make_run_dir(
-        "cjk_ko", label=f"jamo-vl-{a.mode}", root=KO / "results"
-    )
+    out = make_run_dir("cjk_ko", label=f"jamo-vl-{a.mode}", root=KO / "results")
     done = []
     for rd in a.readers.split(","):
         assert rd in READERS, rd

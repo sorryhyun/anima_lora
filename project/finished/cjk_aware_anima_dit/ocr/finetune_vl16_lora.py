@@ -27,7 +27,7 @@ copied back each step (a 1e-5 update is below bf16 resolution otherwise).
 The trained tower is saved beside the adapter as ``tower.safetensors`` (bf16,
 base-model key names) and ``Vl16Reader`` loads it after the merge.
 
-``--tower_rank R`` (``project/finished/ocr_reader`` P2b) puts a LoRA (α = 2R) on the
+``--tower_rank R`` (``project/ocr_reader`` P2b) puts a LoRA (α = 2R) on the
 tower's attention / MLP Linears and the projector's two Linears instead.
 ``--lm_full`` drops the LM LoRA and trains the 18 LM decoder layers (255 M) in
 full through the same fp32-master path at ``--lm_lr``; embed_tokens, the final

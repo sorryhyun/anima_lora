@@ -1,6 +1,6 @@
 """Page matching and registration for hitocrawl edition twins.
 
-Lifted from ``project/finished/ocr_reader/hito/build_crops.py`` (the recipe and
+Lifted from ``_archive/ocr_reader/history/hito/build_crops.py`` (the recipe and
 its thresholds are measured there).
 """
 

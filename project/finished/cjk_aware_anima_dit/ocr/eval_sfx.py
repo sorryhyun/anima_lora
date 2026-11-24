@@ -54,10 +54,10 @@ import manga109 as m109  # noqa: E402
 
 LABELS = m109.ASSETS / "sfx_labels_sincos.tsv"
 PAGES = m109.REPO / "post_image_dataset/resized/sincos"
-# Frozen gate images (``project/finished/ocr_reader/gate/build_eval_data.py``): crops cut
+# Frozen gate images (``project/ocr_reader/gate/build_eval_data.py``): crops cut
 # at the default pad, and the pages behind them. Preferred over ``PAGES``, a
 # training tree that lost 8 label pages on 2026-10-10.
-FROZEN = m109.REPO / "project/finished/ocr_reader/eval_data/sincos"
+FROZEN = m109.REPO / "project/ocr_reader/eval_data/sincos"
 FROZEN_PAD = 0.12
 
 

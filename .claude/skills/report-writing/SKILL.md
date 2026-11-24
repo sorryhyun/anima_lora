@@ -7,7 +7,7 @@ description: How to write research records here — run reports, probe write-ups
 
 Applies to `project/*/reports/`, `project/*/findings/`, plan entries and state sections in
 `project/*/`, `docs/*/findings/`, and to a summary of a run given in chat. Generated eval tables
-(`reports/ocr_eval_*.md` and the like) are tool output: leave them to their generator.
+(`reports/eval/ocr_eval_*.md` and the like) are tool output: leave them to their generator.
 
 ## Facts and interpretation are separate sections
 

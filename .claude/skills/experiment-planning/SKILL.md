@@ -164,4 +164,4 @@ Finished configs move to the gitignored `_archive/`, so the shape is kept here:
   rounding-noise control that replaced two training runs.
 - `project/cjk_ko/reports/micro_2026_10_11.md`: three micro arms from one data build, the shared
   start checked by the step-1 loss.
-- `project/finished/ocr_reader/roadmap.md`: the eval set sized for the effect before training.
+- `git show 29fb9bcf^:project/finished/ocr_reader/roadmap.md`: the eval set sized for the effect before training.

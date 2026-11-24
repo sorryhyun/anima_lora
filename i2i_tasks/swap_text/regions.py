@@ -1,7 +1,7 @@
 """Lettering regions of a registered pair: the diff, its growth into paste labels,
 and the groups a swap pastes.
 
-Lifted from ``project/finished/ocr_reader/hito/build_crops.py`` (the recipe and
+Lifted from ``_archive/ocr_reader/history/hito/build_crops.py`` (the recipe and
 its thresholds are measured there); ``diff_regions`` keeps a component by its
 shift residual and returns the kept components as a label map, which the
 composite pastes by. Labels hold region ``k`` as ``k + 1``, 0 elsewhere and

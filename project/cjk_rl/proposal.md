@@ -222,7 +222,7 @@ pass rule as P1.
 After a dialogue arm passes:
 
 - **S0, forward probe**: 32 SFX strings from the sincos hand labels
-  (`project/finished/ocr_reader/assets/sfx_labels_sincos_597.tsv`, `checked` rows; 231
+  (`project/ocr_reader/assets/sfx_labels_sincos_597.tsv`, `checked` rows; 231
   distinct, mostly 3–4 glyphs) in their own pages' captions as `Japanese SFX reads as "…"`,
   on `#m14` and `#m14v3`. The page ref is the same prompt with the SFX clause dropped. Only
   31 training captions carry that clause, so the first question is whether the policy

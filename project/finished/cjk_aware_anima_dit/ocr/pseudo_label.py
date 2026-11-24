@@ -36,10 +36,10 @@ Three subcommands, one per plan step:
 The draw is written once (``<name>_draw.parquet``) and both readers consume it,
 so the two prediction tables are row-aligned by ``(image_id, k)``.
 
-**gelnote pool (``project/finished/ocr_reader`` P1, 2026-10-10).** ``--pool gelnote``
+**gelnote pool (``project/ocr_reader`` P1, 2026-10-10).** ``--pool gelnote``
 draws from the gelbooru-note KO/ZH crops (``ANIMA_GELNOTE_ROOT``) instead of
 AnimeText: every crop, ``k`` = the note id, minus the pages held out for the
-K3 gate (``project/finished/ocr_reader/assets/k3_gelnote.tsv``, ``gate/k3_gelnote.py``).
+K3 gate (``project/ocr_reader/assets/k3_gelnote.tsv``, ``gate/k3_gelnote.py``).
 The pool carries its language from page tags, so there is no hayai screen —
 both readers sweep the whole draw. Voter = hayai v2.5 Nova (``hayai25``).
 
@@ -84,7 +84,7 @@ CKPT: dict[str, object] = {
     "hayai25": "JustANormalTinkerer/hayai-ocr-v2.5-nova@2803d0dc005fa4396ab1e7c5a472d2c450a247f7",
 }
 GELNOTE_DEFAULT = "/media/sorryhyun/new/dataset/gelnote_crops"
-K3_GELNOTE = m109.REPO / "project/finished/ocr_reader/assets/k3_gelnote.tsv"
+K3_GELNOTE = m109.REPO / "project/ocr_reader/assets/k3_gelnote.tsv"
 
 
 def pool_root(pool: str) -> Path:
@@ -164,7 +164,7 @@ def gelnote_draw(seed: int) -> pd.DataFrame:
     if not K3_GELNOTE.is_file():
         raise SystemExit(
             f"missing {K3_GELNOTE} — build the K3 holdout before the draw "
-            "(project/finished/ocr_reader/gate/k3_gelnote.py)"
+            "(project/ocr_reader/gate/k3_gelnote.py)"
         )
     held = set(pd.read_csv(K3_GELNOTE, sep="\t").image_id)
     pool = pd.read_json(pool_root("gelnote") / "manifest.jsonl", lines=True)
@@ -800,7 +800,7 @@ def main() -> None:
         "--pool",
         choices=("animetext", "gelnote"),
         default="animetext",
-        help="crop pool the draw comes from (gelnote = project/finished/ocr_reader P1)",
+        help="crop pool the draw comes from (gelnote = project/ocr_reader P1)",
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
