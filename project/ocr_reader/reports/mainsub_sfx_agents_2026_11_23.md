@@ -14,12 +14,19 @@ Definitions and the loader rules these feed: [`main-sub-approach.md`](../main-su
   crop by Claude. The 8: strokes cut by the edge that the agents could not tell from art.
 - The user (2026-11-23): empty subs go in under the negative cap, 1 : 1 with `swaprelax_v5`;
   "그림인지 글자인지 모르면 출력 안하는게 맞는듯" (unsure marks are not typed).
+- Claude's read of 30 more random crops, after the agent check: 2 hold small hand-lettered SFX the
+  COO annotation lacks (`MutekiBoukenSyakuma_003_17` `ううう`, `MisutenaideDaisy_081_29`), 2
+  unsure.
+- An overlap or ink feature does not rank the crops with text (`probes/sfxonly_suspect.py`).
+- The user (2026-11-23): the search is shelved, furigana and line breaks first.
 
 ## SFX-only crops: Interpretation
 
 - At 2 of 200 with text, the empty sub is right on about 99 % of the set under the user's rule
   for unsure marks; the misses are text the annotation does not cover, which no filter on the
   annotation can find.
+- The next candidate for ranking them was an `OCR2:` read by a reader not trained on these
+  negatives; not run.
 
 ## SFX crops with speech partly inside: Facts
 

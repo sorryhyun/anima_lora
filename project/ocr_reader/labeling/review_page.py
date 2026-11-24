@@ -210,7 +210,7 @@ header .pager { margin:0; }
     <option value="part">partly visible text</option></select></label>
   <label><input type="checkbox" id="donelast"> reviewed last</label>
   <span class="stats" id="stats"></span>
-  <span class="stats">edits save as you type · Enter or \n = line break</span>
+  <span class="stats">edits save as you type · Enter or \n = line break · Tab = ok, next row</span>
   <button id="export">Export TSV</button>
   <span class="pager" id="pagerTop"></span>
 </header>
@@ -426,6 +426,23 @@ function render() {
     okb.onclick = () => { store[key] = ta.value === x.text ? {status: "ok", text: null}
                                      : {status: "edit", text: ta.value}; save(); paint(); };
     drb.onclick = () => { store[key] = {status: "drop", text: null}; save(); paint(); };
+    // Tab: ok this row with what the box holds, then the next row's main box (the next page's
+    // first row after the last). A Hangul syllable still being composed is committed first.
+    ta.onkeydown = e => {
+      if (e.key !== "Tab" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+      e.preventDefault();
+      const go = () => {
+        okb.onclick();
+        const all = [...$("list").querySelectorAll(".mainta")], nx = all[all.indexOf(ta) + 1];
+        if (nx) { nx.focus(); nx.setSelectionRange(nx.value.length, nx.value.length);
+          nx.scrollIntoView({block: "center"}); }
+        else if (page < pages - 1) { page++; render(); scrollTo(0, 0);
+          const f = $("list").querySelector(".mainta"); if (f) f.focus(); }
+      };
+      if (e.isComposing || e.keyCode === 229) {
+        ta.addEventListener("compositionend", () => setTimeout(go, 0), {once: true}); ta.blur();
+      } else go();
+    };
     d.querySelector(".rsb").onclick = () => { delete store[key]; delete subs[key]; ta.value = x.text;
       subta.value = subOf(key, x); subPaint(); save(); paint(); };
     paint();

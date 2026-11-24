@@ -11,8 +11,8 @@ is in `_archive/ocr_reader/history/` (local; `README.md` there). In git, the sam
   v0.14.0 under `OCR:` only. `OCR2:` is not read there (the user, 2026-11-24: "일단은 ocr만
   쓰는식으로 하자"); v6 and `v7_preview` are its opt-ins.
 - Now: the user reviews labels on the local page (§ Rules); exports are applied as they come.
-- Definitions and the dataset: [`main-sub-approach.md`](main-sub-approach.md). Open questions and
-  pending work: [`mainsub_plan.md`](mainsub_plan.md).
+- Definitions and the dataset: [`main-sub-approach.md`](main-sub-approach.md). Open questions,
+  pending work and the report index: [`mainsub_plan.md`](mainsub_plan.md).
 
 ## Versions
 
@@ -68,8 +68,8 @@ included, is scored on it. Never mix it with the `/ 617` figures in
 Metrics (since 2026-11-24, the user: heart-blind retired, line-break-blind added): `exact`
 (`textnorm.exact_key`, whitespace-blind) and `lb` (`textnorm.linebreak_blind`: the same glyphs,
 the same 띄어쓰기, a line break on either side matching a space or none) in every eval;
-`eval_k3` keeps `spaced` (a break counts as a space). The ♡-blind figures above are from
-before; `eval_sfx` no longer reports one. v7 on sincos: exact 334, lb 334.
+`eval_k3` keeps `spaced` (a break counts as a space). The ♡-blind figures in the Versions table
+predate this. v7 on sincos: exact 334, lb 334.
 
 ```
 ANIMA_MANGA109S_ROOT=/media/sorryhyun/new/dataset/manga109s/Manga109s_released_2026_05_21 make daemon-run ARGS="--stall-timeout 900 \
@@ -84,9 +84,8 @@ frozen under `project/ocr_reader/eval_data/` by `gate/build_eval_data.py`:
 
 - `sincos/crops/<row>.png` + `index.tsv`: the 933 label rows cut at pad 0.12,
   the same cut `eval_sfx.py` makes. `sincos/pages/` holds the 155 pages behind
-  them. `eval_sfx.py` reads the frozen crops first (at pad 0.12) and then the
-  frozen pages, so the gate no longer depends on `post_image_dataset/`.
-  Checked pixel-identical to the on-the-fly cut (926 / 926 scored rows).
+  them. `eval_sfx.py` reads the frozen crops first (at pad 0.12), then the
+  frozen pages; the gate does not depend on `post_image_dataset/`.
 - `k3_gelnote/crops/` + `pages/`: the 100 K3 rows of `assets/k3_gelnote.tsv`.
 
 Manga109-s (corpus + `derived/` manifests and crops) lives at
@@ -95,9 +94,9 @@ so older commands still resolve.
 
 ## Inherited — read before any arm
 
-- Baseline ledger (rescored key): `finished/cjk_aware_anima_dit/findings.md`
-  § "The reader ledger". sincos 617 SFX rows; v3/B′ sit in a ~10-line band at
-  ~50 %. Binomial SE ≈ 12 lines, so a gap smaller than that is not a finding.
+- Baseline ledger (rescored key, on 617 rows): `finished/cjk_aware_anima_dit/findings.md`
+  § "The reader ledger". On a sincos-sized set the binomial SE is about 12 lines, so a gap
+  smaller than that is not a finding.
 - The "Do not re-propose" list in that same `findings.md` still applies. Most
   relevant here:
   - Never screen or size a KO/ZH pool with B′.
@@ -111,19 +110,18 @@ so older commands still resolve.
 - Code: shared code goes in `core/`; a script imports `project.ocr_reader.core.*` and never another
   script. Scripts run by path (`make daemon-run ARGS="project/ocr_reader/ocr/eval_sfx.py …"`).
   The Ovis / PP-OCRv6 / package readers, the pseudo-labeller, the page-detector and hito evals
-  are in `_archive/ocr_reader/code/` (local; in git before the 2026-11-24 split). `eval_sfx.py` defaults to the 597 labels; every eval script writes its table to
-  `reports/eval/`. Every GPU step goes through the daemon.
+  are in `_archive/ocr_reader/code/` (local; in git before the 2026-11-24 split). `eval_sfx.py`
+  defaults to the 597 labels; every eval script writes its table to `reports/eval/`. Every GPU
+  step goes through the daemon.
 - Hardware: RTX 5070 Ti 16 GB. No bitsandbytes on cu132.
 
 ## Rules — the label review loop (v7, main / sub)
 
-The line is in use for labelling. Definitions and the dataset: [`main-sub-approach.md`](main-sub-approach.md);
-open items: [`mainsub_plan.md`](mainsub_plan.md); finished work goes to `reports/mainsub_*.md`.
-
 ### The page
 
 - `~/ko_label_review/index.html` is a local page (the user's call: not an Artifact). Its state is
-  in the browser's localStorage; Export writes `~/Downloads/ko_label_review.tsv`.
+  in the browser's localStorage; Export writes `~/Downloads/ko_label_review.tsv`. Tab in a main
+  box marks the row `ok` as the box stands and moves to the next row.
 - The export holds changed rows only, against the assets and manifests at build time: rebuild the
   page after each apply.
 - A fix made outside the page is undone by the browser's saved edit at the next export. Drop the
@@ -161,16 +159,16 @@ open items: [`mainsub_plan.md`](mainsub_plan.md); finished work goes to `reports
 
    ```
    python project/ocr_reader/labeling/review_page.py --out ~/ko_label_review \
-       --flags <ko_reads>_flags.parquet --doujin_reads <sfx>_cap4_sfx.jsonl \
-       --k3_reads output/ocr/eval/k3_<run>.jsonl \
+       --flags output/ocr/eval/ko_reads_v7_flags.parquet \
+       --doujin_reads output/ocr/eval/sfx_mainsub_1124_0151_cap4_ocr.jsonl \
+       --k3_reads output/ocr/eval/k3_mainsub_1124_0151.jsonl \
        --ruby output/ocr/furigana/ruby_all_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
        --mainsub output/ocr/mainsub/m109_mainsub.jsonl --hayai output/ocr/hayai/hayai27_det.jsonl \
        --hayai_kozh output/ocr/hayai/hayai27_kozh_hito.jsonl
    ```
 
-   As built 2026-11-24: `--flags output/ocr/eval/ko_reads_v7_flags.parquet` (`ko_read.py`, v7)
-   and `--doujin_reads output/ocr/eval/sfx_mainsub_1124_0151_cap4_ocr.jsonl`;
-   `--k3_reads output/ocr/eval/k3_mainsub_1124_0151.jsonl` (v7) since 14:45.
+   The `--flags`, `--doujin_reads` and `--k3_reads` files are v7's (`ko_read.py`, `eval_sfx.py`,
+   `eval_k3.py` on `mainsub_1124_0151`); a new reader swaps them.
 
    Rebuilding the Manga109 proposals (after a change to the annotations, the ruby reads or
    `m109_mainsub.py`):
@@ -203,7 +201,7 @@ open items: [`mainsub_plan.md`](mainsub_plan.md); finished work goes to `reports
 
 - A 2-epoch run runs out of memory on 16 GB without `--ckpt_lm_only` or `--grad_ckpt`.
 - Eval `exact` is whitespace-stripped, so line breaks never move it.
-- There is no KO eval set.
+- There is no KO val split; K3's 48 KO rows are the only KO gate.
 - Parallel agents sharing one scratchpad overwrote each other's helper scripts and outputs: each
   agent gets a private output directory and no shared script.
 - Agents split sub lines by label line or by printed column inconsistently.
