@@ -87,9 +87,9 @@ def _pod_row(p: dict) -> list[str]:
     return [
         p.get("id", ""),
         p.get("name", ""),
-        p.get("desiredStatus", ""),
+        api.pod_status(p),
         f"{gpu.get('count', '')}× {gpu.get('displayName') or gpu.get('id') or '-'}",
-        _money(p.get("adjustedCostPerHr") or p.get("costPerHr")),
+        _money(p.get("adjustedCostPerHr") or p.get("costPerHr") or p.get("cost")),
         f"{ep[0]}:{ep[1]}" if ep else "-",
     ]
 
@@ -279,7 +279,7 @@ def _wait(cl: api.RunPodClient, pod_id: str, timeout: float) -> dict:
     last = [None]
 
     def on_poll(pod, ep):
-        state = (pod.get("desiredStatus"), ep)
+        state = (api.pod_status(pod), ep)
         if state != last[0]:
             last[0] = state
             where = f"{ep[0]}:{ep[1]}" if ep else "no ssh mapping yet"

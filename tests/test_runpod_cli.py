@@ -48,19 +48,47 @@ def fake_http(monkeypatch):
     return calls, routes
 
 
-def test_pod_verbs_hit_v1_paths(fake_http):
+def test_pod_verbs_hit_v2_paths(fake_http):
     calls, routes = fake_http
-    routes[("DELETE", "/v1/pods/p1")] = None
+    routes[("DELETE", "/v2/pods/p1")] = None
     cl = api.RunPodClient()
+    cl.get_pod("p1")
     cl.start_pod("p1")
     cl.stop_pod("p1")
     cl.terminate_pod("p1")
-    assert [(c["method"], c["path"]) for c in calls] == [
-        ("POST", "/v1/pods/p1/start"),
-        ("POST", "/v1/pods/p1/stop"),
-        ("DELETE", "/v1/pods/p1"),
+    assert [(c["method"], c["path"], c["body"]) for c in calls] == [
+        ("GET", "/v2/pods/p1", None),
+        ("POST", "/v2/pods/p1/action", {"action": "start"}),
+        ("POST", "/v2/pods/p1/action", {"action": "stop"}),
+        ("DELETE", "/v2/pods/p1", None),
     ]
-    assert {c["host"] for c in calls} == {"rest.runpod.io"}
+    assert {c["host"] for c in calls} == {"api.runpod.io"}
+
+
+def test_list_pods_follows_cursor(fake_http, monkeypatch):
+    pages = iter(
+        [
+            {
+                "pods": [{"id": "a"}],
+                "pagination": {"hasNextPage": True, "nextCursor": "c1"},
+            },
+            {"pods": [{"id": "b"}], "pagination": {"hasNextPage": False}},
+        ]
+    )
+    monkeypatch.setattr(api.RunPodClient, "_request", lambda self, *a, **k: next(pages))
+    assert [p["id"] for p in api.RunPodClient().list_pods()] == ["a", "b"]
+
+
+def test_ssh_endpoint_reads_v2_direct():
+    pod = {
+        "status": "RUNNING",
+        "ssh": {
+            "direct": {"host": "1.2.3.4", "port": 2222},
+            "proxy": {"host": "ssh.runpod.io"},
+        },
+    }
+    assert api.ssh_endpoint(pod) == ("1.2.3.4", 2222)
+    assert api.ssh_endpoint({"ssh": {"direct": None, "proxy": {}}}) is None
 
 
 def _create_args(*argv):
@@ -95,7 +123,7 @@ def test_create_falls_back_to_next_gpu(fake_http, monkeypatch, capsys):
 
 def test_wait_ssh_fails_fast_on_exited(fake_http, monkeypatch):
     monkeypatch.setattr(
-        api.RunPodClient, "get_pod", lambda self, pid: {"desiredStatus": "EXITED"}
+        api.RunPodClient, "get_pod", lambda self, pid: {"status": "EXITED"}
     )
     with pytest.raises(api.RunPodError):
         api.RunPodClient().wait_ssh("p1", probe=False)

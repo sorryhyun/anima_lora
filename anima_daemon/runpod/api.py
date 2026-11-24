@@ -166,29 +166,47 @@ class RunPodClient:
         out = self._request("GET", f"{self.api_url}/catalog/gpus", params=params)
         return (out or {}).get("gpus", [])
 
-    # ── pods (v1) ─────────────────────────────────────────────────────
-    def list_pods(self, **filters) -> list[dict]:
-        return self._rest("GET", "/pods", params=filters) or []
+    # ── pods (v2; v1 REST was retired) ────────────────────────────────
+    def list_pods(self) -> list[dict]:
+        """Every pod, across pages. ``ssh.direct`` is null in list rows (the v2
+        API fills it on ``get_pod`` only)."""
+        pods: list[dict] = []
+        cursor = None
+        while True:
+            out = self._request(
+                "GET", f"{self.api_url}/pods", params={"cursor": cursor}
+            )
+            pods += (out or {}).get("pods", [])
+            page = (out or {}).get("pagination") or {}
+            if not page.get("hasNextPage") or not page.get("nextCursor"):
+                return pods
+            cursor = page["nextCursor"]
 
     def get_pod(self, pod_id: str) -> dict:
-        return self._rest("GET", f"/pods/{pod_id}")
+        return self._request("GET", f"{self.api_url}/pods/{pod_id}")
 
     def create_pod(self, spec: dict) -> dict:
+        """v1 POST /pods (``--spot`` only). v1 is retired: this now fails."""
         return self._rest("POST", "/pods", body=spec)
 
     def create_pod_v2(self, spec: dict) -> dict:
         """v2 POST /pods: a single ``gpu.id``, ``gpu.minCudaVersion`` past
-        v1's 13.0 cap, no interruptible pods. The pod reads back through v1."""
+        v1's 13.0 cap, no interruptible pods."""
         return self._request("POST", f"{self.api_url}/pods", body=spec)
 
+    def _action(self, pod_id: str, action: str) -> Any:
+        return self._request(
+            "POST", f"{self.api_url}/pods/{pod_id}/action", body={"action": action}
+        )
+
     def start_pod(self, pod_id: str) -> Any:
-        return self._rest("POST", f"/pods/{pod_id}/start")
+        return self._action(pod_id, "start")
 
     def stop_pod(self, pod_id: str) -> Any:
-        return self._rest("POST", f"/pods/{pod_id}/stop")
+        return self._action(pod_id, "stop")
 
     def terminate_pod(self, pod_id: str) -> Any:
-        return self._rest("DELETE", f"/pods/{pod_id}")
+        return self._request("DELETE", f"{self.api_url}/pods/{pod_id}")
 
     # ── network volumes (v1) ──────────────────────────────────────────
     def list_volumes(self) -> list[dict]:
@@ -211,8 +229,8 @@ class RunPodClient:
         deadline = time.monotonic() + timeout
         while True:
             pod = self.get_pod(pod_id)
-            status = pod.get("desiredStatus")
-            if status in ("EXITED", "TERMINATED"):
+            status = pod_status(pod)
+            if status in ("EXITED", "TERMINATED", "ERROR"):
                 raise RunPodError(409, f"pod {pod_id} is {status}")
             ep = ssh_endpoint(pod)
             if on_poll is not None:
@@ -226,9 +244,19 @@ class RunPodClient:
             time.sleep(interval)
 
 
+def pod_status(pod: dict) -> str:
+    """v2 ``status`` (PROVISIONING / STARTING / RUNNING / EXITED / ERROR /
+    TERMINATED); v1's ``desiredStatus`` for an old record."""
+    return pod.get("status") or pod.get("desiredStatus") or ""
+
+
 def ssh_endpoint(pod: dict) -> Optional[tuple[str, int]]:
     """``(public_ip, external_port)`` for the pod's 22/tcp, or None while it is
-    still initializing (``publicIp`` empty, ``portMappings`` without 22)."""
+    still initializing. v2: ``ssh.direct`` (null until the running pod has a
+    public port for 22/tcp; the ``ssh.proxy`` route takes no rsync / scp)."""
+    direct = (pod.get("ssh") or {}).get("direct")
+    if direct and direct.get("host") and direct.get("port"):
+        return direct["host"], int(direct["port"])
     ip = pod.get("publicIp")
     port = (pod.get("portMappings") or {}).get("22")
     if not ip or not port:

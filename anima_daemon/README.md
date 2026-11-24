@@ -451,11 +451,11 @@ deviations:
 ## RunPod pods (`anima_daemon.runpod`)
 
 Not wired into the queue yet: a stdlib REST client (`api.RunPodClient`) and a
-CLI for renting a pod by hand. `create` goes through v2 (`POST
-api.runpod.io/v2/pods`, the only one that takes `gpu.minCudaVersion` past 13.0);
-reading, listing, start / stop / terminate and volumes through the v1 REST API
-(`rest.runpod.io/v1`), which reads v2-created pods; GPU price and stock through
-the v2 catalog (`api.runpod.io/v2/catalog/gpus`). Key: `RUNPOD_API_KEY` from the environment,
+CLI for renting a pod by hand, on the v2 REST API (`api.runpod.io/v2`;
+reference `docs.runpod.io/api-reference-v2/`): create, get, list, start / stop
+(`POST /pods/{id}/action`), terminate (`DELETE /pods/{id}`) and the GPU catalog
+(`/catalog/gpus`). The v1 API (`rest.runpod.io/v1`) is retired (its host no
+longer resolves, 2026-11-24); `--spot` and `volumes` still call it and fail. Key: `RUNPOD_API_KEY` from the environment,
 then the repo `.env`, then `apikey` in `~/.runpod/config.toml`. Requests send
 their own User-Agent — Cloudflare in front of `api.runpod.io` 403s urllib's
 default `Python-urllib/x`.
@@ -476,10 +476,10 @@ flag, so its stock column matches). A driver-580 (CUDA 13.0) host has run the
 image's `torch.compile` and FA2. The container disk is wiped on stop, so a pod
 is terminated after its job rather than stopped. v2 takes one GPU type per
 request; `--gpu` repeats and `create` tries each in order until one is placed.
-`--spot` (interruptible) exists only in v1, whose `allowedCudaVersions` stops at
-13.0, so it needs `--min-cuda any` (or ≤ 13.0). `create` prefixes the name with
+`create` prefixes the name with
 `anima-` and sets `PUBLIC_KEY` from `~/.ssh/id_*.pub`, replacing the account's
-keys for that pod. `create --wait` and `ls` print the pod's ssh `ip` and `port`;
+keys for that pod. `create --wait` and `wait` print the pod's ssh `ip` and `port`
+(v2's `ssh.direct`, filled on a single-pod read only, so `ls` shows none);
 `ssh` pins no host key (pod IP:port pairs are recycled).
 
 The image carries the CUDA toolchain, `openssh-server` / `rsync`, `libraqm0` and the
