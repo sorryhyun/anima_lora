@@ -1,0 +1,47 @@
+# x1 capacity probe on fine strokes: bench/pixel_readout/experiments/x1_overfit.py, no parent run
+#   (the x1 version of x2_overfit.py, proposed in reports/x1_recipe_2026_11_22.md and not run
+#   until now). 16 windows of 16 tokens (+ 3 of context) where x1dll_1123_0821 is furthest under
+#   VAE(x̂0) on the high-pass (luma − Gaussian σ 1.5) against the original, picked over the 48
+#   held-out images (test 30, text 8, eval pages 10), at most 2 an image; each arm starts from
+#   x1dll and overfits them against the original with the recipe's regression loss alone (no
+#   DINO, no GAN), 4,000 steps at LR 2e-4, one cosine, seed 0.
+# Arms: x1 (the released form) | deep8 (+ 3 blocks at 8 px) | fine4 (+ a 4-px stage, 2 blocks at
+#   width 256, a 4 × 4 patch per position). Two form changes against one control; depth at 8 px
+#   and the 4-px spacing are read separately.
+# The user (2026-11-24): "ㅇㅋ 그러자", to the α sweep of x2ovgf followed by this probe.
+# Question: can the x1 form write the fine strokes it now merges? x1 reaches VAE(x̂0) on the fit
+#   windows (dB, amp, hp_corr) -> the form can, and the blur is the loss's and the data's: a
+#   page / text finish with the GAN term is what to propose. x1 stays under and deep8 or fine4
+#   reaches -> the form is the limit, and that stage is the x1 change to propose. No arm reaches
+#   -> a forward-only ceiling probe of the input (f, x_t) on these windows before any run.
+# Records it rests on:
+#   - reports/x1_recipe_2026_11_22.md: x1 34.25 / 29.20 dB against VAE(x̂0)'s 35.11 / 30.29 at
+#     σ 0.0577; the fine strokes merged by every x1 head, separate in the VAE decode (Claude's
+#     read, labelled).
+#   - archive/x2_arm_a_2026_11_19.md (local): the x2 stage fits 2 windows at up to 41.75 dB.
+# Not known before the run: whether the score picks fine strokes (read on the sheets), and
+#   whether amp / hp_corr tell the VAE from the init head on them (the two reference rows).
+# Read: per arm on the fit windows' loss region, dB against the original, amp, hp_corr, hp_err,
+#   beside VAE(x̂0) and the init head; sheets win_<k>.png original | VAE(x̂0) | init | arms at × 2,
+#   labelled. Claude reads the sheets (labelled) and sends them; the user's read decides what
+#   runs next.
+# Bars: spread unknown (one seed). An overfit on 16 windows says what the form can write, not
+#   what it learns from the data.
+# Cost: 48 eager DiT forwards + 3 arms × 4,000 head steps, about 8 min.
+# make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/experiments/x1_overfit.py --config <this file>"
+
+output_name = "x1fit_1124_0955"
+init = "output/pixel_head/x1dll_1123_0821/head.safetensors"
+arms = "x1,deep8,fine4"
+sigma = "0.0577-0.1364"
+n_fit = 16
+per_image = 2
+window = 16
+margin = 3
+steps = 4000
+eval_every = 500
+lr = 2e-4
+warmup = 200
+pages = "post_image_dataset/pixel_pages"
+stream = "fp32"
+seed = 0

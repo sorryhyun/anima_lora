@@ -130,6 +130,39 @@ def test_trainer_gan_start_and_untouched_x1_layer():
     assert torch.equal(head.base.out.weight, x1_out)
 
 
+def test_unpaired_real_crop_comes_from_another_window():
+    """``pegan_unpaired``: the discriminator's real crop is cut from another replay
+    window's target, and the paired draws (window, crop place) stay as they were."""
+    seen = {}
+
+    class _Keep(_StubDisc):
+        def gen_term(self, fake, real):
+            seen["real"] = real.detach().clone()
+            return super().gen_term(fake, real)
+
+    kw = dict(
+        rollouts=2, opt_steps=1, replay=4, window=4, margin=1, warmup=1,
+        lambda_dino=0.0, pegan_ratio=2.0, pegan_start=0, pegan_crop=64,
+    )  # fmt: skip
+    crops = {}
+    for unpaired in (False, True):
+        tr = X2Trainer(
+            _head(), X2TrainConfig(pegan_unpaired=unpaired, **kw), disc=_Keep()
+        )
+        rng = random.Random(0)
+        for k in range(2):  # window k's target is the constant k
+            f, lat = torch.randn(8, 8, D_FEAT), torch.randn(8, 8, 64)
+            target2 = torch.full((3, 8 * 2 * PATCH, 8 * 2 * PATCH), float(k))
+            tr.push(f, lat, target2, pick_window(8, 8, 4, 1, rng))
+        tr.gan_live = True
+        own = tr.replay[0]
+        tr.terms(own, compiled=False)
+        crops[unpaired] = (seen["real"], tr._crop_rng.random())
+    assert crops[False][0].eq(0).all()  # the window's own target
+    assert crops[True][0].eq(1).all()  # the other window's
+    assert crops[False][1] == crops[True][1]  # the fake crop's place is drawn alike
+
+
 def test_save_load_round_trip(tmp_path):
     head = _head().eval()
     path = tmp_path / "head_x2.safetensors"

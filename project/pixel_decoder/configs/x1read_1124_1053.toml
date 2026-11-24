@@ -1,0 +1,34 @@
+# x1 read of the GAN-finished head on the fine-stroke windows: x1fit_1124_0955 with arms
+#   "x1,deep8,fine4" -> "" (no fit) and read_heads -> x1dgan512_1123_1214 (the Hub's sharp file),
+#   nothing else changed: the same init, seed and scan, so the same 16 windows.
+# The user (2026-11-24): "만화 글씨 전용으로 파인튜닝을 해버리면 일반 일러스트 등에선 성능이
+#   떨어지잖아?" This read is forward only and Claude's call (about 2 min).
+# Question: does a loss change with no data change (the GAN finish) close the base head's gap to
+#   VAE(x̂0) on the fine-stroke windows of images it has not seen? amp and hp_corr at the VAE's
+#   -> fine strokes answer to the loss, and the step to propose is on the loss (the finish's
+#   crops drawn where the strokes are), with no domain-only file. Still at the base head's
+#   -> the finish does not reach them, and the page-only finetune stays the test.
+# Records it rests on:
+#   - reports/x1_fit_2026_11_24.md: on the 16 windows VAE(x̂0) 24.46 dB, amp 0.943, hp_corr 0.883;
+#     x1dll 23.65, 0.863, 0.860. Whole image VAE(x̂0) / x1dll: test 33.18 / 32.67, text 27.96 /
+#     27.52, manga 25.31 / 25.11.
+#   - README, x1 training: the finish reads test 33.33 dB against its parent's 34.13.
+# Read: x1dgan512 beside VAE(x̂0) and x1dll on the 16 windows (dB, amp, hp_corr, hp_err) and on
+#   the whole held-out images per set; sheets win_<k>.png original | VAE(x̂0) | x1dll | x1dgan512,
+#   labelled.
+# Bars: spread unknown.
+# Cost: 48 eager DiT forwards, about 2 min.
+# make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/experiments/x1_overfit.py --config <this file>"
+
+output_name = "x1read_1124_1053"
+init = "output/pixel_head/x1dll_1123_0821/head.safetensors"
+read_heads = ["output/pixel_head/x1dgan512_1123_1214/head.safetensors"]
+arms = ""
+sigma = "0.0577-0.1364"
+n_fit = 16
+per_image = 2
+window = 16
+margin = 3
+pages = "post_image_dataset/pixel_pages"
+stream = "fp32"
+seed = 0

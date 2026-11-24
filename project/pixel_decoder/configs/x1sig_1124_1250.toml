@@ -1,0 +1,33 @@
+# x1 decode-point read: two named images (stems 9482149, 12692758), VAE(x̂0) and the two ×1
+#   heads over a σ sweep, against the original and VAE(z0). Forward only; nothing is trained.
+# The user (2026-11-24): "ㅇㅇ 한번 디코드 시점 몫을 체크해봐봐".
+# Question: how much of the gap between VAE(z0) and the heads on the fine-stroke windows is the
+#   decode point's noise? VAE(x̂0) and the heads rise towards VAE(z0) as σ falls -> the decode
+#   point is the lever (a lower last σ, or a decode range extended down); VAE(x̂0) rises and the
+#   heads do not -> the heads do not use what a lower σ holds, and below 0.0577 they are outside
+#   the range they were trained on, so that read says nothing about a retrained head; neither
+#   rises until σ 0 -> the loss is the DiT's one-step estimate, not the noise.
+# Records it rests on:
+#   - reports/x1_fit_2026_11_24.md, "Two images the user named": at σ 0.0577 on the fine-stroke
+#     windows VAE(z0) 27.24 / 34.99 dB, VAE(x̂0) 25.01 / 31.78, x1dll 24.99 / 31.50,
+#     x1dgan512 23.48 / 30.60.
+#   - the heads' decode range: σ 0.0577 - 0.1364; p3_generated.py reads at σ_last 0.1.
+# Read: per σ the dB and hp_corr of VAE(x̂0), x1dll_1123_0821 and x1dgan512_1123_1214 on the
+#   whole image and the 4 windows where VAE(z0) loses the most high-pass; sheets per window and
+#   column across σ, labelled.
+# Bars: the range over 2 noise draws per σ, printed beside each mean.
+# Cost: 2 images x 7 σ x 2 draws = 28 eager DiT forwards, about 2 min.
+# make daemon-run ARGS="--queue --stall-timeout 600 bench/pixel_readout/experiments/decode_point.py --config <this file>"
+
+output_name = "x1sig_1124_1250"
+items = ["9482149", "12692758"]
+heads = [
+    "output/pixel_head/x1dll_1123_0821/head.safetensors",
+    "output/pixel_head/x1dgan512_1123_1214/head.safetensors",
+]
+sigmas = [0.0, 0.01, 0.02, 0.03, 0.0577, 0.1, 0.1364]
+draws = 2
+window = 12
+n = 4
+stream = "fp32"
+seed = 0

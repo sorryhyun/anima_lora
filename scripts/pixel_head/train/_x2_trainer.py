@@ -157,6 +157,9 @@ class X2TrainConfig:
     pegan_start: int = 1000  # first rollout with the term and the discriminator
     pegan_lambda_max: float = 1.0
     pegan_crop: int = 512  # ×2 px, a multiple of 16
+    # the discriminator's real crop comes from another replay window, at its own place:
+    # no logit can rest on comparing the two crops pixel by pixel
+    pegan_unpaired: bool = False
     seed: int = 0
 
 
@@ -180,8 +183,10 @@ class X2Trainer:
         assert cfg.pegan_crop % 16 == 0, "pegan_crop: a multiple of 16"
         self.head, self.cfg, self.dino, self.disc = head, cfg, dino, disc
         self.head_c = torch.compile(head, dynamic=True) if compile else head
+        # every value of a plain head; the factors alone on one with a LoRA (_lora.py)
+        self.params = [q for q in head.parameters() if q.requires_grad]
         self.opt = torch.optim.AdamW(
-            head.parameters(), lr=cfg.lr, betas=(0.9, 0.99), weight_decay=0.01
+            self.params, lr=cfg.lr, betas=(0.9, 0.99), weight_decay=0.01
         )
         self.total_steps = cfg.rollouts * cfg.opt_steps
         self.step = 0
@@ -191,6 +196,7 @@ class X2Trainer:
         self.lam_pegan = 0.0
         self.gan_live = False
         self._dino_rng = random.Random(cfg.seed + 11)  # the tiles of an update
+        self._pair_rng = random.Random(cfg.seed + 13)  # the unpaired real crop
 
     def push(self, f, lat, target2, win: Window) -> None:
         """A rollout's features, x_t patches (whole grids) and the real 2× image."""
@@ -219,14 +225,27 @@ class X2Trainer:
             out["dino"] = self.dino.term(
                 p2, t2, self._dino_rng, cfg.dino_tiles, compiled
             )
-        if self.gan_live:  # a paired crop: the ×2 output and the real 2× image
+        if self.gan_live:  # the ×2 output and the real 2× image at the same place
             c = cfg.pegan_crop
             h, w = p2.shape[-2:]
             assert min(h, w) >= c, (h, w, c)
             y, x = self._crop_rng.randint(0, h - c), self._crop_rng.randint(0, w - c)
             sl = (..., slice(y, y + c), slice(x, x + c))
-            out["pegan"] = self.disc.gen_term(p2[None].float()[sl], t2[None][sl])
+            real = t2[None][sl]
+            if cfg.pegan_unpaired:
+                real = self._other_real(sample, c)
+            out["pegan"] = self.disc.gen_term(p2[None].float()[sl], real)
         return out
+
+    def _other_real(self, sample, c: int) -> torch.Tensor:
+        """A ``c``-px crop of the real 2× image of another replay window (of this one
+        while the buffer holds no other), at a place of its own."""
+        others = [o for o in self.replay if o is not sample] or [sample]
+        t2 = self._pair_rng.choice(others)[2].float()
+        h, w = t2.shape[-2:]
+        assert min(h, w) >= c, (h, w, c)
+        y, x = self._pair_rng.randint(0, h - c), self._pair_rng.randint(0, w - c)
+        return t2[None, :, y : y + c, x : x + c]
 
     def regression(self, t: dict[str, torch.Tensor]) -> torch.Tensor:
         cfg = self.cfg
@@ -239,7 +258,7 @@ class X2Trainer:
 
     def _set_gan_weight(self) -> None:
         """λ = ratio · ‖∇ regression‖ / ‖∇ pegan‖ over the head, eager, one window."""
-        params = [q for q in self.head.parameters() if q.requires_grad]
+        params = self.params
         t = self.terms(self._replay_rng.choice(self.replay), compiled=False)
         g_reg = torch.autograd.grad(
             self.regression(t), params, retain_graph=True, allow_unused=True
@@ -265,7 +284,7 @@ class X2Trainer:
             if self.gan_live:
                 loss = loss + self.lam_pegan * t["pegan"]
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.head.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(self.params, 1.0)
             self.opt.step()
             self.step += 1
             log = {k: v.item() for k, v in t.items()}
@@ -288,9 +307,13 @@ def save_x2_head(head: PixelHeadX2, path: str | Path, stamp: dict[str, str]) -> 
     """Write the head with the shape metadata ``load_pixel_head`` reads, plus ``stamp``
     (``sigma`` = the trained decode range, and whatever names the run). A head without
     its ×1 output layer (:func:`~library.anima.pixel_head.drop_x1_output`) is stamped
-    ``scales = "2"``."""
+    ``scales = "2"``. A head with a LoRA (``_lora.py``) is written with it folded in:
+    the file is a plain head's."""
     from safetensors.torch import save_file
 
+    from scripts.pixel_head.train._lora import has_lora, merged_state
+
+    sd = merged_state(head) if has_lora(head) else head.state_dict()
     b = head.base
     meta = {
         "width": str(b.proj.out_features),
@@ -303,7 +326,7 @@ def save_x2_head(head: PixelHeadX2, path: str | Path, stamp: dict[str, str]) -> 
         **{k: str(v) for k, v in stamp.items()},
     }
     save_file(
-        {k: v.detach().contiguous().cpu() for k, v in head.state_dict().items()},
+        {k: v.detach().contiguous().cpu() for k, v in sd.items()},
         str(path),
         metadata=meta,
     )

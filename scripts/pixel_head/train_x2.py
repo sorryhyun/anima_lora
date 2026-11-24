@@ -52,6 +52,10 @@ class X2TrainRequest(Request):
     # out2 writes 16×16 patches at stride 8, summed under a window (no patch or token
     # border step); a --resume file with the 8×8 layer is converted (edge-repeat init)
     overlap: bool = False
+    # > 0: the head is frozen and a LoRA of this rank on its linear layers is trained
+    # (train/_lora.py); the file is written with it folded in, the factors beside it
+    lora_rank: int = 0
+    lora_alpha: float = 0.0  # 0 = lora_rank (scale 1)
     sigma: str = "0.0577-0.1364"  # decode-point range, drawn per rollout
     # the loop (_x2_trainer.X2TrainConfig)
     rollouts: int = 4000
@@ -72,6 +76,7 @@ class X2TrainRequest(Request):
     pegan_start: int = 1000
     pegan_lambda_max: float = 1.0
     pegan_crop: int = 512
+    pegan_unpaired: bool = False  # the real crop from another replay window
     seed: int = 0
     # the discriminator
     pegan_layers: str = "3,7,11"  # PE blocks tapped, 0-based
@@ -190,6 +195,15 @@ def run(req: X2TrainRequest) -> Path:
         f"head {sum(q.numel() for q in head.parameters()) / 1e6:.1f}M params from {src}",
         flush=True,
     )
+    if req.lora_rank:
+        from scripts.pixel_head.train._lora import add_lora, lora_state
+
+        n_lora = add_lora(head, req.lora_rank, req.lora_alpha)
+        print(
+            f"LoRA rank {req.lora_rank} on the linear layers: {n_lora / 1e6:.2f}M "
+            "trainable, the head frozen",
+            flush=True,
+        )
     disc = None
     if cfg.pegan_ratio > 0:
         disc = PEDisc(
@@ -279,9 +293,15 @@ def run(req: X2TrainRequest) -> Path:
         "x2_target": "real",
         "pegan_ratio": req.pegan_ratio,
         "pegan_start": req.pegan_start,
+        **({"pegan_unpaired": 1} if req.pegan_unpaired else {}),
         "rollouts": req.rollouts,
         "run": req.output_name,
     }
+    if req.lora_rank:
+        stamp |= {
+            "lora_rank": req.lora_rank,
+            "lora_alpha": req.lora_alpha or req.lora_rank,
+        }
     if cfg.lambda_dino > 0:
         stamp |= {
             "dino": req.dino,
@@ -334,6 +354,14 @@ def run(req: X2TrainRequest) -> Path:
                 save_x2_head(head, head_path, stamp | {"rollouts_done": done})
                 sink.ckpt(global_step=done, path=str(head_path))
     sec_per_rollout = (time.perf_counter() - t0) / max(1, cfg.rollouts)
+    if req.lora_rank:
+        from safetensors.torch import save_file
+
+        save_file(
+            lora_state(head),
+            str(out_dir / "head_x2_lora.safetensors"),
+            metadata={k: str(v) for k, v in stamp.items()},
+        )
 
     # --- read: rows, sheets, the file ---
     rows = read(nulls=True)

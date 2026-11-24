@@ -1,0 +1,28 @@
+# x2 GAN finish split by singular directions, no training: x2mg_1124_1025's pair (x2ovll_1124_0139,
+#   x2ovgf_1124_0920) with the change b − a cut per linear weight into its k largest singular
+#   directions (r<k>) and the rest (c<k>), k 8 and 64; biases, norms, layer scales and depthwise
+#   kernels carry their whole change in both files (head_merge.py --ranks). Files local,
+#   output/pixel_head/x2rk_1124_1100/. Share of |b − a|² in the top k per stage (trunk / up1 / up2 /
+#   out): k 8 0.13 / 0.16 / 0.26 / 0.37, k 64 0.46 / 0.57 / 0.81 / 0.96.
+# The user (2026-11-24): "ㅇㅇ 그걸로 해보자".
+# Question: is the finish's sharpness in its largest singular directions and its stamp in the
+#   rest? A top-k file with most of the amp rise and less than its share of the stamp32 rise ->
+#   the finish is low rank where it matters; a rank-k LoRA finish is the arm to propose, and the
+#   top-k file itself goes to the user's sheets. Amp and stamp32 split alike between r and c ->
+#   no singular cut separates them; what a rank-limited finish gives can then only be read by
+#   training one.
+# Records it rests on:
+#   - reports/x2_ovgf_mix_2026_11_24.md: on the same 32 renders x2ovll amp 0.603 / 0.620, stamp32
+#     0.414 / 1.573, flat inner difference 0.23; x2ovgf 0.771 / 0.698, 0.657 / 2.678, 0.39. A
+#     single stage's change moves the tone by 2 – 3 levels, so a partial change can read off
+#     balance for reasons other than rank.
+# Read: one p3_generated.py --x2 job on the render cache (r008 | c008 | r064 | c064), then
+#   sheet_texture.py --x2 and tile_dict.py; each arm's amp and stamp32 as a share of the way from
+#   x2ovll to x2ovgf, beside its luma shift. Labelled.
+# Bars: spread unknown.
+# Cost: 4 files on the CPU (about a minute), one cached render read (about 3 min), CPU reads.
+
+a = "output/pixel_head/x2ovll_1124_0139/head_x2.safetensors"
+b = "output/pixel_head/x2ovgf_1124_0920/head_x2.safetensors"
+out_dir = "output/pixel_head/x2rk_1124_1100"
+ranks = [8, 64]

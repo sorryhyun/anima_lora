@@ -1,6 +1,7 @@
 # pixel_decoder — a light pixel head on the frozen Anima DiT's last features
 
-The algorithm and what was found. What is ahead: `rgba_plan.md` and `x2_plan.md`. Runs: `reports/`, and
+The algorithm and what was found. What is ahead: `rgba_plan.md` and `x2_plan.md`; the weight-space
+and LoRA proposal for ×2: `x2_idea.md`. Runs: `reports/`, and
 `archive/` (local).
 
 ## Algorithm
@@ -160,6 +161,18 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   window: × 0.99 / × 0.98, at 30.42 / 26.04 dB against its init's 30.48 / 26.13 and a high-pass
   ratio of 1.000 / 0.987 (σ 3 / 1 px); the decode takes 18.0 ms against 12.4
   ([record](reports/x2_overlap_2026_11_23.md)).
+- The GAN finish on the overlapping head (`x2ovgf_1124_0920`, 4,000 rollouts at LR 2e-5), 32
+  renders: amp 0.771 / 0.698 of the chain's against 0.770 / 0.692 for the finish on the 8 × 8
+  output, token border × 1.08 against × 1.37, departed tiles' share on 16 centroids 0.718 against
+  0.731; held out 29.69 / 25.62 dB ([record](reports/x2_ovgf_mix_2026_11_24.md)).
+- A GAN finish and its parent mix linearly in weight space: at α 0.5 / 1 / 1.5 of the finish's
+  change, amp 0.667 / 0.771 / 1.005, stamp32 0.517 / 0.657 / 1.115, dB against the chain 27.19 /
+  26.86 / 25.38 (the parent 0.603, 0.414, 27.07). One stage's change alone: the second ×2 stage
+  amp 0.787 with stamp32 1.068, the output layer 0.625 with 1.289, each with a tone shift of
+  about 2 levels (same record; `bench/pixel_readout/experiments/head_merge.py`).
+- The same change cut by singular directions: the top 8 per matrix (13 – 37 % of its energy)
+  give amp 0.829 with stamp32 1.188 and a first difference on flat tokens of 0.91 levels; the
+  rest 0.632, 1.695 and 1.94; the whole finish 0.771, 0.657 and 0.39 (same record).
 - The discriminator's margin on held-out heads is 6.33 against a null of 0.05
   ([record](archive/x2_disc_probes_2026_11_21.md), local). In training it stays at 5.9 – 7.3 after
   its rise ([record](reports/x2_full_run_deploy_2026_11_21.md)).
@@ -171,6 +184,10 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
 - Fine strokes: the user reported the region blurred at ×2. Claude's read, labelled: merged
   already by every ×1 head tried, separate in the VAE decode
   ([record](reports/x1_recipe_2026_11_22.md)).
+- The ×1 form fits such windows: on the 16 held-out windows where the base head is furthest
+  under VAE(x̂0) on the high-pass, an overfit of the released form reads 43.49 dB against the
+  original, VAE(x̂0) 24.46 and the base head 23.65; 3 more blocks at 8 px 45.92, a 4-px stage
+  42.04 ([record](reports/x1_fit_2026_11_24.md)).
 - Screentone: small dots are smoothed into shading (the user's read).
 - Tone: darker than the VAE on textured regions, about 2.5 levels in linear light on
   screentone-like blocks of base mono renders, 1 on turbo, under 1 over a whole image

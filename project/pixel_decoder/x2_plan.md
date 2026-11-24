@@ -24,26 +24,49 @@
 - The ×2 head's output is the overlapping one; the B head is trained with it and the GAN finish
   goes on top of that head. `x2dll` / `x2dgf512` (the 8 × 8 output) stay as the references.
 
-Open, none queued:
+- The user (2026-11-24): "ovll로 하고 일단 원래 하던대로 gan finetune 4k 돌리자", then "5e-5 대신 2e-5로
+  걸어보자": `x2ovll_1124_0139` is the B head and `x2ovgf_1124_0920` its GAN finish.
+- Done 2026-11-24: `x2ovgf_1124_0920` (4,000 rollouts, LR 2e-5) and the mixes `x2mg_1124_1025`
+  ([report](reports/x2_ovgf_mix_2026_11_24.md)). On the 32 renders the finish reads at
+  `x2dgf512`'s amp (0.771 / 0.698 against 0.770 / 0.692) with the token border at × 1.08 against
+  × 1.37; held out 29.69 / 25.62 dB. `x2dgf512`'s head file was deleted on 2026-11-23; its
+  sheets (`x2gen_1123_1720`, local) remain.
 
-1. The GAN finish on the overlapping output: `x2dgf512_1123_1701`'s recipe with resume `x2dll` →
-   `x2ov_1123_2012` as the one change, about 30 min; the render read runs from
-   `output/pixel_head/render_cache/` (local). Read against `x2dgf512` on the same 32 renders: the
-   line gradient and high-pass (the user on `x2ov`: "진짜 좀 무르네"), the flat-token border
-   ratios with the GAN's grain on, `tile_dict.py`, and the user's sheets of candle, kotatsu and
-   manga_page.
-2. Waiting on the user's read: `x2ovll_1124_0139` (the B stage retrained with the overlap from
-   the start, 12,000 rollouts) against `x2ov` on the pair sheets
-   ([report](reports/x2_overlap_12k_2026_11_24.md)). The numbers: held out 30.45 / 26.11
-   dB against 30.42 / 26.04, DINO the same, the token border step on flat tokens × 1.19 against
-   × 0.98. The GAN finish of step 1 resumes from `x2ov` unless the read picks `x2ovll`.
-3. The fixed tile on halftone and the GAN's net (neither moved by the output form): the unpaired
-   discriminator, `x2dgf512`'s recipe on the overlapping parent with the real crop drawn from
-   another replay sample as the one change, about 30 min + the render read; read by the margin's
-   course (6.3 – 7.0 with the pairing), `tile_dict.py` and the user's sheets. It leaves the
-   paper's paired form.
+Open:
+
+1. Waiting on the user's read: `x2ovgf_1124_0920` as the ×2 ship candidate. Sheets (local, under
+   `bench/pixel_readout/results/20261124-1033-tex_x2mga_1124/`): `x2ovll` | `x2ovgf` of the 32
+   renders, `x2dgf512` | `x2ovgf` crops of candle, kotatsu and manga_page, and the α strips
+   `x2ovll` | 0.5 | `x2ovgf` | 1.5. The Hub ×2 file stays until that read.
+   The user's read of two regions (2026-11-24, in the record): the sharp line is the identity
+   of the upscale; the lines are distorted (in `x2ovll` too, sharper here) and the flat blue
+   carries a slight pattern. No ship decision given yet.
+2. An α under 1 as a sharpness setting, if the user reads `x2ovgf` as too grainy: the file is
+   written by `head_merge.py --alphas <α>` in seconds; the α strips show 0.5.
+3. Closed 2026-11-24: the unpaired discriminator, as a 1,000-rollout pair `x2gf1k_1124_1256`
+   (paired control) and `x2unp_1124_1256` ([record](reports/x2_unpaired_2026_11_24.md)). The
+   margin ends at 7.08 in both; the unpaired arm reads amp 0.675 / 0.672 against 0.723 / 0.688
+   with stamp32 0.583 / 2.428 against 0.607 / 2.800 and the same grid on flat colour. Pair
+   sheets wait on the user's read (local,
+   `bench/pixel_readout/results/20261124-1333-tex_x2unp_1124_1256/`). Proposed, not queued: a
+   high-pass penalty on the tokens whose target is flat, on `x2gf1k`'s recipe (18 min + the
+   read), for the pattern the user read on flat colour.
 4. The noise inputs again with a nonzero init and their own LR, if 3 moves the margin: only then
    does a loss reward the draw.
+5. `x2lora_1124_1113`, the GAN finish as a rank-8 LoRA on the frozen `x2ovll` (LR 2e-4, 1,000
+   rollouts; the user's settings), ran with its render read
+   ([record](reports/x2_ovgf_mix_2026_11_24.md)): amp 0.709 / 0.664, stamp32 0.688 / 2.100,
+   grain on flat tokens 0.36 (`x2ovgf` 0.771 / 0.698, 0.657 / 2.678, 0.39). Waiting on the
+   user's read of the pair sheets `x2ovgf` | `x2lora` (local,
+   `bench/pixel_readout/results/20261124-1136-tex_x2lorap_1124/`). Proposed, not queued: the
+   factor reads of `x2_idea.md` steps 2 – 4 (the read script is not written).
+   The LR arm `x2lora_1124_1151` (LR 1e-4, nothing else changed) ran with its read (same
+   record): amp 0.702 / 0.685, stamp32 0.631 / 2.766, grain 0.45; the update 0.41 – 0.74 of
+   `1113`'s size per layer, its cosine to the full finish's change +0.04 … +0.20. By its
+   config's rule the LR was not the cause. Waiting on the user's read of the pair sheets `1113`
+   | `1151` (local,
+   `bench/pixel_readout/results/20261124-1210-tex_x2lora_1124_1151/`). Proposed, not queued:
+   rank 64 with nothing else changed (18 min + the read), or the finish stays a full finetune.
 
 ## A fixed pattern after the GAN finetune (2026-11-22)
 
