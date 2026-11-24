@@ -7,9 +7,11 @@ is in `_archive/ocr_reader/history/` (local; `README.md` there). In git, the sam
 
 ## State
 
-- Shipped: v7 = `mainsub_1124_0151`, Hub `v7/` (`59768fc6`), the default reader of `anime_tools`
-  v0.14.0 under `OCR:` only. `OCR2:` is not read there (the user, 2026-11-24: "일단은 ocr만
-  쓰는식으로 하자"); v6 and `v7_preview` are its opt-ins.
+- Shipped: v7 = `mainsub_1124_1923` (RunPod retrain of `mainsub_1124_0151` on the 11-24
+  labels, 8 × 2), swapped into Hub `v7/` in place (`57c8dfd1`, cards `169eacbc`); the default
+  reader of `anime_tools` v0.15.0 under `OCR:` only. `OCR2:` is not read there (the user,
+  2026-11-24: "일단은 ocr만 쓰는식으로 하자"); v6 is its opt-in. 0.15.0 dropped the two-prompt
+  v7 preview (`SFX:`); Hub `v4/`, `v5/`, `v7_preview/` left the head on 2026-11-24.
 - Now: the user reviews labels on the local page (§ Rules); exports are applied as they come.
 - Definitions and the dataset: [`main-sub-approach.md`](main-sub-approach.md). Open questions,
   pending work and the report index: [`mainsub_plan.md`](mainsub_plan.md).
@@ -22,8 +24,9 @@ is in `_archive/ocr_reader/history/` (local; `README.md` there). In git, the sam
 | `v4/` | `vl16_p2b_kozh_ep2` | 0.7.12 | tower r64 LoRA + LM full FT, gelnote KO/ZH pseudo rows, 2 epochs | sincos SFX strict 289 → 346; KO 1 → 26 / 48 | `history/reports/p3_kozh_ep2.md` |
 | `v5/` (`fb08a10b`) | `vl16_p2b_kozh_nl` | 0.9.5 | line breaks kept (`TARGET_NORM` 5), crops trimmed at the page edge | sincos ♡-blind 386 → 414 (z +3.0); K3 KO 26 → 22 (z −1.4) | `history/README.md` § v5 |
 | `v6/` (`57e7c650`) | `vl16_p2b_kozh_nl_swaprelax` | 0.9.8 | + `pseudo_swaprelax_v5` (20,745 KO speech lines) | K3 KO 22 → 28 (z +2.1); JA flat | `history/README.md` § v6 |
-| `v7_preview/` | `sfxpc_1118_0412` | opt-in | two prompts, `OCR:` speech / `SFX:` SFX | — | `history/proposals/ocr_sfx_prefix.md` |
+| `v7_preview/` (`1987992e`, off the head) | `sfxpc_1118_0412` | opt-in until 0.15.0 | two prompts, `OCR:` speech / `SFX:` SFX | — | `history/proposals/ocr_sfx_prefix.md` |
 | `v7/` (`59768fc6`) | `mainsub_1124_0151` | 0.14.0 | main / sub (`OCR:` / `OCR2:`), detector boxes at 4 px | vs v6: doujin SFX strict 294 → 334 (+95 / −55); Manga109 test SFX 85.2 → 80.8 % (+83 / −196), speech 88.4 → 89.0 %; K3 KO 28 → 30, ZH 30 → 33 | [`mainsub_1124_0151.md`](reports/mainsub_1124_0151.md) |
+| `v7/` (`169eacbc`) | `mainsub_1124_1923` | 0.15.0 | the same recipe on the 11-24 labels, batch 8 × 2 (RunPod) | vs the first v7, paired on today's labels: doujin SFX 334 → 350 (+58 / −42, p 0.13); Manga109 test SFX 80.8 → 81.9 % (+118 / −89, p 0.05), speech 89.0 → 89.1 %; K3 KO 29 → 32, ZH 36 → 36 | — |
 
 K3 figures in the table are on the labels before the 2026-11-24 review (`assets/k3_gelnote.pre_review.tsv`).
 On the reviewed labels (`review_1124b`: 53 edits, mostly line breaks, 91 rows → `checked`; 48 KO + 48 ZH
