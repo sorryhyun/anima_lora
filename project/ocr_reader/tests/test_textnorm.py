@@ -1,21 +1,14 @@
-"""The OCR line's one glyph fold (``ocr/textnorm.py``)."""
+"""The OCR line's one glyph fold (``core/textnorm.py``)."""
 
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-
 import pytest
-
-HOME = Path(__file__).resolve().parents[1]
 
 
 def _mod():
-    path = HOME / "ocr" / "textnorm.py"
-    spec = importlib.util.spec_from_file_location("textnorm", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    from project.ocr_reader.core import textnorm
+
+    return textnorm
 
 
 @pytest.mark.parametrize(

@@ -73,13 +73,13 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import crop_dataset as cd  # noqa: E402
-import eval_manga109 as ev  # noqa: E402
-import manga109 as m109  # noqa: E402
+from project.ocr_reader.core import crop_dataset as cd
+from project.ocr_reader.core.paths import OUTPUT, VL16_BASE
+from project.ocr_reader.core.readers import MAX_NEW_TOKENS
+from project.ocr_reader.core.scoring import score
 
-OUT_ROOT = m109.REPO / "output/ocr"
-BASE = m109.REPO / "models/paddleocr_vl_1.6"
+OUT_ROOT = OUTPUT
+BASE = VL16_BASE
 LORA_LEAVES = {
     "q_proj",
     "k_proj",
@@ -342,7 +342,7 @@ def predict(model, proc, prompt, min_edge, ds: cd.CropDataset, bs, workers):
         ).to(model.device)
         n = inputs["input_ids"].shape[-1]
         o = model.generate(
-            **inputs, max_new_tokens=ev.MAX_NEW_TOKENS, do_sample=False, use_cache=True
+            **inputs, max_new_tokens=MAX_NEW_TOKENS, do_sample=False, use_cache=True
         )
         for i, row in zip(idx, o):
             ids = [
@@ -473,7 +473,7 @@ def main():
         "--compile",
         action="store_true",
         help="torch.compile each tower encoder layer and LM decoder layer, dynamic=False "
-        "with the token axis marked per call (vl16_compile.py)",
+        "with the token axis marked per call (core/vl16_compile.py)",
     )
     ap.add_argument(
         "--mem_log",
@@ -683,7 +683,7 @@ def main():
             )
             assert on and off, "layer class names changed; --ckpt_lm_only did nothing"
     if a.compile:
-        from vl16_compile import compile_layers
+        from project.ocr_reader.core.vl16_compile import compile_layers
 
         # packed tower tokens: one floor-size crop (576) up to the budget plus the
         # augmentation's overshoot (3,164 measured at --token_budget 3072)
@@ -834,7 +834,7 @@ def main():
         t0 = time.time()
         # predict runs under no_grad: vl16_compile's layers take their eager forward
         preds = predict(model, proc, va_prompt, min_edge, va, a.val_bs, a.workers)
-        scored = ev.score(va_df, preds)
+        scored = score(va_df, preds)
         m = val_metrics(scored)
         m.update(tag=tag, step=step, wall=round(time.time() - t0, 1))
         with hist.open("a") as f:

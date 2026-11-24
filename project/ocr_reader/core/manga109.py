@@ -22,10 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-HERE = Path(__file__).resolve().parent
-LINE = HERE.parent  # project/ocr_reader
-REPO = LINE.parents[1]
-ASSETS = LINE / "assets"
+from .paths import ASSETS
+
 SPLIT_PATH = ASSETS / "coo_split_manga109s.json"
 COO_SPLIT_URL = (
     "https://raw.githubusercontent.com/ku21fan/COO-Comic-Onomatopoeia/main/COO-data/"
@@ -185,20 +183,3 @@ def iter_text(book: str) -> Iterator[Line]:
 
 def page_path(book: str, page: int) -> Path:
     return manga109s_root() / "images" / book / f"{page:03d}.jpg"
-
-
-# --------------------------------------------------------------------------- shared code from the pilot
-
-
-def pilot_manga_text():
-    """``deskew_crop``, ``MangaOCR``, ``OCR_MODEL`` (``pilot.py``)."""
-    import pilot
-
-    return pilot
-
-
-def pilot_records():
-    """``norm`` / ``sim`` / ``is_runaway``, the A/B's keys (``pilot.py``)."""
-    import pilot
-
-    return pilot

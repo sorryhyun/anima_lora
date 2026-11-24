@@ -31,9 +31,10 @@ Report paths under `history/` are in `_archive/ocr_reader/` (local). Sincos figu
 
 | path | holds |
 |---|---|
-| `ocr/` | training and eval: `finetune_vl16_lora.py`, `crop_dataset.py` (`load_mainsub`), `build_sfx_prefix.py` (the detector crops and their manifests), `eval_sfx.py` / `eval_k3.py` / `eval_manga109.py`, `textnorm.py`, `manga109.py`; the older crop builders, pseudo-labeller and Ovis / page-detector evals |
+| `core/` | the library every script imports (package `project.ocr_reader.core`): `paths.py` (repo and dataset paths, `ANIMA_*_ROOT` overrides), `manga109.py` (corpus access), `crop_dataset.py` (`load_mainsub`, the training set) + `augment.py`, `textnorm.py` (targets and keys), `readers.py` (`READERS`, `Vl16Reader` with its `task` prompt), `scoring.py` (`score` / `summary` / `exact_key` / `normalize_ja`), `crops.py` (`deskew_crop`, `margin_box`, ink projection), `labels.py` (`ellipsis_fold`, `line_broken`, `agent_subs`), `regions.py` (main / sub `Item`), `det_types.py` (detector-box `classify`), `hayai_beam.py`, `vl16_compile.py` |
+| `ocr/` | training and eval scripts: `finetune_vl16_lora.py`, `build_sfx_prefix.py` (the detector crops and their manifests), `build_manga109_crops.py` (the grey `manifest.parquet` the others start from), `eval_sfx.py` / `eval_k3.py` / `eval_manga109.py`, `rescore_eval.py` |
 | `labeling/` | the review page and the label pipeline: `review_page.py` (builds the page), `apply_review.py` (applies an export), `m109_mainsub.py` (Manga109 main / sub proposals), `furigana_find.py`, `linebreak_auto.py`, `hayai_read.py`, `ko_read.py` (reader flags for the KO rows) |
-| `probes/` | main / sub measurements: `eval_mainsub.py`, `eval_subneg.py`, `sfxonly_suspect.py`, `mainsub_text.py`, `sfxp_crop_sheet.py` (`build_sfx_prefix.py` imports its classifier), `build_hf_mainsub.py` (the local HF dataset build) |
+| `probes/` | main / sub measurements: `eval_mainsub.py`, `eval_subneg.py`, `sfxonly_suspect.py`, `mainsub_text.py`, `sfxp_crop_sheet.py` (sheets of the `core.det_types` types), `build_hf_mainsub.py` (the local HF dataset build) |
 | `gate/` | builders of the frozen gate sets: `build_eval_data.py`, `k3_gelnote.py` |
 | `assets/` | label TSVs; local except `k3_gelnote.tsv`, `kozh_sfx.tsv`, `sfx_labels_sincos_597.tsv` |
 | `eval_data/` | frozen gate images (local) |
@@ -95,9 +96,10 @@ so older commands still resolve.
   - Check the tokenizer before choosing any target spelling.
 - Licence: AnimeText is CC-BY-NC-SA. A shipped reader must be built without
   it, and without any pseudo rows derived from it.
-- `ocr/` was copied 2026-10-10 from `finished/cjk_aware_anima_dit/ocr/`; `ocr/pilot.py` holds
-  the helpers it used to load from `finished/cjk_aware_anima/datasets/`. Edit here, not the
-  finished copy. `eval_sfx.py` defaults to the 597 labels; every eval script writes its table to
+- Code: shared code goes in `core/`; a script imports `project.ocr_reader.core.*` and never another
+  script. Scripts run by path (`make daemon-run ARGS="project/ocr_reader/ocr/eval_sfx.py …"`).
+  The Ovis / PP-OCRv6 / package readers, the pseudo-labeller, the page-detector and hito evals
+  are in `_archive/ocr_reader/code/` (local; in git before the 2026-11-24 split). `eval_sfx.py` defaults to the 597 labels; every eval script writes its table to
   `reports/eval/`. Every GPU step goes through the daemon.
 - Hardware: RTX 5070 Ti 16 GB. No bitsandbytes on cu132.
 

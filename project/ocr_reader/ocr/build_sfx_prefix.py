@@ -33,7 +33,7 @@ to the page. Three parts, each its own manifest under ``derived/``:
   spell it; a run of four in a label with text becomes one ``…`` (review edits, 11-18).
   Other runs stay.
 * ``--gt test`` → ``manifest_sfxp_gt.parquet``: the grey manifest's rows of those splits (COO
-  and speech) re-cut through ``pilot.deskew_crop`` at the capped margin, for the gate evals
+  and speech) re-cut through ``crops.deskew_crop`` at the capped margin, for the gate evals
   (``eval_manga109.py --manifest sfxp_gt``).
 * ``--clean`` → ``manifest_sfxp_det_clean.parquet``: ``--det``'s boxes with the doubtful
   labels unwritten (``build_clean``).
@@ -58,7 +58,6 @@ import json
 import os
 import random
 import re
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -67,34 +66,14 @@ import cv2
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import manga109 as m109  # noqa: E402
-
-REPO = Path(__file__).resolve().parents[3]
-GELNOTE = Path("/media/sorryhyun/new/dataset/gelnote_crops")
-SWAPRELAX = Path("/media/sorryhyun/new/dataset/hito_ocr/swap_relax_v5")
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.crops import cap_frac, deskew_crop, margin_box
+from project.ocr_reader.core.det_types import classify
+from project.ocr_reader.core.labels import ellipsis_fold, line_broken
+from project.ocr_reader.core.paths import GELNOTE, REPO, SWAPRELAX
+from project.ocr_reader.core.paths import LINE_ANNOTATIONS as LINES
 
 INCLUDE, GRAZE, SPEECH_IN = 0.8, 0.2, 0.3
-
-
-def margin_box(x0, y0, x1, y1, W, H) -> tuple[int, int, int, int]:
-    w, h = x1 - x0, y1 - y0
-    p = min(0.12 * max(w, h), 0.3 * min(w, h), 4)
-    return (
-        int(round(max(0, x0 - p))),
-        int(round(max(0, y0 - p))),
-        int(round(min(W, x1 + p))),
-        int(round(min(H, y1 + p))),
-    )
-
-
-def cap_frac(poly) -> float:
-    """``deskew_crop``'s ``pad_frac`` (× the long side of the min-area rect) that gives
-    the capped margin."""
-    pts = np.asarray(poly, dtype=np.float32).reshape(-1, 2)
-    _, (w, h), _ = cv2.minAreaRect(pts)
-    L, S = max(w, h, 1.0), max(min(w, h), 1.0)
-    return min(0.12 * L, 0.3 * S, 4) / L
 
 
 def orient(w, h) -> str:
@@ -286,9 +265,6 @@ def build_clean(a, derived: Path):
     Fragments and misses (the detector cuts or skips the SFX) stay out, as before.
     Per-polygon types land in ``sfxp_types_<split>.parquet``.
     """
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "probes"))
-    from sfxp_crop_sheet import classify
-
     full = pd.read_parquet(derived / "manifest_sfxp_det.parquet")
     full["clean"] = None
     for sp in a.splits:
@@ -407,39 +383,6 @@ def build_speech(a, derived: Path):
         build_lines(a, derived)
 
 
-LINES = (
-    Path(__file__).resolve().parents[1] / "assets" / "manga109s_line_annotations.json"
-)
-"""``bluolightning/manga109s-line-annotations`` (HF, MIT; geometry only): per Manga109-s
-v2026 ``<text>``, ``line_lengths`` = characters per line in reading order, counted on
-the XML text without its ``\\n`` (spaces included)."""
-
-
-DOT_RUN = re.compile(r"\.{3,}|．{3,}|・{3,}|･{3,}")
-
-
-def ellipsis_fold(t: str) -> str:
-    """A run of one dot glyph (``.`` ``．`` ``・`` ``･``) whose length is a multiple of
-    three → length / 3 × ``…``; in a label with text, a run of four → one ``…`` (the
-    user's review edits, 11-18: ``そりゃ・・・・`` → ``そりゃ…``; dot-only labels are
-    spelled per printed column by ``linebreak_auto.py dots``). A run a line break splits
-    (``火薬・・\n・・・・・・？``) stays as written. Idempotent."""
-    has_text = bool(re.sub(r"[\s.．・･…‥]", "", t))
-
-    def sub(m: re.Match) -> str:
-        r, a, b = m[0], m.start(), m.end()
-        split = (a >= 2 and t[a - 1] == "\n" and t[a - 2] == r[0]) or (
-            b + 1 < len(t) and t[b] == "\n" and t[b + 1] == r[0]
-        )
-        if split:
-            return r
-        if len(r) == 4 and has_text:
-            return "…"
-        return r if len(r) % 3 else "…" * (len(r) // 3)
-
-    return DOT_RUN.sub(sub, t)
-
-
 def build_ellipsis(a, derived: Path):
     """:func:`ellipsis_fold` over ``manifest_sfxp_speech`` in place;
     ``.pre_ellipsis.parquet`` backup, once."""
@@ -456,19 +399,6 @@ def build_ellipsis(a, derived: Path):
         df["text"] = new
         df.to_parquet(path, index=False)
     print(f"[ellipsis] {n} rows folded", flush=True)
-
-
-def line_broken(raw: str, lengths: list[int]) -> str | None:
-    """``raw`` cut at the annotated line lengths, each line stripped; ``None`` when
-    the lengths do not sum to the text."""
-    flat = raw.replace("\n", "")
-    if sum(lengths) != len(flat):
-        return None
-    out, i = [], 0
-    for n in lengths:
-        out.append(flat[i : i + n].strip())
-        i += n
-    return "\n".join(s for s in out if s)
 
 
 def build_lines(a, derived: Path):
@@ -566,8 +496,6 @@ def build_lines(a, derived: Path):
 
 
 def build_gt(a, derived: Path):
-    import pilot
-
     src = pd.read_parquet(derived / "manifest.parquet")
     if "source" in src.columns:
         src = src[src.source.fillna("grey") == "grey"]
@@ -577,7 +505,7 @@ def build_gt(a, derived: Path):
         if cur != (r.book, r.page):
             img, cur = cv2.imread(str(m109.page_path(r.book, r.page))), (r.book, r.page)
         poly = json.loads(r.poly)
-        crop, ori = pilot.deskew_crop(img, poly, cap_frac(poly), 1)
+        crop, ori = deskew_crop(img, poly, cap_frac(poly), 1)
         if crop is None:
             lost += 1
             continue
@@ -640,11 +568,9 @@ def build_missed(a, derived: Path):
     box covers (``sfxp_types_train.parquet`` type ``missed``, written by ``--clean``),
     each with its :func:`missed_sub` type and ``o_sfx``, the largest share of another COO
     polygon's bbox inside this polygon's capped-margin bbox. The ``--missed_keep`` types
-    are cut from the polygon as the gate crops are (``pilot.deskew_crop``, capped margin)
+    are cut from the polygon as the gate crops are (``crops.deskew_crop``, capped margin)
     and carry a ``path``, except ``--missed_alone`` types with ``o_sfx ≥ 0.1`` (another
     SFX in the crop); ``load_sfxp(missed_manifest=…)`` adds those as ``SFX:`` rows."""
-    import pilot
-
     allty = pd.read_parquet(derived / "sfxp_types_train.parquet")
     page_polys = {
         k: [(str(c), json.loads(q)) for c, q in zip(g.coo_id, g.poly)]
@@ -693,7 +619,7 @@ def build_missed(a, derived: Path):
             path=None,
         )
         if sub in a.missed_keep and not (sub in a.missed_alone and ov >= 0.1):
-            crop, ori = pilot.deskew_crop(img, poly, cap_frac(poly), 1)
+            crop, ori = deskew_crop(img, poly, cap_frac(poly), 1)
             if crop is None:
                 lost += 1
             else:

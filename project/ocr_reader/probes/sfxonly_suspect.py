@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -29,10 +28,10 @@ import cv2
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "labeling"))
-import manga109 as m109  # noqa: E402
-from m109_mainsub import INCLUDE, Item, rect_quad  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.crops import rect_quad
+from project.ocr_reader.core.paths import OUTPUT
+from project.ocr_reader.core.regions import INCLUDE, Item
 
 DARK = 110
 
@@ -148,9 +147,7 @@ def main():
     a = ap.parse_args()
     ids = {json.loads(line)["id"] for line in open(a.list, encoding="utf-8")}
     ms = []
-    for line in open(
-        m109.REPO / "output/ocr/mainsub/m109_mainsub.jsonl", encoding="utf-8"
-    ):
+    for line in open(OUTPUT / "mainsub/m109_mainsub.jsonl", encoding="utf-8"):
         x = json.loads(line)
         if x["id"] in ids:
             ms.append(

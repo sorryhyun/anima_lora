@@ -19,7 +19,7 @@ the grey crop of the same polygon (stroke-mask IoU after a 1-px dilation, the
 O3 pilot's clause (a)) and dropped under ``--min_iou`` (0.8) — a repainted
 glyph must not train under the source's label.
 
-Copied from ``finished/cjk_aware_anima_dit/ocr/`` 2026-11-08; ``pilot.deskew_crop`` now
+Copied from ``finished/cjk_aware_anima_dit/ocr/`` 2026-11-08; ``crops.deskew_crop`` now
 stops the margin at the page edge (``trim``), so the rebuilt ``crops/`` carry no
 replicated-border streaks. The old cut is kept as ``crops_replicate/`` +
 ``manifest_replicate.parquet``.
@@ -27,7 +27,7 @@ replicated-border streaks. The old cut is kept as ``crops_replicate/`` +
 For every book in the requested split(s): (a) every COO polygon (truncation links
 joined — ``manga109.iter_coo``), (b) a **matched draw** of ``<text>`` speech boxes,
 ``min(n_coo, n_text)`` per book with a fixed seed, so speech and SFX share the
-book split and roughly the count. Crops via the pilot's ``deskew_crop``
+book split and roughly the count. Crops via ``crops.deskew_crop``
 (orientation preserved, ``--pad`` 12 %), dropped below ``--min_side`` px.
 
 Output (never in-tree): ``$MANGA109S_ROOT/../derived/crops/<split>/<kind>/<book>_<page>_<id>.png``
@@ -40,7 +40,6 @@ from __future__ import annotations
 import argparse
 import json
 import random
-import sys
 from collections import Counter
 from pathlib import Path
 
@@ -48,8 +47,9 @@ import cv2
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import manga109 as m109  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.crops import deskew_crop
+from project.ocr_reader.core.readers import MANGA_OCR_MODEL
 
 
 def stroke_mask(crop: np.ndarray) -> np.ndarray:
@@ -80,7 +80,6 @@ def stroke_iou_d1(a: np.ndarray, b: np.ndarray) -> float:
 def _build_book(args) -> tuple[list[dict], Counter]:
     """One book (a worker unit): its COO lines + a count-matched speech draw."""
     sname, book, pad, min_side, seed, overwrite, image_root, name, min_iou = args
-    mt = m109.pilot_manga_text()
     derived = m109.derived_root()
     rows: list[dict] = []
     dropped: Counter = Counter()
@@ -113,13 +112,13 @@ def _build_book(args) -> tuple[list[dict], Counter]:
             if not ln.text:
                 dropped["empty_text"] += 1
                 continue
-            crop, orient = mt.deskew_crop(img, list(ln.poly), pad, min_side)
+            crop, orient = deskew_crop(img, list(ln.poly), pad, min_side)
             if crop is None:
                 dropped["min_side"] += 1
                 continue
             iou_d1 = None
             if grey is not None:
-                ref, _ = mt.deskew_crop(grey, list(ln.poly), pad, min_side)
+                ref, _ = deskew_crop(grey, list(ln.poly), pad, min_side)
                 iou_d1 = stroke_iou_d1(ref, crop) if ref is not None else 0.0
                 if iou_d1 < min_iou:
                     dropped["min_iou"] += 1
@@ -210,8 +209,7 @@ def _vocab_chars() -> set[str] | None:
     try:
         from huggingface_hub import hf_hub_download
 
-        mt = m109.pilot_manga_text()
-        vocab = Path(hf_hub_download(mt.OCR_MODEL, "vocab.txt")).read_text(
+        vocab = Path(hf_hub_download(MANGA_OCR_MODEL, "vocab.txt")).read_text(
             encoding="utf-8"
         )
     except Exception as e:  # offline + uncached, or no HF at all

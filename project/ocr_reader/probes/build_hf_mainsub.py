@@ -24,16 +24,14 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import sys
 from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-import crop_dataset as cd  # noqa: E402
-import manga109 as m109  # noqa: E402
+from project.ocr_reader.core import crop_dataset as cd
+from project.ocr_reader.core import manga109 as m109
 
 SHARD_ROWS = 20_000
 COLS = ["prompt", "text", "metric", "source", "book", "page", "crop_id", "orient"]

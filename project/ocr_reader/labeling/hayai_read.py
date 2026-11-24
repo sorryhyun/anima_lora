@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -32,9 +31,8 @@ import cv2
 import pandas as pd
 from PIL import Image
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-import manga109 as m109  # noqa: E402
-from build_sfx_prefix import margin_box  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.crops import margin_box
 
 MODEL = "JustANormalTinkerer/hayai-ocr-v2.7-supernova"
 REVISION = "90fc61482c33858ee9ea227cd797f6fdff33345c"

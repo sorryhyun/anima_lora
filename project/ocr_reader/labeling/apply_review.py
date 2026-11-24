@@ -36,15 +36,14 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
-import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-import manga109 as m109  # noqa: E402
-from build_sfx_prefix import ellipsis_fold  # noqa: E402
-from textnorm import collapse_keep_lines  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.labels import ellipsis_fold
+from project.ocr_reader.core.paths import ASSETS
+from project.ocr_reader.core.textnorm import collapse_keep_lines
 
 TARGETS = {
     "gelnote_ko": ["pseudo_gelnote_ko", "sfxp_kozh"],
@@ -57,7 +56,7 @@ TARGETS = {
     "odd_dots": ["sfxp_speech"],
     "furigana": ["sfxp_speech"],
 }
-DOUJIN = Path(__file__).resolve().parents[1] / "assets" / "sfx_labels_sincos_597.tsv"
+DOUJIN = ASSETS / "sfx_labels_sincos_597.tsv"
 MAINSUB = {"mainsub_det", "mainsub_speech", "mainsub_nolabel"}
 APPLY_OK = {"linebreak_suspicious", "dots_suspicious", "odd_dots"}
 """Sources whose page text is a proposal, not the manifest's text: ``ok`` applies it."""
@@ -193,7 +192,7 @@ def write_marks(rv: pd.DataFrame, dry_run: bool) -> None:
     export carries the changed rows only: ``sfx`` 1 sets the row's mark (its text as
     exported), 0 removes it, empty leaves the file alone. Training does not read the
     file."""
-    path = Path(__file__).resolve().parents[1] / "assets" / "sfx_marks.tsv"
+    path = ASSETS / "sfx_marks.tsv"
     old = (
         pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)
         if path.exists()
@@ -216,7 +215,7 @@ def write_marks(rv: pd.DataFrame, dry_run: bool) -> None:
 def write_mainsub(rv: pd.DataFrame, dry_run: bool) -> None:
     """The Manga109 main / sub rows → ``assets/m109_mainsub.tsv`` (see the module
     docstring); rows the export leaves out stay."""
-    path = Path(__file__).resolve().parents[1] / "assets" / "m109_mainsub.tsv"
+    path = ASSETS / "m109_mainsub.tsv"
     cols = ["source", "id", "status", "main", "sub"]
     old = (
         pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)
@@ -260,7 +259,7 @@ def write_subs(rv: pd.DataFrame, dry_run: bool) -> None:
     escaped): the ``OCR2:`` label of the row's crop, one item per line in reading order.
     A row exported with ``-`` loses its sub; rows the export leaves out stay. Training
     does not read the file yet."""
-    path = Path(__file__).resolve().parents[1] / "assets" / "sub_labels.tsv"
+    path = ASSETS / "sub_labels.tsv"
     old = (
         pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)
         if path.exists()

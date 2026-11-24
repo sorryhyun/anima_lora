@@ -265,7 +265,8 @@ markers = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["anima_lora*", "anima_daemon*", "library*", "networks*", "bench*", "scripts*", "preprocess*"]
+# `project.ocr_reader*`: the OCR line's scripts import its `core/` package (project/ocr_reader/README.md).
+include = ["anima_lora*", "anima_daemon*", "library*", "networks*", "bench*", "scripts*", "preprocess*", "project", "project.ocr_reader*"]
 
 [tool.setuptools.package-data]
 # Ship the model-scoped T5("") CFG-uncond sidecar bundled in library/anima/assets/

@@ -41,7 +41,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -49,51 +48,22 @@ import cv2
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import manga109 as m109  # noqa: E402
-from build_sfx_prefix import ellipsis_fold, margin_box  # noqa: E402
-from review_page import agent_subs  # noqa: E402
-from linebreak_auto import (  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.crops import (
     glyph_weight,
     guess_vertical,
     ink_mask,
+    margin_box,
+    rect_quad,
     segment,
 )
+from project.ocr_reader.core.labels import agent_subs, ellipsis_fold
+from project.ocr_reader.core.regions import INCLUDE, Item, order
 
-INCLUDE, PART, TRIM = 0.8, 0.05, 0.3
+PART, TRIM = 0.05, 0.3
 SAME = 0.7
 HANGUL = re.compile(r"[가-힣ㄱ-ㅎㅏ-ㅣ]")
-SOFT = set("!！?？・…‥~〜ー-―.．、。")
 STRIP = "・…~ー〜！!？?"
-
-
-def rect_quad(x0, y0, x1, y1) -> np.ndarray:
-    return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.float32)
-
-
-def glyphs(t: str) -> float:
-    return max(1.0, sum(0.5 if c in SOFT else 1.0 for c in t if not c.isspace()))
-
-
-class Item:
-    __slots__ = ("kind", "id", "text", "hull", "area", "cx", "cy", "g")
-
-    def __init__(self, line, text: str):
-        pts = np.asarray(line.poly, dtype=np.float32).reshape(-1, 2)
-        self.hull = cv2.convexHull(pts).reshape(-1, 2).astype(np.float32)
-        self.area = max(float(cv2.contourArea(self.hull)), 1.0)
-        self.cx, self.cy = (float(v) for v in pts.mean(0))
-        self.kind, self.id, self.text = line.kind, str(line.id), text
-        self.g = float(np.sqrt(self.area / glyphs(text)))
-
-    def frac(self, quad: np.ndarray) -> float:
-        a, _ = cv2.intersectConvexConvex(self.hull, quad)
-        return max(0.0, float(a)) / self.area
-
-
-def order(items):
-    return sorted(items, key=lambda it: (-it.cx, it.cy))
 
 
 def propose(items: list[Item], fr: dict, own: set[str], own_text: str | None):

@@ -14,7 +14,7 @@ One row per AnimeText record (since 2026-09-06 the finished line's
 / ``text_hand`` are human — drafted off the crop sheets, corrected by the
 user; ``status`` = draft | drafted | checked | unchecked, only ``unchecked``
 is skipped). Crops are cut from the
-resized sincos pages with the pilot's ``deskew_crop`` at 12 % pad (the box is
+resized sincos pages with ``crops.deskew_crop`` at 12 % pad (the box is
 axis-aligned, so this is a padded rectangle crop; orientation preserved).
 
 Rows scored (the AnimeText basis, 2026-09-06 →; counts after the user's second
@@ -44,23 +44,29 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
 import cv2
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import eval_manga109 as ev  # noqa: E402
-import manga109 as m109  # noqa: E402
+from project.ocr_reader.core.crops import deskew_crop
+from project.ocr_reader.core.paths import (
+    ASSETS,
+    EVAL_DATA,
+    EVAL_OUT,
+    EVAL_REPORTS,
+    REPO,
+)
+from project.ocr_reader.core.readers import MAX_NEW_TOKENS, READERS, VL16_TASKS
+from project.ocr_reader.core.scoring import exact_key, score, summary
 
-LABELS = m109.ASSETS / "sfx_labels_sincos_597.tsv"
-PAGES = m109.REPO / "post_image_dataset/resized/sincos"
+LABELS = ASSETS / "sfx_labels_sincos_597.tsv"
+PAGES = REPO / "post_image_dataset/resized/sincos"
 # Frozen gate images (``project/ocr_reader/gate/build_eval_data.py``): crops cut
 # at the default pad, and the pages behind them. Preferred over ``PAGES``, a
 # training tree that lost 8 label pages on 2026-10-10.
-FROZEN = m109.REPO / "project/ocr_reader/eval_data/sincos"
+FROZEN = EVAL_DATA / "sincos"
 FROZEN_PAD = 0.12
 
 
@@ -90,7 +96,6 @@ def cap_frac(box) -> float:
 
 
 def crops_for(df: pd.DataFrame, pad: float | str):
-    mt = m109.pilot_manga_text()
     frozen = {}
     if pad == FROZEN_PAD and (FROZEN / "index.tsv").is_file():
         idx = pd.read_csv(FROZEN / "index.tsv", sep="\t", dtype=str)
@@ -107,7 +112,7 @@ def crops_for(df: pd.DataFrame, pad: float | str):
         img = cv2.imread(str(page if page.is_file() else PAGES / f"{r.stem}.png"))
         x0, y0, x1, y1 = r.box
         frac = cap_frac(r.box) if pad == "cap4" else pad
-        crop, orient = mt.deskew_crop(img, [x0, y0, x1, y0, x1, y1, x0, y1], frac, 8)
+        crop, orient = deskew_crop(img, [x0, y0, x1, y0, x1, y1, x0, y1], frac, 8)
         crops.append(crop)
         orients.append(orient)
     print(
@@ -132,7 +137,7 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--reader", choices=sorted(ev.READERS) + ["record"], required=True)
+    ap.add_argument("--reader", choices=sorted(READERS) + ["record"], required=True)
     ap.add_argument("--ckpt")
     ap.add_argument(
         "--records",
@@ -142,9 +147,7 @@ def main():
         "labels' own text_rec column",
     )
     ap.add_argument("--name")
-    ap.add_argument(
-        "--task", default="OCR:", choices=["OCR:", "SFX:"], help="vl16 prompt"
-    )
+    ap.add_argument("--task", default="OCR:", choices=VL16_TASKS, help="vl16 prompt")
     ap.add_argument("--kind", action="append", help="default sfx + speech")
     ap.add_argument("--include_unchecked", action="store_true")
     ap.add_argument(
@@ -161,14 +164,13 @@ def main():
     )
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--bs", type=int, default=32)
-    ap.add_argument("--max_new_tokens", type=int, default=ev.MAX_NEW_TOKENS)
+    ap.add_argument("--max_new_tokens", type=int, default=MAX_NEW_TOKENS)
     a = ap.parse_args()
     name = a.name or (
         f"{a.reader}-{Path(a.ckpt).parent.name}-{Path(a.ckpt).name}"
         if a.ckpt
         else a.reader
     )
-    ev.TASK = a.task
     if a.task != "OCR:" and not a.name:
         name += "_" + a.task.rstrip(":").lower()
     df = load_labels(
@@ -190,24 +192,25 @@ def main():
     elif a.reader == "record":
         preds = list(df.text_rec)
     else:
-        reader = ev.READERS[a.reader](a.ckpt, a.device)
+        reader = READERS[a.reader](a.ckpt, a.device)
+        reader.task = a.task
         reader.max_tokens = a.max_new_tokens
         preds = reader.read(crops, orients, a.bs)
     wall = time.time() - t0
-    scored = ev.score(df, preds)
+    scored = score(df, preds)
     # hearts are the one glyph the gate lets a rule patch (decision 6): report
     # a heart-blind exact beside the strict one (the pilot's by-eye count was
     # heart-blind, and a reader that emits ♥ where the label has ♡ is not wrong)
-    strip = lambda t: ev.exact_key(t).replace("♡", "").replace("♥", "")  # noqa: E731
+    strip = lambda t: exact_key(t).replace("♡", "").replace("♥", "")  # noqa: E731
     scored["exact_noheart"] = [
         strip(pn) == strip(t) for pn, t in zip(scored.pred_norm, scored.text)
     ]
 
-    ev.OUT.mkdir(parents=True, exist_ok=True)
+    EVAL_OUT.mkdir(parents=True, exist_ok=True)
     scored.drop(columns=["box"]).to_json(
-        ev.OUT / f"sfx_{name}.jsonl", orient="records", lines=True, force_ascii=False
+        EVAL_OUT / f"sfx_{name}.jsonl", orient="records", lines=True, force_ascii=False
     )
-    md = ev.summary(scored, name, "sincos", wall).replace(
+    md = summary(scored, name, "sincos", wall).replace(
         "Manga109-s `sincos` (official COO split ∩ Manga109-s)",
         f"sincos hand labels (`{a.labels.name}`)",
     )
@@ -242,8 +245,8 @@ def main():
         )
         + "\n"
     )
-    ev.REPORTS.mkdir(parents=True, exist_ok=True)
-    (ev.REPORTS / f"ocr_eval_sfx_{name}.md").write_text(md, encoding="utf-8")
+    EVAL_REPORTS.mkdir(parents=True, exist_ok=True)
+    (EVAL_REPORTS / f"ocr_eval_sfx_{name}.md").write_text(md, encoding="utf-8")
     print(md)
 
 

@@ -35,20 +35,19 @@ from __future__ import annotations
 
 import argparse
 import math
-import sys
 import time
 from pathlib import Path
 
 import cv2
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import eval_manga109 as ev  # noqa: E402
-import manga109 as m109  # noqa: E402
-import textnorm  # noqa: E402
+from project.ocr_reader.core import textnorm
+from project.ocr_reader.core.paths import ASSETS, EVAL_DATA, EVAL_OUT, EVAL_REPORTS
+from project.ocr_reader.core.readers import MAX_NEW_TOKENS, READERS
+from project.ocr_reader.core.scoring import is_runaway, sim
 
-LABELS = m109.ASSETS / "k3_gelnote.tsv"
-FROZEN = m109.REPO / "project/ocr_reader/eval_data/k3_gelnote"
+LABELS = ASSETS / "k3_gelnote.tsv"
+FROZEN = EVAL_DATA / "k3_gelnote"
 
 
 def load_labels(path: Path = LABELS) -> pd.DataFrame:
@@ -87,7 +86,6 @@ def has_kana(s: str) -> bool:
 
 
 def score(df: pd.DataFrame, preds: list[str]) -> pd.DataFrame:
-    rec = m109.pilot_records()
     rows = []
     for (_, r), p in zip(df.iterrows(), preds):
         pk, gk = textnorm.exact_key(p), textnorm.exact_key(r.text)
@@ -99,8 +97,8 @@ def score(df: pd.DataFrame, preds: list[str]) -> pd.DataFrame:
                 == textnorm.normalize_target(r.text),
                 cer=levenshtein(pk, gk) / max(1, len(gk)),
                 kana_leak=has_kana(p) and not has_kana(r.text),
-                sim=rec.sim(p, r.text),
-                runaway=rec.is_runaway(p),
+                sim=sim(p, r.text),
+                runaway=is_runaway(p),
             )
         )
     return pd.concat([df.reset_index(drop=True), pd.DataFrame(rows)], axis=1)
@@ -146,7 +144,7 @@ def compare(names: list[str], labels: Path = LABELS) -> str:
     df = load_labels(labels)
     runs = {}
     for n in names:
-        pred = pd.read_json(ev.OUT / f"k3_{n}.jsonl", lines=True, dtype={"id": str})
+        pred = pd.read_json(EVAL_OUT / f"k3_{n}.jsonl", lines=True, dtype={"id": str})
         pred = dict(zip(pred.id, pred.pred))
         d = df[df.id.isin(pred.keys())]
         runs[n] = score(d, [pred[i] for i in d.id]).set_index("id")
@@ -177,7 +175,7 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--reader", choices=sorted(ev.READERS))
+    ap.add_argument("--reader", choices=sorted(READERS))
     ap.add_argument("--ckpt")
     ap.add_argument("--name")
     ap.add_argument("--labels", type=Path, default=LABELS)
@@ -186,7 +184,7 @@ def main():
     )
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--bs", type=int, default=32)
-    ap.add_argument("--max_new_tokens", type=int, default=ev.MAX_NEW_TOKENS)
+    ap.add_argument("--max_new_tokens", type=int, default=MAX_NEW_TOKENS)
     a = ap.parse_args()
     if a.compare:
         print(compare(a.compare, a.labels))
@@ -202,18 +200,18 @@ def main():
     if df.empty:
         raise SystemExit(f"no labelled rows in {a.labels}")
     crops = load_crops(df)
-    reader = ev.READERS[a.reader](a.ckpt, a.device)
+    reader = READERS[a.reader](a.ckpt, a.device)
     reader.max_tokens = a.max_new_tokens
     t0 = time.time()
     preds = reader.read(crops, list(df.orient), a.bs)
     scored = score(df, preds)
     md = summary(scored, name, time.time() - t0)
-    ev.OUT.mkdir(parents=True, exist_ok=True)
+    EVAL_OUT.mkdir(parents=True, exist_ok=True)
     scored.to_json(
-        ev.OUT / f"k3_{name}.jsonl", orient="records", lines=True, force_ascii=False
+        EVAL_OUT / f"k3_{name}.jsonl", orient="records", lines=True, force_ascii=False
     )
-    ev.REPORTS.mkdir(parents=True, exist_ok=True)
-    (ev.REPORTS / f"ocr_eval_k3_{name}.md").write_text(md, encoding="utf-8")
+    EVAL_REPORTS.mkdir(parents=True, exist_ok=True)
+    (EVAL_REPORTS / f"ocr_eval_k3_{name}.md").write_text(md, encoding="utf-8")
     print(md)
 
 

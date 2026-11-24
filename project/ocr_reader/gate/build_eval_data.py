@@ -22,25 +22,20 @@ Existing files are skipped, so a re-run only fills gaps.
 from __future__ import annotations
 
 import json
-import os
 import shutil
-import sys
 from pathlib import Path
 
 import cv2
 import pandas as pd
 
-REPO = Path(__file__).resolve().parents[3]
-LINE = REPO / "project/ocr_reader"
-OUT = LINE / "eval_data"
-SINCOS_LABELS = LINE / "assets/sfx_labels_sincos_597.tsv"
-K3_LABELS = LINE / "assets/k3_gelnote.tsv"
-SINCOS_PAGES = REPO / "post_image_dataset/resized/sincos"
-GELNOTE_DEFAULT = "/media/sorryhyun/new/dataset/gelnote_crops"
-PAD = 0.12  # eval_sfx.py's --pad default
+from project.ocr_reader.core.crops import deskew_crop
+from project.ocr_reader.core.paths import ASSETS, EVAL_DATA, GELNOTE, REPO
 
-sys.path.insert(0, str(LINE / "ocr"))
-import manga109 as m109  # noqa: E402
+OUT = EVAL_DATA
+SINCOS_LABELS = ASSETS / "sfx_labels_sincos_597.tsv"
+K3_LABELS = ASSETS / "k3_gelnote.tsv"
+SINCOS_PAGES = REPO / "post_image_dataset/resized/sincos"
+PAD = 0.12  # eval_sfx.py's --pad default
 
 
 def sincos() -> None:
@@ -53,12 +48,11 @@ def sincos() -> None:
         if not dst.exists():
             shutil.copy2(SINCOS_PAGES / f"{stem}.png", dst)
 
-    mt = m109.pilot_manga_text()
     rows = []
     for r in df.itertuples():
         img = cv2.imread(str(pages / f"{r.stem}.png"))
         x0, y0, x1, y1 = json.loads(r.box)
-        crop, orient = mt.deskew_crop(img, [x0, y0, x1, y0, x1, y1, x0, y1], PAD, 8)
+        crop, orient = deskew_crop(img, [x0, y0, x1, y0, x1, y1, x0, y1], PAD, 8)
         dst = crops / f"{r.row}.png"
         if not dst.exists():
             cv2.imwrite(str(dst), crop)
@@ -68,7 +62,7 @@ def sincos() -> None:
 
 
 def k3_gelnote() -> None:
-    root = Path(os.environ.get("ANIMA_GELNOTE_ROOT", GELNOTE_DEFAULT)).expanduser()
+    root = GELNOTE
     df = pd.read_csv(K3_LABELS, sep="\t", dtype=str, keep_default_na=False)
     man = pd.read_json(root / "manifest.jsonl", lines=True)
     page_of = dict(zip(man.image_id.astype(str), man.page_path))

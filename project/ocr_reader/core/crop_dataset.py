@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import random
 import re
-import sys
 import zlib
 from pathlib import Path
 
@@ -32,10 +31,10 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import manga109 as m109  # noqa: E402
-import textnorm  # noqa: E402
-from augment import Augment  # noqa: E402
+from . import manga109 as m109
+from . import textnorm
+from .augment import Augment
+from .paths import ASSETS, OUTPUT
 
 MAX_TARGET_CHARS = 150
 """Longest training target, in characters after :func:`normalize_target`. A longer label is
@@ -141,7 +140,7 @@ def load_split(
 
 
 OCR_TASK, SFX_TASK = "OCR:", "SFX:"
-KOZH_SFX = Path(__file__).resolve().parents[1] / "assets" / "kozh_sfx.tsv"
+KOZH_SFX = ASSETS / "kozh_sfx.tsv"
 
 
 def load_sfxp(
@@ -264,9 +263,8 @@ def load_sfxp(
 
 
 OCR2_TASK = "OCR2:"
-ASSETS = Path(__file__).resolve().parents[1] / "assets"
-MAINSUB_JSONL = m109.REPO / "output/ocr/mainsub"
-LINEBREAK_JSONL = m109.REPO / "output/ocr/linebreak"
+MAINSUB_JSONL = OUTPUT / "mainsub"
+LINEBREAK_JSONL = OUTPUT / "linebreak"
 DOT_FREE = re.compile(r"[\s.．・･…‥]")
 
 

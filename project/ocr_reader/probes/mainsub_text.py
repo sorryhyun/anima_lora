@@ -18,15 +18,14 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 import cv2
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-import manga109 as m109  # noqa: E402
-from build_sfx_prefix import ellipsis_fold, margin_box  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.crops import margin_box
+from project.ocr_reader.core.labels import ellipsis_fold
 
 HANGUL = re.compile(r"[가-힣ㄱ-ㅎㅏ-ㅣ]")
 
@@ -80,7 +79,7 @@ def main():
                     book=book,
                     page=int(ln.page),
                     text=text,
-                    # pilot.deskew_crop's rule, as the speech manifest has it
+                    # crops.deskew_crop's rule, as the speech manifest has it
                     orient="vertical"
                     if h > w * 1.3
                     else ("horizontal" if w > h * 1.3 else "square"),

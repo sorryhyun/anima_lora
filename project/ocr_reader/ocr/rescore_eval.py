@@ -15,7 +15,7 @@ and the two sides spell the pause differently.
 
 So a row measured before that commit **cannot be compared to one measured
 after**. This script re-derives `exact` for every stored jsonl from its own
-`pred_norm` + `text` columns — the same expression `eval_manga109.score` uses
+`pred_norm` + `text` columns — the same expression `scoring.score` uses
 — so the whole table lands on one key without re-running a single model. `sim`
 is untouched (it strips punctuation and symbols, so the fold never reached it)
 and so is `runaway`.
@@ -28,13 +28,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import eval_manga109 as ev  # noqa: E402
+from project.ocr_reader.core.paths import EVAL_OUT, EVAL_REPORTS
+from project.ocr_reader.core.scoring import exact_key, summary
 
 
 def rescore(path: Path) -> pd.DataFrame | None:
@@ -48,7 +47,7 @@ def rescore(path: Path) -> pd.DataFrame | None:
     df = pd.DataFrame(rows)
     df["exact_stored"] = df.exact
     df["exact"] = [
-        ev.exact_key(pn) == ev.exact_key(t) for pn, t in zip(df.pred_norm, df.text)
+        exact_key(pn) == exact_key(t) for pn, t in zip(df.pred_norm, df.text)
     ]
     return df
 
@@ -64,7 +63,7 @@ def main():
     a = ap.parse_args()
 
     print(f"{'row':34s} {'kind':7s} {'n':>5s} {'stored':>7s} {'current':>8s} {'Δ':>5s}")
-    for p in sorted(ev.OUT.glob(a.glob)):
+    for p in sorted(EVAL_OUT.glob(a.glob)):
         df = rescore(p)
         if df is None:
             continue
@@ -77,11 +76,9 @@ def main():
         if a.write:
             name = p.stem[: -len("_test")] if p.stem.endswith("_test") else p.stem
             split = "test" if p.stem.endswith("_test") else "sincos"
-            out = ev.REPORTS / f"ocr_eval_{name}.md"
+            out = EVAL_REPORTS / f"ocr_eval_{name}.md"
             if out.is_file():
-                out.write_text(
-                    ev.summary(df, name, split, float("nan")), encoding="utf-8"
-                )
+                out.write_text(summary(df, name, split, float("nan")), encoding="utf-8")
                 print(f"  wrote {out}")
 
 

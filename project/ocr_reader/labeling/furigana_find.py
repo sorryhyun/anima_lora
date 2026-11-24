@@ -31,22 +31,18 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
-from pathlib import Path
 
 import cv2
 import numpy as np
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "ocr"))
-sys.path.insert(0, str(HERE))
-import manga109 as m109  # noqa: E402
-from build_sfx_prefix import margin_box  # noqa: E402
-from linebreak_auto import glyph_weight, ink_mask, runs  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.crops import glyph_weight, ink_mask, margin_box, runs
+from project.ocr_reader.core.paths import OUTPUT
+from project.ocr_reader.core.readers import Vl16Reader
 
 KANJI = re.compile(r"[一-鿿々〆ヶ]")
 KANA = re.compile(r"^[ぁ-ゟ゠-ヿー・]+$")
-OUT = m109.REPO / "output/ocr/furigana"
+OUT = OUTPUT / "furigana"
 
 
 def split_touching(prof: np.ndarray, a: int, b: int, wm: float, ruby_frac: float):
@@ -220,9 +216,6 @@ def find(a):
 
 
 def read(a):
-    import eval_manga109 as ev
-    from linebreak_auto import fast_read
-
     d = m109.derived_root()
     recs = [json.loads(x) for x in open(OUT / f"{a.name}.jsonl", encoding="utf-8")]
     crops, where = [], []
@@ -248,7 +241,15 @@ def read(a):
             crops.append(cr)
             where.append((ri, gi))
     print(f"{len(crops)} ruby groups to read", flush=True)
-    reads = fast_read(ev.Vl16Reader(a.ckpt, "cuda"), crops, [16] * len(crops), a.bs, 2)
+    reads = Vl16Reader(a.ckpt, "cuda").read(
+        crops,
+        None,
+        a.bs,
+        caps=[16] * len(crops),
+        budget=27648,
+        prefetch=2,
+        progress=True,
+    )
     for (ri, gi), t in zip(where, reads):
         recs[ri]["groups"][gi]["read"] = t
         recs[ri]["groups"][gi]["kana"] = bool(KANA.match(t))

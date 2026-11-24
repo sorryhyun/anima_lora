@@ -12,15 +12,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from pathlib import Path
 
 import cv2
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-import crop_dataset as cd  # noqa: E402
-import eval_manga109 as ev  # noqa: E402
-import manga109 as m109  # noqa: E402
+from project.ocr_reader.core import crop_dataset as cd
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.paths import EVAL_OUT
+from project.ocr_reader.core.readers import Vl16Reader
+from project.ocr_reader.core.scoring import score
 
 
 def main():
@@ -38,18 +37,18 @@ def main():
     a = ap.parse_args()
     df = cd.load_mainsub("val", limit=a.val_limit, seed=a.seed)
     d = m109.derived_root()
-    rd = ev.Vl16Reader(a.ckpt, "cuda")
+    rd = Vl16Reader(a.ckpt, "cuda")
     preds = [""] * len(df)
     for task, g in df.groupby("task"):
-        ev.TASK = a.prompt or task  # Vl16Reader.read's prompt
+        rd.task = a.prompt or task
         crops = [cv2.imread(str(d / p)) for p in g.path]
         for i, p in zip(g.index, rd.read(crops, list(g.orient), a.bs)):
             preds[i] = p
-    scored = ev.score(df, preds)
+    scored = score(df, preds)
     m = {}
     for k, g in scored.groupby("metric"):
         m[k] = dict(n=len(g), exact=float(g.exact.mean()), sim=float(g.sim.mean()))
-    out = m109.REPO / "output/ocr/eval" / f"mainsub_{a.name}.json"
+    out = EVAL_OUT / f"mainsub_{a.name}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(dict(ckpt=a.ckpt, prompt=a.prompt, metrics=m), indent=1))
     scored.to_json(

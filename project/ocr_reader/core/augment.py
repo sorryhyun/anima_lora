@@ -38,9 +38,7 @@ from __future__ import annotations
 import argparse
 import os
 import random
-import sys
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -218,8 +216,7 @@ class Augment:
 def _demo(n_crops: int, n_draws: int, cell: int, seed: int):
     import pandas as pd
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import manga109 as m109
+    from project.ocr_reader.core import manga109 as m109
 
     derived = m109.derived_root()
     df = pd.read_parquet(derived / "manifest.parquet")

@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -43,9 +42,9 @@ import pandas as pd
 from bench._common import make_run_dir, write_result
 from library.env import resolve_under_home
 
+from project.ocr_reader.core import textnorm
+
 LINE = resolve_under_home("project/ocr_reader")
-sys.path.insert(0, str(LINE / "ocr"))
-import textnorm  # noqa: E402
 
 PAD = 0.12
 ARMS = {

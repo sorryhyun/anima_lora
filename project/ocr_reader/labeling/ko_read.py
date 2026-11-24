@@ -24,15 +24,13 @@ reason) over an earlier file's empty rows.
 from __future__ import annotations
 
 import argparse
-import sys
 import time
 from pathlib import Path
 
 import cv2
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-import manga109 as m109  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
 
 KOZH = ("gelnote_ko", "swaprelax_v5")
 HITO = ("hito_v4_ja", "hito_v4_ko")

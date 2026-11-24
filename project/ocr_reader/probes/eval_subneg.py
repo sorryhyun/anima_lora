@@ -15,16 +15,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import cv2
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-import eval_manga109 as ev  # noqa: E402
-import manga109 as m109  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.paths import EVAL_OUT
+from project.ocr_reader.core.readers import Vl16Reader
 
-CROPS = m109.REPO / "output/ocr/eval/subneg292_mainsub_1121_1806.jsonl"
+CROPS = EVAL_OUT / "subneg292_mainsub_1121_1806.jsonl"
 
 
 def main():
@@ -38,12 +37,11 @@ def main():
     a = ap.parse_args()
     paths = [json.loads(line)["path"] for line in open(a.crops, encoding="utf-8")]
     d = m109.derived_root()
-    rd = ev.Vl16Reader(a.ckpt, "cuda")
-    ev.TASK = "OCR2:"  # Vl16Reader.read's prompt
+    rd = Vl16Reader(a.ckpt, "cuda", task="OCR2:")
     crops = [cv2.imread(str(d / p)) for p in paths]
     preds = rd.read(crops, [""] * len(crops), a.bs)
     stem = "subneg292" if a.crops == CROPS else a.crops.stem
-    out = m109.REPO / "output/ocr/eval" / f"{stem}_{a.name}.jsonl"
+    out = EVAL_OUT / f"{stem}_{a.name}.jsonl"
     with open(out, "w", encoding="utf-8") as f:
         for p, s in zip(paths, preds):
             row = dict(path=p, pred=s, empty=not s.strip())

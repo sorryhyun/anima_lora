@@ -15,7 +15,7 @@ nearby space.
     … make daemon-run ARGS="… linebreak_auto.py read --name stock [--ckpt output/ocr/<run>/best]"
     … linebreak_auto.py transfer --name stock
 
-``read`` runs a PaddleOCR-VL reader (``eval_manga109.Vl16Reader``, ``OCR:``) over the same
+``read`` runs a PaddleOCR-VL reader (``core.readers.Vl16Reader``, ``OCR:``) over the same
 crops and stores its reads (``output/ocr/linebreak/<name>.jsonl``); ``transfer`` aligns
 each read to the label (edit-distance DP on NFKC-folded characters) and carries the
 read's line breaks onto the label, then scores against the annotation.
@@ -25,101 +25,30 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
-from pathlib import Path
 
 import cv2
 import numpy as np
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "ocr"))
-import manga109 as m109  # noqa: E402
-from build_sfx_prefix import (  # noqa: E402
-    LINES,
-    ellipsis_fold,
-    line_broken,
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.crops import (
+    DOTS,
+    SPACES,
+    glyph_weight,
+    guess_vertical,
+    ink_mask,
     margin_box,
+    segment,
 )
+from project.ocr_reader.core.labels import ellipsis_fold, line_broken
+from project.ocr_reader.core.paths import LINE_ANNOTATIONS as LINES
+from project.ocr_reader.core.paths import OUTPUT
+from project.ocr_reader.core.readers import MAX_NEW_TOKENS, Vl16Reader
 
 NO_START = set(
     "ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶーｰ～~、。，．,.!！?？)）」』】〉》…‥・ﾞﾟ゛゜"
 )
-SPACES = set(" 　")
-
-
-def ink_mask(crop: np.ndarray, border: bool = True) -> np.ndarray:
-    """Otsu ink; with ``border``, connected components touching the crop edge go
-    (balloon outlines, panel lines, the neighbour's ink inside the 4 px margin) —
-    multi-line count 0.759 → 0.855 at gap 0.03 / sliver 0.45."""
-    g = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-    _, b = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    if not border:
-        return b > 0
-    n, lab, st, _ = cv2.connectedComponentsWithStats(b, connectivity=8)
-    H, W = b.shape
-    x, y, w, h = st[:, 0], st[:, 1], st[:, 2], st[:, 3]
-    keep = ~((x == 0) | (y == 0) | (x + w == W) | (y + h == H))
-    keep[0] = False
-    return keep[lab]
-
-
-def runs(on: np.ndarray) -> list[tuple[int, int]]:
-    """[start, end) runs of True."""
-    d = np.diff(np.concatenate([[0], on.astype(np.int8), [0]]))
-    return list(zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)))
-
-
-def segment(
-    ink: np.ndarray, vertical: bool, gap_frac: float, sliver: float, merge: float = 0.0
-) -> list[tuple[int, int, int, int]]:
-    """Columns (vertical) / rows (horizontal) in reading order as (a0, a1, b0, b1):
-    ``a`` across the reading axis, ``b`` the ink extent along it."""
-    m = ink if vertical else ink.T  # columns run along axis 0
-    prof = m.sum(axis=0)
-    if prof.max() == 0:
-        return []
-    on = prof > gap_frac * prof.max()
-    segs = [(a, b) for a, b in runs(on)]
-    if not segs:
-        return []
-    widest = max(b - a for a, b in segs)
-    # a gap narrower than merge × the widest run sits inside a glyph (は, い, ?)
-    merged = [segs[0]]
-    for a, b in segs[1:]:
-        if a - merged[-1][1] < merge * widest:
-            merged[-1] = (merged[-1][0], b)
-        else:
-            merged.append((a, b))
-    widest = max(b - a for a, b in merged)
-    segs = [(a, b) for a, b in merged if (b - a) >= sliver * widest]
-    out = []
-    for a, b in segs:
-        rows = np.flatnonzero(m[:, a:b].any(axis=1))
-        out.append((a, b, int(rows[0]), int(rows[-1]) + 1))
-    if vertical:
-        out.reverse()  # right to left
-    return out
-
-
-SMALL = set("ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ、。，．,")
-DOTS = set(".．・…‥")
-
-
-def glyph_weight(ch: str) -> float:
-    """Length a glyph takes along a column, in full-width cells."""
-    if ch in SPACES:
-        return 0.5
-    if ch in DOTS:
-        return 0.35
-    if ch in SMALL:
-        return 0.7
-    if ch in "!！?？":
-        return 0.6
-    if ch.isascii():
-        return 0.55
-    return 1.0
 
 
 def assign(text: str, segs, vertical: bool, snap: int) -> str:
@@ -228,7 +157,7 @@ def evaluate(a):
         print(f"  {mid}  segs {ns}\n    gt   {gt!r}\n    pred {pred!r}")
 
 
-OUT = m109.REPO / "output/ocr/linebreak"
+OUT = OUTPUT / "linebreak"
 
 
 def gt_crops():
@@ -249,9 +178,7 @@ def gt_crops():
 
 
 def read(a):
-    import eval_manga109 as ev
-
-    rd = ev.Vl16Reader(a.ckpt, "cuda")
+    rd = Vl16Reader(a.ckpt, "cuda")
     rows = list(gt_crops())
     preds = rd.read([r[3] for r in rows], None, a.bs)
     OUT.mkdir(parents=True, exist_ok=True)
@@ -475,97 +402,6 @@ def detdiag_report(a):
     print(f"overlays in {viz}")
 
 
-def fast_read(
-    rd, crops, caps, bs: int, prefetch: int, min_pixels: int = 0, budget: int = 27648
-) -> list[str]:
-    """``Vl16Reader.read`` with the processor work for the next batches done on
-    ``prefetch`` threads while the GPU generates, and ``max_new_tokens`` per batch
-    capped by ``caps`` (one per crop) instead of the reader's flat 96 — a batch of
-    short columns no longer runs 96 steps for one runaway. A batch closes at ``bs``
-    crops or ``budget`` tower patches (bs 64 at the stock size OOMed on the largest
-    crops). ``min_pixels`` (0 = the processor's 112,896) is the floor a crop is
-    upscaled to; the prefill is the tower's GEMMs (a 48-crop batch: 637 ms of CUDA,
-    GEMM 285 ms), so the patch count sets the speed."""
-    import time
-    from concurrent.futures import ThreadPoolExecutor
-
-    from PIL import Image
-
-    torch, proc, tok = rd.torch, rd.proc, rd.proc.tokenizer
-    msgs = [
-        {
-            "role": "user",
-            "content": [{"type": "image"}, {"type": "text", "text": "OCR:"}],
-        }
-    ]
-    text = proc.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
-    minpx = min_pixels or rd.min_edge
-    maxpx = 1280 * 28 * 28
-
-    def patches(i):
-        h, w = crops[i].shape[:2]
-        return min(max(h * w, minpx), maxpx) / 196
-
-    order = sorted(
-        range(len(crops)), key=lambda i: crops[i].shape[0] * crops[i].shape[1]
-    )
-    batches, cur, tot = [], [], 0.0
-    for i in order:
-        p = patches(i)
-        if cur and (len(cur) >= bs or tot + p > budget):
-            batches.append(cur)
-            cur, tot = [], 0.0
-        cur.append(i)
-        tot += p
-    if cur:
-        batches.append(cur)
-
-    def prep(idx):
-        images = [
-            Image.fromarray(np.ascontiguousarray(crops[i][:, :, ::-1])) for i in idx
-        ]
-        return proc(
-            text=[text] * len(images),
-            images=images,
-            padding=True,
-            padding_side="left",
-            return_tensors="pt",
-            images_kwargs={"size": {"shortest_edge": minpx, "longest_edge": maxpx}},
-        )
-
-    # one prep thread: the fast tokenizer is not safe to call from two threads, and
-    # decoding waits for the end for the same reason
-    ids_out: list = [None] * len(crops)
-    t0 = time.time()
-    with ThreadPoolExecutor(1) as pool:
-        futs = [pool.submit(prep, b) for b in batches[: prefetch + 1]]
-        for bi, idx in enumerate(batches):
-            # BatchFeature.to moves in place: drop the future so the GPU copy goes
-            inputs, futs[bi] = futs[bi].result().to(rd.device), None
-            if bi + prefetch + 1 < len(batches):
-                futs.append(pool.submit(prep, batches[bi + prefetch + 1]))
-            n = inputs["input_ids"].shape[-1]
-            with torch.inference_mode():
-                o = rd.model.generate(
-                    **inputs,
-                    max_new_tokens=max(caps[i] for i in idx),
-                    do_sample=False,
-                    use_cache=True,
-                )
-            for i, row in zip(idx, o[:, n:].tolist()):
-                ids_out[i] = row
-            if bi % 50 == 0:
-                done = sum(len(b) for b in batches[: bi + 1])
-                print(
-                    f"  {done}/{len(crops)} crops, {done / (time.time() - t0):.1f}/s",
-                    flush=True,
-                )
-    drop = {tok.eos_token_id, tok.pad_token_id}
-    out = [tok.decode([t for t in ids if t not in drop]).strip() for ids in ids_out]
-    print(f"read {len(crops)} crops in {time.time() - t0:.0f} s", flush=True)
-    return out
-
-
 def column_crops(crop, raw: str, a) -> list:
     """The ink-projection segments of ``crop`` cut at the 4 px margin, reading order."""
     vertical = guess_vertical(crop, raw)
@@ -610,8 +446,6 @@ def inkread(a):
     with ``transfer``); ``--set manifest``: the one-line speech rows to break."""
     import time
 
-    import eval_manga109 as ev
-
     t0 = time.time()
     rows, crops, caps = [], [], []
     src = (
@@ -633,13 +467,20 @@ def inkread(a):
             )
         )
         crops += cols
-        caps += [min(ev.MAX_NEW_TOKENS, 2 * len(raw) + 8)] * len(cols)
+        caps += [min(MAX_NEW_TOKENS, 2 * len(raw) + 8)] * len(cols)
     print(
         f"{len(rows)} texts, {len(crops)} segment crops ({time.time() - t0:.0f} s)",
         flush=True,
     )
-    reads = fast_read(
-        ev.Vl16Reader(a.ckpt, "cuda"), crops, caps, a.ink_bs, a.prefetch, a.min_pixels
+    reads = Vl16Reader(a.ckpt, "cuda").read(
+        crops,
+        None,
+        a.ink_bs,
+        caps=caps,
+        budget=27648,
+        prefetch=a.prefetch,
+        min_pixels=a.min_pixels,
+        progress=True,
     )
     OUT.mkdir(parents=True, exist_ok=True)
     with open(OUT / f"{a.name}.jsonl", "w", encoding="utf-8") as f:
@@ -659,7 +500,6 @@ def detread(a):
     """AnimeText detector over the annotated pages (``nest inner``: a balloon's
     columns), the boxes inside each ``<text>`` box taken as its lines in reading
     order, each line read alone (``OCR:``), the reads joined with ``\\n``."""
-    import eval_manga109 as ev
     from anime_tools.ocr.animetext import AnimeTextDetector
 
     det = AnimeTextDetector.load(device="cuda")
@@ -700,7 +540,7 @@ def detread(a):
                 c = margin_box(*b, W, H)
                 crops.append(img[c[1] : c[3], c[0] : c[2]])
     print(f"{len(rows)} texts, {len(crops)} line boxes", flush=True)
-    reads = ev.Vl16Reader(a.ckpt, "cuda").read(crops, None, a.bs)
+    reads = Vl16Reader(a.ckpt, "cuda").read(crops, None, a.bs)
     OUT.mkdir(parents=True, exist_ok=True)
     with open(OUT / f"{a.name}.jsonl", "w", encoding="utf-8") as f:
         for r in rows:
@@ -1007,12 +847,6 @@ def transfer(a):
     )
     for mid, gt, rd, pred in misses:
         print(f"  {mid}\n    gt   {gt!r}\n    read {rd!r}\n    out  {pred!r}")
-
-
-def guess_vertical(crop: np.ndarray, raw: str) -> bool:
-    """Vertical unless the box is clearly wider than a single row of the label."""
-    h, w = crop.shape[:2]
-    return not (w > 1.6 * h)
 
 
 def main():

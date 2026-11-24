@@ -87,16 +87,13 @@ import argparse
 import json
 import os
 import re
-import sys
 from difflib import SequenceMatcher
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
-import manga109 as m109  # noqa: E402
-from build_sfx_prefix import ellipsis_fold, margin_box  # noqa: E402
-from crop_dataset import (  # noqa: E402
+from project.ocr_reader.core import manga109 as m109
+from project.ocr_reader.core.crop_dataset import (
     MAX_TARGET_CHARS,
     break_proposals,
     filled_breaks,
@@ -104,15 +101,20 @@ from crop_dataset import (  # noqa: E402
     waiting_break,
     with_breaks,
 )
-from textnorm import exact_key  # noqa: E402
+from project.ocr_reader.core.crops import margin_box
+from project.ocr_reader.core.labels import agent_subs, ellipsis_fold
+from project.ocr_reader.core.paths import (
+    ASSETS,
+    EVAL_DATA,
+    GELNOTE,
+    HITO,
+    REPO,
+    SWAPRELAX,
+)
+from project.ocr_reader.core.textnorm import exact_key
 
-REPO = Path(__file__).resolve().parents[3]
-GELNOTE = Path("/media/sorryhyun/new/dataset/gelnote_crops")
-SWAPRELAX = Path("/media/sorryhyun/new/dataset/hito_ocr/swap_relax_v5")
-HITO = Path("/media/sorryhyun/new/dataset/hito_ocr/ko")
-OCR = Path(__file__).resolve().parents[1]
-DOUJIN_LABELS = OCR / "assets/sfx_labels_sincos_597.tsv"
-DOUJIN_FROZEN = OCR / "eval_data/sincos"
+DOUJIN_LABELS = ASSETS / "sfx_labels_sincos_597.tsv"
+DOUJIN_FROZEN = EVAL_DATA / "sincos"
 HANGUL = re.compile(r"[가-힣]")
 RUN = re.compile(r"[가-힣]+")
 KANA = re.compile(r"[\u3040-\u30ff]")
@@ -576,21 +578,6 @@ def odd_dots(t: str) -> str:
     return "/".join(why)
 
 
-def agent_subs(root: Path | None) -> dict[str, tuple[str, str, str]]:
-    """``furigana_find.py batches``' agent outputs under ``root`` (``**/out*.tsv``: n, id,
-    sub with ``\\n`` breaks, verdict, note) → id → (sub, verdict, note)."""
-    out: dict[str, tuple[str, str, str]] = {}
-    if root is None:
-        return out
-    for f in sorted(root.glob("**/out*.tsv")):
-        df = pd.read_csv(f, sep="\t", dtype=str, keep_default_na=False, quoting=3)
-        df = df.reindex(columns=["n", "id", "sub", "verdict", "note"]).fillna("")
-        for r in df.itertuples():
-            sub = r.sub.replace("\\n", "\n").strip()
-            out[r.id] = (sub, r.verdict.strip(), r.note.strip())
-    return out
-
-
 def furigana_rows(
     d: Path, path: Path | None, fix: Path | None = None
 ) -> dict[str, list[dict]]:
@@ -992,7 +979,7 @@ def applied_state() -> dict:
     """What ``apply_review.py`` has written to the assets: SFX marks (``source:id``
     keys), subs (``sub_labels.tsv``) and Manga109 main / sub rows (``m109_mainsub.tsv``:
     [status, main, sub]). The page exports only the rows whose state differs from it."""
-    A = OCR / "assets"
+    A = ASSETS
 
     def rd(name: str) -> pd.DataFrame | None:
         p = A / name

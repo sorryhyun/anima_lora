@@ -17,14 +17,12 @@ built from this file, so a re-cut after a sweep would leak gate pages.
 from __future__ import annotations
 
 import argparse
-import os
-from pathlib import Path
 
 import pandas as pd
 
-REPO = Path(__file__).resolve().parents[3]
-OUT = REPO / "project/ocr_reader/assets/k3_gelnote.tsv"
-GELNOTE_DEFAULT = "/media/sorryhyun/new/dataset/gelnote_crops"
+from project.ocr_reader.core.paths import ASSETS, GELNOTE
+
+OUT = ASSETS / "k3_gelnote.tsv"
 
 
 def main() -> None:
@@ -37,7 +35,7 @@ def main() -> None:
     if OUT.exists():
         raise SystemExit(f"{OUT} exists — the gelnote draw is cut against it")
 
-    root = Path(os.environ.get("ANIMA_GELNOTE_ROOT", GELNOTE_DEFAULT)).expanduser()
+    root = GELNOTE
     m = pd.read_json(root / "manifest.jsonl", lines=True)
     side_ok = (m[["w", "h"]].min(axis=1) >= a.min_side) & (
         m[["w", "h"]].max(axis=1) <= a.max_side
