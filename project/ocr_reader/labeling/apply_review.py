@@ -25,6 +25,9 @@ export: ``ok`` / ``edit`` (or a sub typed without either) → status ``ok`` with
 (``orig`` = the proposal for ``ok``) and the sub (the exported one, ``-`` = none); ``drop`` →
 status ``drop``. The manifests are not touched; training does not read the file yet.
 
+anima_lowconf (``anima_lowconf.py``'s v7 reads of the Anima training set) →
+``assets/anima_mainsub.tsv``, the same columns and rules as ``m109_mainsub.tsv``.
+
 doujin_sfx → ``assets/sfx_labels_sincos_597.tsv`` (the doujin gate's labels, by ``row``):
 ``edit`` writes ``text_hand`` (a line break as a space), ``edit`` / ``ok`` set ``status`` to ``checked``, ``drop`` sets
 it to ``unchecked`` (``eval_sfx.py`` skips those rows; the row stays in the file). The file is
@@ -65,6 +68,7 @@ DOUJIN = ASSETS / "sfx_labels_sincos_597.tsv"
 K3 = ASSETS / "k3_gelnote.tsv"
 GATES = {"doujin_sfx", "k3_ko", "k3_zh"}
 MAINSUB = {"mainsub_det", "mainsub_speech", "mainsub_nolabel"}
+ANIMA = {"anima_lowconf"}
 APPLY_OK = {"linebreak_suspicious", "dots_suspicious", "odd_dots"}
 """Sources whose page text is a proposal, not the manifest's text: ``ok`` applies it."""
 
@@ -107,6 +111,11 @@ def main():
     if rv.source.isin(MAINSUB).any():
         write_mainsub(rv[rv.source.isin(MAINSUB)], a.dry_run)
         rv = rv[~rv.source.isin(MAINSUB)]
+    if rv.source.isin(ANIMA).any():
+        write_mainsub(
+            rv[rv.source.isin(ANIMA)], a.dry_run, ASSETS / "anima_mainsub.tsv"
+        )
+        rv = rv[~rv.source.isin(ANIMA)]
     for name in sorted(
         {m for s in rv.source.unique() if s not in GATES for m in TARGETS[s]}
     ):
@@ -251,10 +260,10 @@ def write_marks(rv: pd.DataFrame, dry_run: bool) -> None:
         out.to_csv(path, sep="\t", index=False, quoting=3)
 
 
-def write_mainsub(rv: pd.DataFrame, dry_run: bool) -> None:
-    """The Manga109 main / sub rows → ``assets/m109_mainsub.tsv`` (see the module
-    docstring); rows the export leaves out stay."""
-    path = ASSETS / "m109_mainsub.tsv"
+def write_mainsub(rv: pd.DataFrame, dry_run: bool, path: Path | None = None) -> None:
+    """The main / sub rows → ``path`` (``assets/m109_mainsub.tsv`` by default; see the
+    module docstring); rows the export leaves out stay."""
+    path = path or ASSETS / "m109_mainsub.tsv"
     cols = ["source", "id", "status", "main", "sub"]
     old = (
         pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)
@@ -285,7 +294,7 @@ def write_mainsub(rv: pd.DataFrame, dry_run: bool) -> None:
     out = pd.concat([old[~key(old).isin(set(key(new)))], new], ignore_index=True)
     n_sub = int((new["sub"] != "").sum())
     print(
-        f"[m109_mainsub] {len(new)} rows (drop {int((new.status == 'drop').sum())}, "
+        f"[{path.stem}] {len(new)} rows (drop {int((new.status == 'drop').sum())}, "
         f"with sub {n_sub}, empty main {int(((new.main == '') & (new.status == 'ok')).sum())}); "
         f"file {len(old)} → {len(out)} rows"
     )

@@ -37,3 +37,8 @@ SWAPRELAX = _root(
     "ANIMA_SWAPRELAX_ROOT", "/media/sorryhyun/new/dataset/hito_ocr/swap_relax_v5"
 )
 HITO = _root("ANIMA_HITO_ROOT", "/media/sorryhyun/new/dataset/hito_ocr/ko")
+ANIMA_LOWCONF = _root(
+    "ANIMA_LOWCONF_ROOT", "/media/sorryhyun/new/dataset/anima_ocr_lowconf"
+)
+"""The Anima training set's low-confidence v7 reads as a label set
+(``labeling/anima_lowconf.py``): ``rows.jsonl`` and ``crops/``."""

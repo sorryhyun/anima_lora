@@ -95,6 +95,12 @@ on its frozen crops (``eval_data/k3_gelnote``); the meta line shows the row's st
 "disagrees" leaves out the rows ``eval_k3`` scores exact. ``apply_review.py`` writes these
 rows back to the TSV (``ok`` / edit → ``checked``, drop → ``skip``), line breaks kept.
 
+``anima_lowconf`` (``--anima_lowconf``, ``anima_lowconf.py``'s ``rows.jsonl``): the v7 reads
+of the Anima training set at or under its score cut, the main box holding the read as a first
+pass, the meta line the read's score and det. The ``v7 score`` sort lists them lowest score
+first. ``apply_review.py`` writes them to ``assets/anima_mainsub.tsv`` (the
+``m109_mainsub.tsv`` columns); a row applied there starts reviewed.
+
     python project/ocr_reader/labeling/review_page.py --out ~/ko_label_review
 """
 
@@ -122,6 +128,7 @@ from project.ocr_reader.core.crop_dataset import (
 from project.ocr_reader.core.crops import margin_box
 from project.ocr_reader.core.labels import agent_subs, ellipsis_fold
 from project.ocr_reader.core.paths import (
+    ANIMA_LOWCONF,
     ASSETS,
     EVAL_DATA,
     GELNOTE,
@@ -211,6 +218,7 @@ header .pager { margin:0; }
     <option value="hy">hayai disagrees with the main, largest distance first</option>
     <option value="hyn">hayai near miss: disagrees, smallest distance first</option>
     <option value="hyl">hayai: likely label errors first (added mark / reordered / missing text), then near misses</option>
+    <option value="sc">v7 score, lowest first (anima_lowconf)</option>
     <option value="id">id</option><option value="todo">unreviewed first</option></select></label>
   <label>has <select id="has"><option value="">all</option><option value="main">main only</option>
     <option value="sub">sub only</option><option value="both">main + sub</option>
@@ -227,7 +235,7 @@ const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
                       "doujin_sfx": "__DOUJIN_SORT__", "k3_ko": "__K3_SORT__", "k3_zh": "__K3_SORT__",
-                      "mainsub_det": "sus", "mainsub_speech": "sus", "mainsub_nolabel": "id"};
+                      "mainsub_det": "sus", "mainsub_speech": "sus", "mainsub_nolabel": "id", "anima_lowconf": "sc"};
 // mainsub rows carry paths relative to the Manga109 folder
 const M109 = __M109__;
 const url = (p) => !p || p.includes(":") ? p : M109 + p;
@@ -366,6 +374,7 @@ function rows() {
   else if (k === "hyn") r = r.filter(x => x.hyd > 0).sort((a, b) => (a.hyx || 0) - (b.hyx || 0) || a.hyd - b.hyd || a.id.localeCompare(b.id));
   else if (k === "hyl") r = r.filter(x => x.hyd > 0).sort((a, b) => (a.hyx || 0) - (b.hyx || 0) || (b.hyk ?? 1) - (a.hyk ?? 1)
     || (a.part > 0) - (b.part > 0) || a.hyd - b.hyd || a.id.localeCompare(b.id));
+  else if (k === "sc") r = r.slice().sort((a, b) => (a.sc ?? 1) - (b.sc ?? 1) || a.id.localeCompare(b.id));
   else if (k === "id") r = r.slice().sort((a, b) => a.id.localeCompare(b.id));
   else r = r.slice().sort((a, b) => !!store[s + ":" + a.id] - !!store[s + ":" + b.id]);
   // has: what the row's boxes hold now (a drop holds nothing)
@@ -1040,6 +1049,46 @@ def nolabel_rows(d: Path, hayai: dict[str, dict]) -> dict[str, list[dict]]:
     return {"mainsub_nolabel": rows}
 
 
+def anima_rows(path: Path | None, applied: dict) -> dict[str, list[dict]]:
+    """``anima_lowconf``: ``anima_lowconf.py``'s crops, the main box holding the v7 read
+    (or the applied main and sub of ``anima_mainsub.tsv``)."""
+    if not path:
+        return {}
+    res = REPO / "post_image_dataset/resized"
+    rows = []
+    for x in map(json.loads, open(path, encoding="utf-8")):
+        main, sub, extra = x["read"], "", {}
+        note = f"v7 read · score {x['score']:.3f} · det {x['det']:.2f}"
+        if ap := applied["ms"].get(f"anima_lowconf:{x['id']}"):
+            extra["ap"] = ap[0]
+            note = f"applied {ap[0]} · " + note
+            if ap[0] != "drop":
+                main, sub = ap[1], ap[2]
+        rows.append(
+            dict(
+                id=x["id"],
+                text=main,
+                run=0,
+                sus=0.0,
+                why="",
+                lf=int("\n" in main),
+                len=len(main),
+                status="",
+                note=note,
+                sub=sub,
+                part=0,
+                ms=1,
+                sc=x["score"],
+                img=(path.parent / "crops" / f"{x['id']}.png").as_uri(),
+                page=(res / x["image"]).as_uri(),
+                box=x["box"],
+                **extra,
+            )
+        )
+    print(f"[review] anima_lowconf: {len(rows)} rows", flush=True)
+    return {"anima_lowconf": rows}
+
+
 def mainsub_rows(
     d: Path,
     path: Path | None,
@@ -1225,11 +1274,14 @@ def applied_state() -> dict:
         out["marks"] = sorted(set(m.source + ":" + m.id))
     if (s := rd("sub_labels.tsv")) is not None:
         out["subs"] = {f"{r.source}:{r.id}": un(r.sub) for r in s.itertuples()}
-    if (ms := rd("m109_mainsub.tsv")) is not None:
-        out["ms"] = {
-            f"{r.source}:{r.id}": [r.status, un(r.main), un(r.sub)]
-            for r in ms.itertuples()
-        }
+    for name in ("m109_mainsub.tsv", "anima_mainsub.tsv"):
+        if (ms := rd(name)) is not None:
+            out["ms"].update(
+                {
+                    f"{r.source}:{r.id}": [r.status, un(r.main), un(r.sub)]
+                    for r in ms.itertuples()
+                }
+            )
     print(
         f"[review] applied: {len(out['marks'])} marks, {len(out['subs'])} subs, "
         f"{len(out['ms'])} main / sub rows",
@@ -1318,6 +1370,14 @@ def main():
         help="m109_mainsub.py's output/ocr/mainsub/m109_mainsub.jsonl: the Manga109 "
         "main / sub sources (mainsub_det, mainsub_speech)",
     )
+    ap.add_argument(
+        "--anima_lowconf",
+        type=Path,
+        nargs="?",
+        const=ANIMA_LOWCONF / "rows.jsonl",
+        help="anima_lowconf.py's rows.jsonl (bare flag: the default root's): the Anima "
+        "training set's low-confidence v7 reads",
+    )
     a = ap.parse_args()
     d = m109.derived_root()
     kz = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
@@ -1388,6 +1448,7 @@ def main():
     applied = applied_state()
     data.update(mainsub_rows(d, a.mainsub, fur, hayai, applied))
     data.update(nolabel_rows(d, hayai))
+    data.update(anima_rows(a.anima_lowconf, applied))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     mark_over_cap(data, applied)

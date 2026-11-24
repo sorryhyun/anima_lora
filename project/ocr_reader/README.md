@@ -42,7 +42,7 @@ Report paths under `history/` are in `_archive/ocr_reader/` (local). Sincos figu
 |---|---|
 | `core/` | the library every script imports (package `project.ocr_reader.core`): `paths.py` (repo and dataset paths, `ANIMA_*_ROOT` overrides), `manga109.py` (corpus access), `crop_dataset.py` (`load_mainsub`, the training set) + `augment.py`, `textnorm.py` (targets and keys), `readers.py` (`READERS`, `Vl16Reader` with its `task` prompt), `scoring.py` (`score` / `summary` / `exact_key` / `normalize_ja`), `crops.py` (`deskew_crop`, `margin_box`, ink projection), `labels.py` (`ellipsis_fold`, `line_broken`, `agent_subs`), `regions.py` (main / sub `Item`), `det_types.py` (detector-box `classify`), `hayai_beam.py`, `vl16_compile.py` |
 | `ocr/` | training and eval scripts: `finetune_vl16_lora.py`, `build_sfx_prefix.py` (the detector crops and their manifests), `build_manga109_crops.py` (the grey `manifest.parquet` the others start from), `eval_sfx.py` / `eval_k3.py` / `eval_manga109.py`, `rescore_eval.py` |
-| `labeling/` | the review page and the label pipeline: `review_page.py` (builds the page), `apply_review.py` (applies an export), `m109_mainsub.py` (Manga109 main / sub proposals), `furigana_find.py`, `linebreak_auto.py`, `hayai_read.py`, `ko_read.py` (reader flags for the KO rows) |
+| `labeling/` | the review page and the label pipeline: `review_page.py` (builds the page), `apply_review.py` (applies an export), `m109_mainsub.py` (Manga109 main / sub proposals), `furigana_find.py`, `linebreak_auto.py`, `hayai_read.py`, `ko_read.py` (reader flags for the KO rows), `anima_lowconf.py` (the Anima training set's v7 reads at score <= 0.85 as a label source, `sincos/` left out) |
 | `probes/` | main / sub measurements: `eval_mainsub.py`, `eval_subneg.py`, `sfxonly_suspect.py`, `mainsub_text.py`, `sfxp_crop_sheet.py` (sheets of the `core.det_types` types), `build_hf_mainsub.py` (the local HF dataset build) |
 | `gate/` | builders of the frozen gate sets: `build_eval_data.py`, `k3_gelnote.py` |
 | `assets/` | label TSVs; local except `k3_gelnote.tsv`, `kozh_sfx.tsv`, `sfx_labels_sincos_597.tsv` |
@@ -151,6 +151,11 @@ so older commands still resolve.
 - Apply writes `mainsub_*` rows to `assets/m109_mainsub.tsv` and other sources' subs to
   `assets/sub_labels.tsv`. `k3_ko` / `k3_zh` are the K3 gate's rows: apply writes them back to
   `assets/k3_gelnote.tsv` (`ok` / edit → `checked`, drop → `skip`); the K3 figures move with them. The manifests are not touched by `mainsub_*` rows.
+- `anima_lowconf` lists the v7 reads of the Anima training set at score <= 0.85 (the user,
+  2026-11-24), the main box holding the read; `sincos/` is left out, it is the doujin gate's
+  source. Its crops and `rows.jsonl` are under `ANIMA_LOWCONF_ROOT`
+  (`/media/sorryhyun/new/dataset/anima_ocr_lowconf`); apply writes its rows to
+  `assets/anima_mainsub.tsv` (the `m109_mainsub.tsv` columns). Training does not read it yet.
 
 ### After each export
 
@@ -171,7 +176,7 @@ so older commands still resolve.
        --k3_reads output/ocr/eval/k3_mainsub_1124_0151.jsonl \
        --ruby output/ocr/furigana/ruby_all_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
        --mainsub output/ocr/mainsub/m109_mainsub.jsonl --hayai output/ocr/hayai/hayai27_det.jsonl \
-       --hayai_kozh output/ocr/hayai/hayai27_kozh_hito.jsonl
+       --hayai_kozh output/ocr/hayai/hayai27_kozh_hito.jsonl --anima_lowconf
    ```
 
    The `--flags`, `--doujin_reads` and `--k3_reads` files are v7's (`ko_read.py`, `eval_sfx.py`,

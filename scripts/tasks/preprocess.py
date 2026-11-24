@@ -1223,11 +1223,19 @@ def _ocr_dir() -> str:
     return _path("ocr_dir", DEFAULT_OCR_DIR)
 
 
-def _caption_ocr_request(*, path_pattern: str, apply: bool, device: str | None):
+def _caption_ocr_request(
+    *,
+    path_pattern: str,
+    apply: bool,
+    device: str | None,
+    strip_symbols: bool = False,
+):
     """The ``OcrRequest`` the ``caption-full`` chain reads text with.
 
     Writes ``{stem}.ocr.txt`` under ``ocr_dir`` and touches no caption. Knobs
-    stay at the package default; the floors that decide what reaches a
+    stay at the package default except ``strip_symbols``: the trainer keeps the
+    pictographs (``♡`` on a line is part of what it says here; the package drops
+    them unless ``--keep_symbols``). The floors that decide what reaches a
     caption are applied by the combine step, so the sidecar keeps every line.
     """
     from anime_tools.stages.requests import OcrRequest
@@ -1238,6 +1246,7 @@ def _caption_ocr_request(*, path_pattern: str, apply: bool, device: str | None):
         path_pattern=path_pattern,
         apply=apply,
         device=device,
+        strip_symbols=strip_symbols,
     )
 
 
@@ -1415,6 +1424,11 @@ def _caption_full_args(extra):
     ap.add_argument("--skip_ocr", action="store_true")
     ap.add_argument("--ocr_min_det", type=float, default=None)
     ap.add_argument("--ocr_min_glyph", type=float, default=None)
+    ap.add_argument(
+        "--strip_symbols",
+        action="store_true",
+        help="drop pictographs (♡ ★ ♪) from the OCR reads (default: kept)",
+    )
     ap.add_argument("--device", default=None)
     ap.add_argument("-h", "--help", action="help")
     return ap.parse_args(extra)
@@ -1486,6 +1500,7 @@ def cmd_caption_full(extra):
                 path_pattern=args.path_pattern,
                 apply=args.apply,
                 device=args.device,
+                strip_symbols=args.strip_symbols,
             ),
         )
     print("  [caption-full] combine: OCR lines → text clauses on the resized captions")
