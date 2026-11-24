@@ -704,8 +704,9 @@ def main():
         from project.ocr_reader.core.vl16_compile import compile_layers
 
         # packed tower tokens: one floor-size crop (576) up to the budget plus the
-        # augmentation's overshoot (3,164 measured at --token_budget 3072)
-        rng_t = (64, min(4095, int(a.token_budget * 1.3) if a.token_budget else 4095))
+        # augmentation's overshoot (3,164 measured at --token_budget 3072); past 4095
+        # compile_layers marks two ranges
+        rng_t = (64, int(a.token_budget * 1.3) if a.token_budget else 4095)
         n_t, n_l = compile_layers(base, rng_t, a.bs)
         print(
             f"compiled {n_t} tower layers (T marked {rng_t[0]}-{rng_t[1]}, attention "

@@ -139,8 +139,15 @@ def compile_layers(
     torch._dynamo.config.specialize_float = True
     torch._logging.set_logs(recompiles=True)  # every recompile and its guard in the log
     lo, hi = tower_range
-    if not 1 < lo <= hi < 4096:  # Inductor's mix-order reduction guard sits at 4096
-        raise ValueError(f"tower_range must lie in (1, 4096), got {tower_range}")
+    if not 1 < lo <= hi:
+        raise ValueError(
+            f"tower_range must be (lo, hi) with 1 < lo <= hi, got {tower_range}"
+        )
+    # Inductor's mix-order reduction guard sits at 4096: one dynamic range may not span
+    # it, so a range past it is marked as two ([lo, 4095] and [4096, hi]), one graph each
+    # (bs 8 at --token_budget 6144 packs ~5,000 tower tokens)
+    spans = [(lo, min(hi, 4095))] + ([(max(lo, 4096), hi)] if hi >= 4096 else [])
+    spans = [(a, b) for a, b in spans if a <= b]
     warned: set[int] = set()
 
     def tower(compiled, eager):
@@ -150,15 +157,17 @@ def compile_layers(
             for k in ("max_seqlen", "interp_indices", "interp_weights"):
                 kwargs.pop(k, None)
             t = hidden_states.shape[0]
-            if lo <= t <= hi:
-                torch._dynamo.mark_dynamic(hidden_states, 0, min=lo, max=hi)
+            span = next(((a, b) for a, b in spans if a <= t <= b), None)
+            if span is not None:
+                a, b = span
+                torch._dynamo.mark_dynamic(hidden_states, 0, min=a, max=b)
                 for pe in position_embeddings:
-                    torch._dynamo.mark_dynamic(pe, 0, min=lo, max=hi)
+                    torch._dynamo.mark_dynamic(pe, 0, min=a, max=b)
                 if max_images > 1:
                     torch._dynamo.mark_dynamic(cu_seqlens, 0, min=2, max=max_images + 1)
             elif t not in warned:
                 warned.add(t)
-                print(f"compile: {t} tower tokens outside {lo}-{hi}", flush=True)
+                print(f"compile: {t} tower tokens outside {spans}", flush=True)
             return compiled(hidden_states, cu_seqlens, position_embeddings, **kwargs)
 
         return forward
