@@ -31,12 +31,40 @@ proposals. The policy: [`main-sub-approach.md`](../main-sub-approach.md); the pa
   `crop_dataset.load_mainsub` reads `manifest_sfxp_det_all` only, so a reviewed no-label row does
   not train.
 
+## Facts — the kozh and hito crops (added 14:45)
+
+- The user (2026-11-24): "gelnote나 swaprelax, hito v4도 hayai로 disagrees scoring 해보자".
+  `hayai_read.py --set kozh hito --max_new_tokens 256`, the trained crops of
+  `manifest_sfxp_kozh` and `manifest_pseudo_hito_v4`: 39,981 crops at 476 crops/s, job
+  `20261124-144313-4ef189`, rc 0. Output `output/ocr/hayai/hayai27_kozh_hito.jsonl` (local).
+  No read is missing or empty; none holds a line break.
+- Rows whose label hayai's read does not match (`hayai_distance` against the label, sub empty):
+
+  | source | rows | disagree | = 0.001–0.2 | 0.2–0.4 | 0.4–0.6 | 0.6–0.8 | > 0.8 | read has kana / hanja the label lacks |
+  |---|---|---|---|---|---|---|---|---|
+  | `gelnote_ko` | 1,697 | 150 (9 %) | 69 | 17 | 21 | 12 | 31 | 77 |
+  | `swaprelax_v5` | 20,327 | 5,761 (28 %) | 3,015 | 639 | 603 | 593 | 911 | 2,605 |
+  | `hito_v4_ko` | 6,904 | 963 (14 %) | 351 | 137 | 186 | 94 | 195 | 464 |
+  | `hito_v4_ja` | 8,926 | 412 (5 %) | 348 | 50 | 11 | 1 | 2 | 0 (Hangul) |
+  | `gelnote_zh` | 2,127 | 599 (28 %) | 234 | 225 | 84 | 20 | 36 | — |
+
+- Sampled KO reads with a script slip: `찔러주니까` read `찔た주니까`, `자유` read `ス유`, `선생님` read
+  `色人!!`, `응…` read `9...`, `아♥` read `OH♡`. ZH reads come back in Japanese forms (`说` read `説`,
+  `晓` read `暁`). `gelnote_zh` is not on the page.
+- Page (`--hayai_kozh`, built 14:45): the four sources above show the read with its distance;
+  `hyx` marks a script slip and puts the row last in both hayai sorts; `hayai near miss` lists the
+  disagreeing rows smallest distance first.
+
 ## Interpretation
 
 - hayai answers something on every box, so on the no-label rows an empty main has to come from
   the reviewer: a box of drawing with no text still shows a read.
 - With no line breaks in its reads, hayai says nothing about the mains waiting on a break beyond
   whether their characters match.
+- On the Korean rows hayai's own errors dominate the large distances: about half of the
+  disagreements are script slips, and most of the rest above 0.4 on sampled rows are misreads
+  of short interjections (`아` read `Oト`, `하아` read `計計`). The near-miss end is where a label
+  typo would show; `hito_v4_ja` disagrees on 5 %, mostly `…` / `♡` / small kana.
 - The low-distance disagreements look like spelling of lengthening marks and small kana; the
   sort puts the largest distances first for that reason. The share of real label errors among
   the 12,947 is not known.

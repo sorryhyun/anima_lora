@@ -17,6 +17,12 @@ chunks; a rerun skips the ids already written.
 
     ANIMA_MANGA109S_ROOT=... make daemon-run ARGS="--queue --stall-timeout 900 \\
         project/ocr_reader/labeling/hayai_read.py --out output/ocr/hayai/hayai27_det.jsonl"
+
+``--set kozh hito`` reads the trained crops of the other review sources instead:
+``manifest_sfxp_kozh.parquet`` (``gelnote_ko`` / ``gelnote_zh`` / ``swaprelax_v5``) and
+``manifest_pseudo_hito_v4.parquet`` (source ``hito_v4_ja`` / ``hito_v4_ko`` by the id's
+side), one JSON line per crop, ``{source, id, read}``; a rerun skips the (source, id) pairs
+already written. ``review_page.py --hayai_kozh`` takes this file.
 """
 
 from __future__ import annotations
@@ -50,9 +56,75 @@ def main() -> None:
     ap.add_argument("--limit", type=int, help="read only this many boxes (smoke)")
     ap.add_argument("--cats", nargs="+", help="only these cats (e.g. neg_other drop)")
     ap.add_argument("--device", default="cuda")
+    ap.add_argument(
+        "--max_new_tokens",
+        type=int,
+        default=128,
+        help="256 for the kozh / hito crops (long Korean balloons)",
+    )
+    ap.add_argument(
+        "--set",
+        nargs="+",
+        choices=("det", "kozh", "hito"),
+        default=["det"],
+        help="det: the Manga109 detector boxes (default); kozh / hito: the crops of "
+        "those manifests (not with det)",
+    )
     a = ap.parse_args()
 
     d = m109.derived_root()
+    if "det" in a.set:
+        assert a.set == ["det"], "--set det does not mix with kozh / hito"
+        det = det_boxes(d, a)
+    else:
+        det = manifest_crops(d, a)
+    model, proc = load_model(a)
+    run(det, d, model, proc, a)
+
+
+def manifest_crops(d: Path, a) -> pd.DataFrame:
+    """The kozh / hito manifests' crops as ``(source, id, path)``, path absolute."""
+    parts = []
+    if "kozh" in a.set:
+        k = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
+        parts.append(
+            pd.DataFrame(
+                {"source": k.source, "id": k.id, "path": [str(d / p) for p in k.path]}
+            )
+        )
+    if "hito" in a.set:
+        h = pd.read_parquet(d / "manifest_pseudo_hito_v4.parquet")
+        parts.append(
+            pd.DataFrame(
+                {
+                    "source": "hito_v4_" + h.id.str.rsplit("_", n=1).str[1],
+                    "id": h.id,
+                    "path": h.path,
+                }
+            )
+        )
+    df = pd.concat(parts, ignore_index=True)
+    a.out.parent.mkdir(parents=True, exist_ok=True)
+    done = set()
+    if a.out.exists():
+        done = {
+            (x["source"], x["id"]) for x in map(json.loads, a.out.open()) if x.get("id")
+        }
+    df = df[[(s, i) not in done for s, i in zip(df.source, df.id)]]
+    if a.limit:
+        df = df.groupby("source", group_keys=False).head(
+            max(1, a.limit // df.source.nunique())
+        )
+    df = df.reset_index(drop=True)
+    print(
+        f"[hayai] {len(df)} crops to read ({len(done)} already in {a.out}); "
+        f"{df.source.value_counts().to_dict()}",
+        flush=True,
+    )
+    return df
+
+
+def det_boxes(d: Path, a) -> pd.DataFrame:
     det = pd.read_parquet(d / "manifest_sfxp_det.parquet")
     # the manifests' ``id`` is local to a book; the crop files and the main / sub
     # proposals name a box ``<book>_<id>``
@@ -79,8 +151,10 @@ def main() -> None:
         f"{det.cat.value_counts().to_dict()}; from pages {int(det.path.isna().sum())}",
         flush=True,
     )
+    return det
 
-    import torch
+
+def load_model(a):
     from transformers import AutoModel, AutoProcessor
 
     model = AutoModel.from_pretrained(
@@ -90,10 +164,17 @@ def main() -> None:
     proc = AutoProcessor.from_pretrained(
         a.model, revision=a.revision, trust_remote_code=True
     )
+    return model, proc
+
+
+def run(det: pd.DataFrame, d: Path, model, proc, a) -> None:
+    import torch
+
+    manifest = "source" in det
 
     def load(r) -> Image.Image | None:
         if isinstance(r.path, str):
-            img = cv2.imread(str(d / r.path))
+            img = cv2.imread(str(d / r.path))  # d / an absolute path = that path
         else:
             page = cv2.imread(str(m109.page_path(r.book, int(r.page))))
             if page is None:
@@ -119,10 +200,14 @@ def main() -> None:
                     max_patches="auto",
                     batch_size=a.bs,
                     escalate=False,
-                    max_new_tokens=128,
+                    max_new_tokens=a.max_new_tokens,
                 )
             reads = dict(zip(keep, texts, strict=True))
             for i, r in enumerate(rows):
+                if manifest:
+                    rec = {"source": r.source, "id": r.id, "read": reads.get(i)}
+                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    continue
                 rec = {
                     "id": r.id,
                     "split": r.split,

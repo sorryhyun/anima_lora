@@ -16,8 +16,10 @@ Crops are the frozen ``eval_data/k3_gelnote/crops/`` (``gate/build_eval_data.py`
 Metrics, per language:
 
 - **exact**: ``textnorm.exact_key`` (folds, whitespace-blind), the sincos key.
-- **spaced**: ``textnorm.normalize_target`` (whitespace runs → one space). For
-  KO this is exact *with* 띄어쓰기, which the line refuses to strip.
+- **lb**: ``textnorm.linebreak_blind`` — exact *with* 띄어쓰기, a line break on either
+  side matching a space or none (the labels keep the crop's breaks since 2026-11-24).
+- **spaced**: ``textnorm.normalize_target`` (whitespace runs → one space): a break
+  counts as a space, so a read without the label's breaks misses on ZH.
 - **cer**: Levenshtein over the exact keys / label length.
 - **kana leak**: the prediction carries kana and the label does not. This is
   the B′ failure (KO / ZH read as Japanese).
@@ -93,6 +95,7 @@ def score(df: pd.DataFrame, preds: list[str]) -> pd.DataFrame:
             dict(
                 pred=p,
                 exact=pk == gk,
+                lb=textnorm.linebreak_blind(p, r.text),
                 spaced=textnorm.normalize_target(p)
                 == textnorm.normalize_target(r.text),
                 cer=levenshtein(pk, gk) / max(1, len(gk)),
@@ -108,13 +111,13 @@ def summary(scored: pd.DataFrame, name: str, wall: float) -> str:
     md = [
         f"# OCR eval — `{name}` on K3 gelnote (`{LABELS.name}`)\n",
         f"Reader wall {wall:.0f} s for {len(scored)} crops.\n",
-        "| lang | n | exact | spaced | cer | sim | kana leak | runaway |",
-        "|---|---|---|---|---|---|---|---|",
+        "| lang | n | exact | lb | spaced | cer | sim | kana leak | runaway |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for lang, g in scored.groupby("lang"):
         md.append(
             f"| {lang} | {len(g)} | {int(g.exact.sum())} ({100 * g.exact.mean():.0f} %) | "
-            f"{int(g.spaced.sum())} | {g.cer.mean():.3f} | {g.sim.mean():.3f} | "
+            f"{int(g.lb.sum())} | {int(g.spaced.sum())} | {g.cer.mean():.3f} | {g.sim.mean():.3f} | "
             f"{int(g.kana_leak.sum())} | {int(g.runaway.sum())} |"
         )
     zh = scored[(scored.lang == "zh") & (scored.zh_script != "")]
@@ -125,13 +128,15 @@ def summary(scored: pd.DataFrame, name: str, wall: float) -> str:
                 f"- {s}: exact {int(g.exact.sum())} / {len(g)}, cer {g.cer.mean():.3f}"
             )
     md.append(
-        "\n## Every row\n\n| id | lang | gt | pred | exact | spaced | cer |\n|---|---|---|---|---|---|---|"
+        "\n## Every row\n\n| id | lang | gt | pred | exact | lb | spaced | cer |\n|---|---|---|---|---|---|---|---|"
     )
     for _, r in scored.sort_values(["lang", "cer"], ascending=[True, False]).iterrows():
-        pred = r.pred.replace("|", "\\|")[:40]
+        # a line break would end the table row
+        pred = r.pred.replace("|", "\\|").replace("\n", " ⏎ ")[:40]
+        gt = r.text.replace("|", "\\|").replace("\n", " ⏎ ")
         md.append(
-            f"| {r.id} | {r.lang} | {r.text} | {pred} | {'✓' if r.exact else ''} | "
-            f"{'✓' if r.spaced else ''} | {r.cer:.2f} |"
+            f"| {r.id} | {r.lang} | {gt} | {pred} | {'✓' if r.exact else ''} | "
+            f"{'✓' if r.lb else ''} | {'✓' if r.spaced else ''} | {r.cer:.2f} |"
         )
     return "\n".join(md) + "\n"
 
@@ -152,8 +157,8 @@ def compare(names: list[str], labels: Path = LABELS) -> str:
     base = runs[names[0]].loc[ids]
     md = [
         f"# K3 compare — {len(ids)} rows common to every run; paired vs `{names[0]}`\n",
-        "| run | lang | exact | spaced | cer | kana leak | wins / losses | McNemar z |",
-        "|---|---|---|---|---|---|---|---|",
+        "| run | lang | exact | lb | spaced | cer | kana leak | wins / losses | McNemar z |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for n in names:
         d = runs[n].loc[ids]
@@ -164,7 +169,8 @@ def compare(names: list[str], labels: Path = LABELS) -> str:
             lo = int((~g.exact & b.exact).sum())
             z = (w - lo) / math.sqrt(w + lo) if w + lo else 0.0
             md.append(
-                f"| {n} | {lang} | {int(g.exact.sum())} / {len(g)} | {int(g.spaced.sum())} | "
+                f"| {n} | {lang} | {int(g.exact.sum())} / {len(g)} | {int(g.lb.sum())} | "
+                f"{int(g.spaced.sum())} | "
                 f"{g.cer.mean():.3f} | {int(g.kana_leak.sum())} | "
                 + ("— | — |" if n == names[0] else f"{w} / {lo} | {z:+.1f} |")
             )

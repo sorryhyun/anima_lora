@@ -25,6 +25,12 @@ is in `_archive/ocr_reader/history/` (local; `README.md` there). In git, the sam
 | `v7_preview/` | `sfxpc_1118_0412` | opt-in | two prompts, `OCR:` speech / `SFX:` SFX | — | `history/proposals/ocr_sfx_prefix.md` |
 | `v7/` (`59768fc6`) | `mainsub_1124_0151` | 0.14.0 | main / sub (`OCR:` / `OCR2:`), detector boxes at 4 px | vs v6: doujin SFX strict 294 → 334 (+95 / −55); Manga109 test SFX 85.2 → 80.8 % (+83 / −196), speech 88.4 → 89.0 %; K3 KO 28 → 30, ZH 30 → 33 | [`mainsub_1124_0151.md`](reports/mainsub_1124_0151.md) |
 
+K3 figures in the table are on the labels before the 2026-11-24 review (`assets/k3_gelnote.pre_review.tsv`).
+On the reviewed labels (`review_1124b`: 53 edits, mostly line breaks, 91 rows → `checked`; 48 KO + 48 ZH
+scored), `eval_k3.py --compare` rescores v6 → v7 as KO 26 → 29 (+5 / −2), ZH 31 → 35 (+6 / −2).
+`spaced` now counts line breaks on ZH (a break is a space there and ZH labels had none), so ZH
+`spaced` is not comparable across the review.
+
 Report paths under `history/` are in `_archive/ocr_reader/` (local). Sincos figures are on the 597-row gate below; v5 is paired against v4 rescored on the rebuilt crops.
 
 ## Layout
@@ -58,6 +64,12 @@ This line scores sincos with
 were deliberately removed from the dataset (2026-10-10). Every arm, v3
 included, is scored on it. Never mix it with the `/ 617` figures in
 `finished/cjk_aware_anima_dit/eval.md`. v3 on this basis: strict 289, ♡-blind 336.
+
+Metrics (since 2026-11-24, the user: heart-blind retired, line-break-blind added): `exact`
+(`textnorm.exact_key`, whitespace-blind) and `lb` (`textnorm.linebreak_blind`: the same glyphs,
+the same 띄어쓰기, a line break on either side matching a space or none) in every eval;
+`eval_k3` keeps `spaced` (a break counts as a space). The ♡-blind figures above are from
+before; `eval_sfx` no longer reports one. v7 on sincos: exact 334, lb 334.
 
 ```
 ANIMA_MANGA109S_ROOT=/media/sorryhyun/new/dataset/manga109s/Manga109s_released_2026_05_21 make daemon-run ARGS="--stall-timeout 900 \
@@ -132,7 +144,8 @@ open items: [`mainsub_plan.md`](mainsub_plan.md); finished work goes to `reports
   text). The default `suspicion` sort puts `trim`, then partly visible text, first.
 - A row holding one `<text>` box with ruby starts from its furigana row's sub edits.
 - Apply writes `mainsub_*` rows to `assets/m109_mainsub.tsv` and other sources' subs to
-  `assets/sub_labels.tsv`. The manifests are not touched by `mainsub_*` rows.
+  `assets/sub_labels.tsv`. `k3_ko` / `k3_zh` are the K3 gate's rows: apply writes them back to
+  `assets/k3_gelnote.tsv` (`ok` / edit → `checked`, drop → `skip`); the K3 figures move with them. The manifests are not touched by `mainsub_*` rows.
 
 ### After each export
 
@@ -149,12 +162,15 @@ open items: [`mainsub_plan.md`](mainsub_plan.md); finished work goes to `reports
    ```
    python project/ocr_reader/labeling/review_page.py --out ~/ko_label_review \
        --flags <ko_reads>_flags.parquet --doujin_reads <sfx>_cap4_sfx.jsonl \
+       --k3_reads output/ocr/eval/k3_<run>.jsonl \
        --ruby output/ocr/furigana/ruby_all_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
-       --mainsub output/ocr/mainsub/m109_mainsub.jsonl --hayai output/ocr/hayai/hayai27_det.jsonl
+       --mainsub output/ocr/mainsub/m109_mainsub.jsonl --hayai output/ocr/hayai/hayai27_det.jsonl \
+       --hayai_kozh output/ocr/hayai/hayai27_kozh_hito.jsonl
    ```
 
    As built 2026-11-24: `--flags output/ocr/eval/ko_reads_v7_flags.parquet` (`ko_read.py`, v7)
-   and `--doujin_reads output/ocr/eval/sfx_mainsub_1124_0151_cap4_ocr.jsonl`.
+   and `--doujin_reads output/ocr/eval/sfx_mainsub_1124_0151_cap4_ocr.jsonl`;
+   `--k3_reads output/ocr/eval/k3_mainsub_1124_0151.jsonl` (v7) since 14:45.
 
    Rebuilding the Manga109 proposals (after a change to the annotations, the ruby reads or
    `m109_mainsub.py`):

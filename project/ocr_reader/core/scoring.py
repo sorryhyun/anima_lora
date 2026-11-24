@@ -1,6 +1,8 @@
 """Scoring: the comparison keys every eval script reads.
 
 * :func:`exact_key` — :func:`textnorm.exact_key` (NFKC, whitespace-blind, glyph folds);
+* :func:`linebreak_blind` — :func:`textnorm.linebreak_blind` (``lb``: spacing counts, line
+  breaks do not);
 * :func:`norm` / :func:`sim` / :func:`is_runaway` — the A/B's keys, from the pilot
   (``finished/cjk_aware_anima/datasets/build_ocr_records.py``, bodies unchanged);
 * :func:`normalize_ja` — the ``ー`` put-back, vendored (see its section);
@@ -25,6 +27,12 @@ def exact_key(s: str) -> str:
     variants folded (the hand labels write ``♡`` and ``〜``, readers emit ``♥``
     / ``~`` for the same glyph) and every dot run one ``…``."""
     return textnorm.exact_key(s)
+
+
+def linebreak_blind(a: str, b: str) -> bool:
+    """:func:`textnorm.linebreak_blind` — :func:`exact_key` equality plus the same
+    spacing, a line break on either side matching a space or none."""
+    return textnorm.linebreak_blind(a, b)
 
 
 # --------------------------------------------------------------------------- pilot keys
@@ -152,6 +160,7 @@ def score(df: pd.DataFrame, preds: list[str]) -> pd.DataFrame:
                 pred=p,
                 pred_norm=pn,
                 exact=exact_key(pn) == exact_key(r.text),
+                lb=linebreak_blind(pn, r.text),
                 sim=sim(pn, r.text),
                 runaway=is_runaway(p),
             )
@@ -163,12 +172,13 @@ def summary(scored: pd.DataFrame, name: str, split: str, wall: float) -> str:
     lines = [
         f"# OCR eval — `{name}` on Manga109-s `{split}` (official COO split ∩ Manga109-s)\n",
         f"Reader wall {wall:.0f} s for {len(scored)} crops ({len(scored) / max(wall, 1e-9):.1f} crops/s).\n",
-        "| kind | n | exact | exact % | sim (mean) | sim ≥ 0.8 | runaway |",
-        "|---|---|---|---|---|---|---|",
+        "| kind | n | exact | exact % | lb | sim (mean) | sim ≥ 0.8 | runaway |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for k, g in scored.groupby("kind"):
         lines.append(
             f"| {k} | {len(g)} | {int(g.exact.sum())} | {100 * g.exact.mean():.1f} | "
+            f"{int(g.lb.sum())} | "
             f"{g.sim.mean():.3f} | {100 * (g.sim >= 0.8).mean():.1f} % | {int(g.runaway.sum())} |"
         )
     sfx = scored[scored.kind == "sfx"]

@@ -56,10 +56,15 @@ the detector boxes with no label (``neg_other``: no annotation inside; ``drop``:
 partway; train), the main box holding hayai's read as a first pass; their crops are cut on
 the first build to ``crops_sfxp/det_nolabel/``. ``apply_review.py`` writes these rows to
 ``assets/m109_mainsub.tsv`` too; the training loader does not read them yet.
+``--hayai_kozh`` (``hayai_read.py --set kozh hito``): the same read and sort on the
+``gelnote_ko`` / ``swaprelax_v5`` / ``hito_v4_*`` rows, against the label. hayai often slips
+kana or hanja into a Hangul line (and Hangul into a JA one): a read holding a script the
+label does not (``hyx``) goes behind the others in the ``hayai disagrees`` sorts. The
+``hayai near miss`` sort lists the disagreeing rows smallest distance first.
 
 A row whose main label is over the training cap (``crop_dataset.MAX_TARGET_CHARS``, which
 drops it) is not listed or counted (``mark_over_cap``); it stays in the page's data, so
-a state it holds still exports. ``doujin_sfx``, a gate, is not capped. Every other row is
+a state it holds still exports. The gates (``doujin_sfx``, ``k3_*``) are not capped. Every other row is
 listed; the page filters on the longest spaceless Hangul run (the gelnote
 teacher's dropped spacing passes the whitespace-blind agreement, ``pseudo_label.py``) and
 sorts by it, by "no line break, longest first", or by ``suspicion`` (``suspicion``: the
@@ -77,6 +82,13 @@ and ``…`` (as edited, so a row respelled to ``...`` leaves it), most ``…`` f
 ``output/ocr/eval/sfx_<name>.jsonl``) adds that reader's read; its "confidence" is
 ``eval_sfx``'s sim to the label, and "disagrees" leaves out the rows ``eval_sfx`` scores
 exact (its heart / shape folds). ``apply_review.py`` writes these rows back to the TSV.
+
+``k3_ko`` / ``k3_zh``: the KO / ZH gate (``assets/k3_gelnote.tsv``, ``skip`` rows included)
+on its frozen crops (``eval_data/k3_gelnote``); the meta line shows the row's status, its
+``zh_script``, the label note and the gelbooru translation. ``--k3_reads`` (``eval_k3.py``'s
+``output/ocr/eval/k3_<name>.jsonl``) adds that reader's read, its sim as confidence;
+"disagrees" leaves out the rows ``eval_k3`` scores exact. ``apply_review.py`` writes these
+rows back to the TSV (``ok`` / edit → ``checked``, drop → ``skip``), line breaks kept.
 
     python project/ocr_reader/labeling/review_page.py --out ~/ko_label_review
 """
@@ -115,6 +127,8 @@ from project.ocr_reader.core.textnorm import exact_key
 
 DOUJIN_LABELS = ASSETS / "sfx_labels_sincos_597.tsv"
 DOUJIN_FROZEN = EVAL_DATA / "sincos"
+K3_LABELS = ASSETS / "k3_gelnote.tsv"
+K3_FROZEN = EVAL_DATA / "k3_gelnote"
 HANGUL = re.compile(r"[가-힣]")
 RUN = re.compile(r"[가-힣]+")
 KANA = re.compile(r"[\u3040-\u30ff]")
@@ -188,7 +202,8 @@ header .pager { margin:0; }
     <option value="lb">linebreak suspicious: proposed breaks, largest read distance first (mainsub)</option>
     <option value="furi">furigana: rows with a ruby proposal (mainsub)</option>
     <option value="furisus">furigana suspicious: most doubtful ruby first (mainsub)</option>
-    <option value="hy">hayai disagrees with the main, largest distance first (mainsub)</option>
+    <option value="hy">hayai disagrees with the main, largest distance first</option>
+    <option value="hyn">hayai near miss: disagrees, smallest distance first</option>
     <option value="id">id</option><option value="todo">unreviewed first</option></select></label>
   <label>has <select id="has"><option value="">all</option><option value="main">main only</option>
     <option value="sub">sub only</option><option value="both">main + sub</option>
@@ -204,7 +219,7 @@ header .pager { margin:0; }
 const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
-                      "doujin_sfx": "__DOUJIN_SORT__",
+                      "doujin_sfx": "__DOUJIN_SORT__", "k3_ko": "__K3_SORT__", "k3_zh": "__K3_SORT__",
                       "mainsub_det": "sus", "mainsub_speech": "sus", "mainsub_nolabel": "id"};
 // mainsub rows carry paths relative to the Manga109 folder
 const M109 = __M109__;
@@ -218,9 +233,16 @@ try { marks = JSON.parse(localStorage.getItem(KEY + ":sfx") || "{}"); } catch (e
 // sub (OCR2:) text per row: absent = the row's proposal (x.sub) if any, "" = no sub
 let subs = {};
 try { subs = JSON.parse(localStorage.getItem(KEY + ":sub") || "{}"); } catch (e) { subs = {}; }
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store));
+// localStorage is written 300 ms after the last change (each write stringifies every
+// edit), and at once when the page is hidden or closed
+let saveT = null;
+const saveNow = () => { clearTimeout(saveT); saveT = null;
+  try { localStorage.setItem(KEY, JSON.stringify(store));
   localStorage.setItem(KEY + ":sfx", JSON.stringify(marks));
   localStorage.setItem(KEY + ":sub", JSON.stringify(subs)); } catch (e) {} };
+const save = () => { clearTimeout(saveT); saveT = setTimeout(saveNow, 300); };
+addEventListener("pagehide", () => { if (saveT) saveNow(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden && saveT) saveNow(); });
 // a mainsub speech row falls back to its furigana row's sub box (fk) before the proposal
 const subOf = (key, x) => key in subs ? subs[key] : (x.fk && x.fk in subs ? subs[x.fk] : (x.sub || ""));
 const $ = (id) => document.getElementById(id);
@@ -250,10 +272,10 @@ function changed(k, x) {
     return !have || want.some((w, i) => w !== have[i]);
   }
   let main;
-  if (s === "doujin_sfx")
-    main = (st === "edit" && norm(v.text).replace(/\n/g, " ") !== x.text)
+  if (x.gate)  // a gate TSV: ok / edit → checked, drop → x.gate; doujin_sfx stores a break as a space
+    main = (st === "edit" && (x.flat ? norm(v.text).replace(/\n/g, " ") : norm(v.text)) !== x.text)
       || ((st === "ok" || st === "edit") && x.status !== "checked")
-      || (st === "drop" && x.status !== "unchecked");
+      || (st === "drop" && x.status !== x.gate);
   else if (x.cur != null)  // proposal sources: ok writes the proposal
     main = (st === "ok" && !x.done) || (st === "edit" && norm(v.text) !== x.cur) || st === "drop";
   else main = (st === "edit" && norm(v.text) !== norm(x.text)) || st === "drop";
@@ -272,7 +294,8 @@ function changed(k, x) {
   if (n) save();
 })();
 // over the training cap (the dataset drops them): not listed, still exported
-const listed = s => DATA[s].filter(x => !x.over);
+const LISTED = {};
+const listed = s => LISTED[s] || (LISTED[s] = DATA[s].filter(x => !x.over));
 const srcSel = $("src"), minIn = $("minrun"), sortSel = $("sort"), hasSel = $("has");
 for (const s of Object.keys(DATA)) srcSel.add(new Option(`${s} (${listed(s).length})`, s));
 let page = 0;
@@ -322,7 +345,8 @@ function rows() {
   else if (k === "lb") r = r.filter(x => x.lbs != null).sort((a, b) => b.lbs - a.lbs || a.id.localeCompare(b.id));
   else if (k === "furi") r = r.filter(x => x.rb).sort((a, b) => a.id.localeCompare(b.id));
   else if (k === "furisus") r = r.filter(x => x.rb).sort((a, b) => b.rsus - a.rsus || a.id.localeCompare(b.id));
-  else if (k === "hy") r = r.filter(x => x.hyd > 0).sort((a, b) => b.hyd - a.hyd || a.id.localeCompare(b.id));
+  else if (k === "hy") r = r.filter(x => x.hyd > 0).sort((a, b) => (a.hyx || 0) - (b.hyx || 0) || b.hyd - a.hyd || a.id.localeCompare(b.id));
+  else if (k === "hyn") r = r.filter(x => x.hyd > 0).sort((a, b) => (a.hyx || 0) - (b.hyx || 0) || a.hyd - b.hyd || a.id.localeCompare(b.id));
   else if (k === "id") r = r.slice().sort((a, b) => a.id.localeCompare(b.id));
   else r = r.slice().sort((a, b) => !!store[s + ":" + a.id] - !!store[s + ":" + b.id]);
   // has: what the row's boxes hold now (a drop holds nothing)
@@ -340,6 +364,9 @@ function stats() {
     if (v.status === "ok") ok++; else if (v.status === "drop") dr++; else ed++; }
   $("stats").textContent = `${rows().length} listed · ok ${ok} · edited ${ed} · drop ${dr} · sfx ${sx}`;
 }
+// the counts walk every row of the source: once per frame, not once per painted row
+let statsQ = 0;
+const statsSoon = () => { if (!statsQ) statsQ = requestAnimationFrame(() => { statsQ = 0; stats(); }); };
 function render() {
   const s = srcSel.value, r = rows(), pages = Math.max(1, Math.ceil(r.length / PER));
   page = Math.min(page, pages - 1);
@@ -362,7 +389,7 @@ function render() {
       <div class="orig">${marked(x.text, +minIn.value || 0)}</div>
       ${x.note ? `<div class="meta">${esc(x.note)}</div>` : ""}
       ${x.rd != null ? `<div class="meta">__READER__${x.rsfx ? " SFX:" : ""} (${x.conf.toFixed(2)})${x.rwhy ? " [" + x.rwhy + "]" : ""}: ${esc(x.rd || "—").replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
-      ${x.hy != null ? `<div class="meta">hayai v2.7: ${esc(x.hy || "—")}</div>` : ""}
+      ${x.hy != null ? `<div class="meta">hayai v2.7${x.hyd ? ` (${x.hyd.toFixed(2)}${x.hyx ? ", script slip" : ""})` : ""}: ${esc(x.hy || "—")}</div>` : ""}
       ${x.twin_img ? `<div class="twin"><img loading="lazy" src="${x.twin_img}"><div class="meta">twin (${esc(x.twin_lang)}) v4: ${esc(x.twin || "—").replace(/\n/g, " ⏎ ")}</div></div>` : ""}
       ${x.ms ? `<div class="meta">main (OCR:) · the largest text</div>` : ""}
       <textarea class="mainta" rows="${Math.max(2, x.text.split("\n").length + 1)}"></textarea>
@@ -392,7 +419,7 @@ function render() {
       d.className = "row" + (w ? " " + w.status : "") + (marks[key] ? " sfx" : "")
         + (subOf(key, x) ? " hassub" : "");
       okb.classList.toggle("on", !!w && w.status === "ok"); okb.classList.toggle("ok", true);
-      drb.classList.toggle("on", !!w && w.status === "drop"); drb.classList.toggle("drop", true); stats(); };
+      drb.classList.toggle("on", !!w && w.status === "drop"); drb.classList.toggle("drop", true); statsSoon(); };
     ta.oninput = () => { store[key] = ta.value === x.text ? {status: "ok", text: null}
                                      : {status: "edit", text: ta.value}; save(); paint(); };
     // ok = this row is reviewed with what the box holds now (edited or not)
@@ -414,6 +441,7 @@ function render() {
   stats();
 }
 $("export").onclick = () => {
+  saveNow();
   const lines = ["source\tid\tstatus\torig\tnew\tsfx\tsub"];
   const byId = {};
   for (const [s, rows] of Object.entries(DATA)) { const m = byId[s] = new Map(); for (const y of rows) m.set(y.id, y); }
@@ -483,6 +511,12 @@ def suspicion(t: str, w: int, h: int, lang: str = "ko") -> tuple[float, str]:
             s += 3
             why.append("hangul")
         return round(s, 2), " · ".join(why)
+    if lang == "zh":
+        for pat, name in ((KANA, "kana"), (HANGUL, "hangul")):
+            if pat.search(t):
+                s += 3
+                why.append(name)
+        return round(s, 2), " · ".join(why)
     if KANA.search(t):
         s += 3
         why.append("kana")
@@ -511,7 +545,20 @@ def read_fields(f) -> dict:
     )
 
 
-def hito_rows(d: Path, flags: dict) -> dict[str, list[dict]]:
+KANA_HANJA = re.compile(r"[ぁ-ゖァ-ヺ一-鿿]")
+
+
+def hayai_fields(hk: dict, src: str, rid: str, text: str) -> dict:
+    """``hy`` / ``hyd`` for a kozh or hito row from ``--hayai_kozh``'s reads, or nothing."""
+    read = hk.get((src, rid))
+    if read is None:
+        return {}
+    alien = HANGUL if src == "hito_v4_ja" else KANA_HANJA
+    hyx = int(bool(alien.search(read)) and not alien.search(text))
+    return dict(hy=read, hyd=hayai_distance(read, text, ""), hyx=hyx)
+
+
+def hito_rows(d: Path, flags: dict, hk: dict) -> dict[str, list[dict]]:
     """``manifest_pseudo_hito_v4`` as two sources (``hito_v4_ja`` / ``hito_v4_ko``), each
     row with its twin crop, the twin's v4 read and the read's logprob, and the flags
     reader's read when ``flags`` holds the row."""
@@ -550,6 +597,7 @@ def hito_rows(d: Path, flags: dict) -> dict[str, list[dict]]:
                 len=len(r.text.replace("\n", "").replace(" ", "")),
                 status="",
                 **read_fields(flags.get((f"hito_v4_{side}", r.id))),
+                **hayai_fields(hk, f"hito_v4_{side}", r.id, r.text),
                 lp=lp,
                 twin=reads.get((rid, twin_side), {}).get("read"),
                 twin_lang=twin_side,
@@ -718,6 +766,8 @@ def doujin_rows(reads_path: Path | None) -> dict[str, list[dict]]:
                 rsfx=False,
                 rwhy="runaway" if x and x.get("runaway") else "",
                 agree=bool(x and x["exact"]),  # eval_sfx's exact (its folds): off "dis"
+                gate="unchecked",  # the gate status a drop writes
+                flat=1,  # the TSV keeps a line break as a space
                 img=(DOUJIN_FROZEN / "crops" / f"{r.row}.png").as_uri(),
                 page=page.as_uri() if page.exists() else "",
                 box=[int(v) for v in box],
@@ -725,6 +775,63 @@ def doujin_rows(reads_path: Path | None) -> dict[str, list[dict]]:
         )
     print(f"[review] doujin_sfx: {len(rows)} rows ({len(reads)} reads)", flush=True)
     return {"doujin_sfx": rows}
+
+
+def k3_rows(reads_path: Path | None) -> dict[str, list[dict]]:
+    """The K3 gate's rows as ``k3_ko`` / ``k3_zh`` (id = the TSV's ``id``), with
+    ``eval_k3.py``'s per-row read when ``reads_path`` is given."""
+    df = pd.read_csv(K3_LABELS, sep="\t", dtype=str, keep_default_na=False)
+    reads = {}
+    if reads_path:
+        for line in open(reads_path, encoding="utf-8"):
+            x = json.loads(line)
+            reads[str(x["id"])] = x
+    boxes = {}
+    for line in open(GELNOTE / "manifest.jsonl", encoding="utf-8"):
+        x = json.loads(line)
+        boxes[x["id"]] = x["box"]
+    out = {"k3_ko": [], "k3_zh": []}
+    for r in df.itertuples():
+        sus, why = suspicion(r.text, int(r.w), int(r.h), r.lang)
+        x = reads.get(r.id)
+        page = next(iter(sorted((K3_FROZEN / "pages").glob(f"{r.image_id}.*"))), None)
+        note = " · ".join(
+            t
+            for t in (
+                f"script {r.zh_script}" if r.zh_script else "",
+                r.label_note,
+                f"translation: {r.note_body}" if r.note_body else "",
+            )
+            if t
+        )
+        out[f"k3_{r.lang}"].append(
+            dict(
+                id=r.id,
+                text=r.text,
+                run=longest_run(r.text),
+                sus=sus,
+                why=why,
+                lf=int("\n" in r.text),
+                len=len(r.text.replace(" ", "")),
+                status=r.status,
+                note=note,
+                rd=x["pred"] if x else None,
+                conf=round(float(x["sim"]), 3) if x else 0.0,
+                edge="",
+                rsfx=False,
+                rwhy="runaway" if x and x.get("runaway") else "",
+                agree=bool(x and x["exact"]),  # eval_k3's exact: off "dis"
+                gate="skip",
+                img=(K3_FROZEN / r.path).as_uri(),
+                page=page.as_uri() if page else "",
+                box=[int(v) for v in boxes.get(r.id, [])],
+            )
+        )
+    print(
+        f"[review] k3: {len(out['k3_ko'])} KO, {len(out['k3_zh'])} ZH ({len(reads)} reads)",
+        flush=True,
+    )
+    return out
 
 
 def hayai_reads(path: Path | None) -> dict[str, dict]:
@@ -1013,7 +1120,7 @@ def mark_over_cap(data: dict[str, list[dict]], applied: dict) -> None:
         n = 0
         for r in rows:
             t = r.pop("raw", r["text"])
-            if src == "doujin_sfx" or r.get("ro"):
+            if r.get("gate") or r.get("ro"):
                 continue
             if v := applied["ms"].get(f"{src}:{r['id']}"):
                 t = v[1]
@@ -1051,6 +1158,12 @@ def main():
         "doujin_sfx row",
     )
     ap.add_argument(
+        "--k3_reads",
+        type=Path,
+        help="eval_k3.py's output/ocr/eval/k3_<name>.jsonl: a reader's read per "
+        "k3_ko / k3_zh row",
+    )
+    ap.add_argument(
         "--ruby",
         type=Path,
         help="furigana_find.py read's output/ocr/furigana/<name>_read.jsonl: the "
@@ -1067,6 +1180,12 @@ def main():
         type=Path,
         help="hayai_read.py's output/ocr/hayai/<name>.jsonl: hayai's read per detector "
         "box (shown on the mainsub rows; the main of the mainsub_nolabel rows)",
+    )
+    ap.add_argument(
+        "--hayai_kozh",
+        type=Path,
+        help="hayai_read.py --set kozh hito's output/ocr/hayai/<name>.jsonl: hayai's "
+        "read per gelnote / swaprelax / hito crop (shown on those rows)",
     )
     ap.add_argument(
         "--mainsub",
@@ -1095,6 +1214,11 @@ def main():
         reader = str(fl.reader.iloc[0]) if "reader" in fl else "v6"
         for f in fl.itertuples():
             flags[(f.source, f.id)] = f
+    hk = {}
+    if a.hayai_kozh:
+        for x in map(json.loads, open(a.hayai_kozh, encoding="utf-8")):
+            if x["read"] is not None:
+                hk[(x["source"], x["id"])] = x["read"]
     data = {}
     for src in ("gelnote_ko", "swaprelax_v5"):
         out = []
@@ -1121,6 +1245,7 @@ def main():
                     len=len(r.text.replace("\n", "").replace(" ", "")),
                     status=status,
                     **read_fields(f),
+                    **hayai_fields(hk, src, r.id, r.text),
                     img=(d / r.path).as_uri(),
                     page=Path(page).as_uri(),
                     box=[int(v) for v in box],
@@ -1128,8 +1253,9 @@ def main():
             )
         data[src] = out
         print(f"[review] {src}: {len(out)} rows", flush=True)
-    data.update(hito_rows(d, flags))
+    data.update(hito_rows(d, flags, hk))
     data.update(doujin_rows(a.doujin_reads))
+    data.update(k3_rows(a.k3_reads))
     # the furigana rows are not a source of their own: they head the mainsub sub
     # proposals (and their earlier sub edits carry over through ``fk``)
     fur = furigana_rows(d, a.ruby, a.ruby_fix).get("furigana")
@@ -1146,6 +1272,7 @@ def main():
         .replace("__APPLIED__", json.dumps(applied, ensure_ascii=False))
         .replace("__M109__", json.dumps(d.parent.as_uri() + "/"))
         .replace("__DOUJIN_SORT__", "dis" if a.doujin_reads else "sus")
+        .replace("__K3_SORT__", "dis" if a.k3_reads else "sus")
         .replace("__DATA__", json.dumps(data, ensure_ascii=False))
         .replace("__MINRUN__", json.dumps({s: a.min_run for s in data}))
     )

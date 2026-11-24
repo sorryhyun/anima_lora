@@ -163,3 +163,32 @@ def training_target(s: str) -> str:
 def exact_key(s: str) -> str:
     """Scoring key: folds + whitespace deleted."""
     return "".join(fold_glyphs(s).split())
+
+
+_WS_RUN = re.compile(r"\s+")
+
+
+def _gaps(s: str) -> tuple[str, list[str]]:
+    """``s`` folded as :func:`exact_key` (its glyphs) and the gap before each glyph after
+    the first: ``""`` none, ``" "`` a space, ``"\n"`` a run holding a line break."""
+    s = fold_glyphs(s).strip()
+    glyphs, gaps, prev = [], [], 0
+    for m in _WS_RUN.finditer(s):
+        part = s[prev : m.start()]
+        glyphs.append(part)
+        gaps += [""] * (len(part) - 1) + ["\n" if "\n" in m[0] else " "]
+        prev = m.end()
+    part = s[prev:]
+    glyphs.append(part)
+    gaps += [""] * max(0, len(part) - 1)
+    return "".join(glyphs), gaps
+
+
+def linebreak_blind(a: str, b: str) -> bool:
+    """``a`` and ``b`` match as :func:`exact_key` and space the same, except where either
+    has a line break: there a space and no space both match (a break in one line of the
+    crop can stand for 띄어쓰기 or for none). Between :func:`exact_key` (whitespace-blind)
+    and :func:`normalize_target` (a break counts as a space)."""
+    ga, sa = _gaps(a)
+    gb, sb = _gaps(b)
+    return ga == gb and all(x == y or "\n" in (x, y) for x, y in zip(sa, sb))

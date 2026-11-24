@@ -29,6 +29,11 @@ doujin_sfx → ``assets/sfx_labels_sincos_597.tsv`` (the doujin gate's labels, b
 ``edit`` writes ``text_hand`` (a line break as a space), ``edit`` / ``ok`` set ``status`` to ``checked``, ``drop`` sets
 it to ``unchecked`` (``eval_sfx.py`` skips those rows; the row stays in the file). The file is
 copied to ``sfx_labels_sincos_597.pre_review.tsv`` once, before its first change.
+
+k3_ko / k3_zh → ``assets/k3_gelnote.tsv`` (the KO / ZH gate, by ``id``): ``edit`` writes
+``text`` with its line breaks (the field is quoted; ``eval_k3``'s exact and spaced keys fold
+them), ``edit`` / ``ok`` set ``status`` to ``checked``, ``drop`` sets it to ``skip``
+(``eval_k3.py`` skips those rows). Backup ``k3_gelnote.pre_review.tsv``.
 """
 
 from __future__ import annotations
@@ -57,6 +62,8 @@ TARGETS = {
     "furigana": ["sfxp_speech"],
 }
 DOUJIN = ASSETS / "sfx_labels_sincos_597.tsv"
+K3 = ASSETS / "k3_gelnote.tsv"
+GATES = {"doujin_sfx", "k3_ko", "k3_zh"}
 MAINSUB = {"mainsub_det", "mainsub_speech", "mainsub_nolabel"}
 APPLY_OK = {"linebreak_suspicious", "dots_suspicious", "odd_dots"}
 """Sources whose page text is a proposal, not the manifest's text: ``ok`` applies it."""
@@ -95,11 +102,13 @@ def main():
     d = m109.derived_root()
     if (rv.source == "doujin_sfx").any():
         apply_doujin(rv[rv.source == "doujin_sfx"], a.dry_run)
+    if rv.source.isin(["k3_ko", "k3_zh"]).any():
+        apply_k3(rv[rv.source.isin(["k3_ko", "k3_zh"])], a.dry_run)
     if rv.source.isin(MAINSUB).any():
         write_mainsub(rv[rv.source.isin(MAINSUB)], a.dry_run)
         rv = rv[~rv.source.isin(MAINSUB)]
     for name in sorted(
-        {m for s in rv.source.unique() if s != "doujin_sfx" for m in TARGETS[s]}
+        {m for s in rv.source.unique() if s not in GATES for m in TARGETS[s]}
     ):
         path = d / f"manifest_{name}.parquet"
         df = pd.read_parquet(path)
@@ -152,6 +161,36 @@ def main():
         write_marks(rv, a.dry_run)
     if "sub" in rv.columns:
         write_subs(rv, a.dry_run)
+
+
+def apply_k3(rv: pd.DataFrame, dry_run: bool) -> None:
+    """``k3_ko`` / ``k3_zh`` rows → the K3 gate's label TSV (see the module docstring)."""
+    df = pd.read_csv(K3, sep="\t", dtype=str, keep_default_na=False)
+    pos = {r: i for i, r in enumerate(df.id)}
+    edited, checked, dropped, stale = 0, 0, 0, []
+    for r in rv[rv.status.isin(["ok", "edit", "drop"])].itertuples():
+        i = pos.get(r.id)
+        if i is None or df.text.iat[i] != r.orig:
+            stale.append(r.id)
+            continue
+        st = "skip" if r.status == "drop" else "checked"
+        if r.status == "edit" and r.new != r.orig:
+            df.iat[i, df.columns.get_loc("text")] = r.new
+            edited += 1
+        if df.status.iat[i] != st:
+            df.iat[i, df.columns.get_loc("status")] = st
+            dropped += st == "skip"
+            checked += st == "checked"
+    print(
+        f"[k3] edit {edited}, → checked {checked}, → skip {dropped}, "
+        f"stale {len(stale)} {stale[:5]}"
+    )
+    if dry_run or not (edited or checked or dropped):
+        return
+    bak = K3.with_name(K3.stem + ".pre_review.tsv")
+    if not bak.exists():
+        shutil.copy2(K3, bak)
+    df.to_csv(K3, sep="\t", index=False)
 
 
 def apply_doujin(rv: pd.DataFrame, dry_run: bool) -> None:

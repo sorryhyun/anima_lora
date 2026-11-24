@@ -36,7 +36,8 @@ that set grows the caveat weakens, but it holds today.
 
 Metrics as ``eval_manga109``:
 exact (NFKC + whitespace-blind; the ``JOIN_SEP`` space between repeated blocks
-is therefore free), sim, runaway. Writes ``reports/eval/ocr_eval_sfx_<name>.md`` +
+is therefore free), lb (``linebreak_blind``: spacing counts, line breaks do not; a
+label's space is a break or ``JOIN_SEP``), sim, runaway. Writes ``reports/eval/ocr_eval_sfx_<name>.md`` +
 ``output/ocr/eval/sfx_<name>.jsonl``.
 """
 
@@ -59,7 +60,7 @@ from project.ocr_reader.core.paths import (
     REPO,
 )
 from project.ocr_reader.core.readers import MAX_NEW_TOKENS, READERS, VL16_TASKS
-from project.ocr_reader.core.scoring import exact_key, score, summary
+from project.ocr_reader.core.scoring import score, summary
 
 LABELS = ASSETS / "sfx_labels_sincos_597.tsv"
 PAGES = REPO / "post_image_dataset/resized/sincos"
@@ -198,13 +199,6 @@ def main():
         preds = reader.read(crops, orients, a.bs)
     wall = time.time() - t0
     scored = score(df, preds)
-    # hearts are the one glyph the gate lets a rule patch (decision 6): report
-    # a heart-blind exact beside the strict one (the pilot's by-eye count was
-    # heart-blind, and a reader that emits ♥ where the label has ♡ is not wrong)
-    strip = lambda t: exact_key(t).replace("♡", "").replace("♥", "")  # noqa: E731
-    scored["exact_noheart"] = [
-        strip(pn) == strip(t) for pn, t in zip(scored.pred_norm, scored.text)
-    ]
 
     EVAL_OUT.mkdir(parents=True, exist_ok=True)
     scored.drop(columns=["box"]).to_json(
@@ -218,10 +212,10 @@ def main():
     chk = sfx[sfx.status == "checked"]
     md += (
         f"\n## Gate: the {len(sfx)} `kind_hand: sfx` rows (scored against the hand text)\n\n"
-        f"exact **{int(sfx.exact.sum())} / {len(sfx)}** (heart-blind "
-        f"{int(sfx.exact_noheart.sum())}), sim {sfx.sim.mean():.3f}; on the "
+        f"exact **{int(sfx.exact.sum())} / {len(sfx)}** (lb "
+        f"{int(sfx.lb.sum())}), sim {sfx.sim.mean():.3f}; on the "
         f"**{len(chk)} user-checked** rows exact **{int(chk.exact.sum())} / {len(chk)}** "
-        f"(heart-blind {int(chk.exact_noheart.sum())}), sim {chk.sim.mean():.3f}. "
+        f"(lb {int(chk.lb.sum())}), sim {chk.sim.mean():.3f}. "
         "This is the headline number; anything measured before 2026-09-06 was on "
         "the retired PP-box labels (71-line gate / 99 SFX) and does not compare.\n"
     )
@@ -230,17 +224,15 @@ def main():
     gate = scored[scored.kind_rec == "sfx"]
     md += (
         f"\nSide view — the {len(gate)} `kind_rec: sfx` records: exact "
-        f"**{int(gate.exact.sum())} / {len(gate)}** (heart-blind "
-        f"{int(gate.exact_noheart.sum())}), sim {gate.sim.mean():.3f}; "
+        f"**{int(gate.exact.sum())} / {len(gate)}** (lb "
+        f"{int(gate.lb.sum())}), sim {gate.sim.mean():.3f}; "
         f"{(gate.kind != 'sfx').sum()} of them are not SFX by eye "
         f"({', '.join(sorted(set(gate[gate.kind != 'sfx'].kind)))}).\n"
     )
-    for k, g in scored.groupby("kind"):
-        md += f"heart-blind exact, {k}: {int(g.exact_noheart.sum())} / {len(g)}\n"
     md += (
-        "\n## Every SFX line\n\n| row | gt | pred | exact | ♡-blind | sim |\n|---|---|---|---|---|---|\n"
+        "\n## Every SFX line\n\n| row | gt | pred | exact | lb | sim |\n|---|---|---|---|---|---|\n"
         + "\n".join(
-            f"| {r.row} | {r.text} | {r.pred.replace('|', '\\|')[:30]} | {'✓' if r.exact else ''} | {'✓' if r.exact_noheart else ''} | {r.sim:.2f} |"
+            f"| {r.row} | {r.text} | {r.pred.replace('|', '\\|').replace(chr(10), ' ⏎ ')[:30]} | {'✓' if r.exact else ''} | {'✓' if r.lb else ''} | {r.sim:.2f} |"
             for _, r in sfx.iterrows()
         )
         + "\n"

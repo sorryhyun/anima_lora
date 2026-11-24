@@ -143,3 +143,25 @@ def test_shapes_fold(raw, target):
     # Latin O / x / X stay
     assert _mod().training_target(raw) == target
     assert _mod().exact_key(raw) == "".join(target.split())
+
+
+@pytest.mark.parametrize(
+    "a, b, same",
+    [
+        # a break in either string matches a space or none there
+        ("최근 제게\n보내는 관심이", "최근 제게 보내는 관심이", True),
+        ("최근 제게\n보내는", "최근 제게보내는", True),
+        ("啪\n!!", "啪!!", True),
+        # away from a break, 띄어쓰기 counts
+        ("최근 제게 보내는", "최근 제게보내는", False),
+        ("남친 있는데", "남친있는데\n", False),
+        # the exact_key folds still apply; a missing glyph is still a miss
+        ("아앙♥", "아앙♡", True),
+        ("아앙♥", "아앙", False),
+        (" x ", "x", True),
+    ],
+)
+def test_linebreak_blind(a, b, same):
+    tn = _mod()
+    assert tn.linebreak_blind(a, b) is same
+    assert tn.linebreak_blind(b, a) is same
