@@ -163,6 +163,12 @@ so older commands still resolve.
   unanimous at `high` first, Hangul first. On the user's first 13 edits the agents matched 7–9:
   the non-text crops, signatures and Latin right, hand-lettered Korean SFX wrong (챱 → 잡,
   루 → 르).
+- After the user's first page (47 rows, 11-24) the rest took the agents' majority:
+  `labeling/anima_agents_apply.py` writes every row where two agents agree to
+  `anima_mainsub.tsv` with status `agent` (206 rows); the 64 split rows stay unreviewed on the
+  page. A touched `agent` row exports and becomes the user's `ok` / edit; an untouched one does
+  not export. On those 47 rows the agent main matched the user's 11/16 (unanimous), 10/17
+  (2 of 3), 0/14 (split).
 
 ### After each export
 

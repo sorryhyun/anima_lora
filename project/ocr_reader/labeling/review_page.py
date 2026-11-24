@@ -282,6 +282,9 @@ function changed(k, x) {
   if (!!marks[k] !== AMARK.has(k)) return true;
   if (x.ms) {  // m109_mainsub.tsv holds [status, main, sub] per reviewed crop
     if (!st && !(k in subs)) return false;
+    // a state re-derived from the TSV (ap) and left untouched is what apply wrote: an
+    // agent row ("agent") stays one until the reviewer touches it
+    if (v && v.ap && !(k in subs)) return false;
     const want = st === "drop" ? ["drop", "", ""]
       : ["ok", st === "edit" ? norm(v.text) : x.text, norm(subOf(k, x))];
     const have = APPLIED.ms[k];
