@@ -171,6 +171,12 @@ open items: [`mainsub_plan.md`](mainsub_plan.md); finished work goes to `reports
   positive.
 - `ok` or an edit confirms both boxes as they stand, the proposed sub included. Emptying the main
   box makes a sub-only row.
+- `mainsub_nolabel` lists the detector boxes with no label (no annotation inside, or an SFX cut
+  by the box), the main box holding hayai v2.7's read as a first pass. hayai answers on every
+  box: a crop with no text is emptied by the reviewer. Its exports go to `m109_mainsub.tsv`;
+  the loader does not train them yet.
+- A `mainsub_*` row shows hayai's read (one string, no line breaks); the `hayai disagrees` sort
+  lists the rows whose main it does not match, largest distance first.
 - The `has` filter lists rows by what the boxes hold (main only, sub only, both, partly visible
   text). The default `suspicion` sort puts `trim`, then partly visible text, first.
 - A row holding one `<text>` box with ruby starts from its furigana row's sub edits.
@@ -191,8 +197,11 @@ open items: [`mainsub_plan.md`](mainsub_plan.md); finished work goes to `reports
    python project/finished/ocr_reader/probes/ko_label_review.py --out ~/ko_label_review \
        --flags <ko_reads>_flags.parquet --doujin_reads <sfx>_cap4_sfx.jsonl \
        --ruby output/ocr/furigana/ruby_all_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
-       --mainsub output/ocr/mainsub/m109_mainsub.jsonl
+       --mainsub output/ocr/mainsub/m109_mainsub.jsonl --hayai output/ocr/hayai/hayai27_det.jsonl
    ```
+
+   As built 2026-11-24: `--flags output/ocr/eval/ko_reads_v7_flags.parquet` (`ko_read.py`, v7)
+   and `--doujin_reads output/ocr/eval/sfx_mainsub_1124_0151_cap4_ocr.jsonl`.
 
    Rebuilding the Manga109 proposals (after a change to the annotations, the ruby reads or
    `m109_mainsub.py`):
@@ -211,6 +220,11 @@ open items: [`mainsub_plan.md`](mainsub_plan.md); finished work goes to `reports
 - Merged blocks go.
 - `swaprelax_v5` was audited by agents and the user read every gelnote KO row: neither set is
   "unreviewed".
+- hayai-ocr v2.7 Supernova reads are allowed as first-pass labels (`probes/hayai_read.py`). Its
+  card lists AnimeText-derived training sets and an Apache-2.0 licence for the weights; the user,
+  2026-11-24: "hayai는 아파치 라이센스라고 하니 뭐 라이센스 이슈는 괜찮을듯 문제가 생기면 hayai가
+  알아서 하겠지". The rules under "Inherited" on `animetext-ocr` labels and AnimeText rows stand
+  for those sources themselves.
 - Which sources give `OCR2:` negatives is the user's call (`main-sub-approach.md` § Sources).
 - Mains waiting on a line-break proposal stay out of training; agents do not fill them.
 - Rows over the training cap (main > 150 normalized characters) are hidden on the page and

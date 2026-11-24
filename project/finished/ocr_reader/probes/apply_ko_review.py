@@ -19,7 +19,7 @@ so ``ok`` writes it too; a row matches when its text equals ``orig`` blind to wh
 dot glyphs). Each manifest
 is copied to ``<name>.pre_review.parquet`` once, before its first change.
 
-mainsub_det / mainsub_speech (``--mainsub`` sources) → ``assets/m109_mainsub.tsv``
+mainsub_det / mainsub_speech (``--mainsub`` sources) and mainsub_nolabel (``--hayai``) → ``assets/m109_mainsub.tsv``
 (source, id, status, main, sub; ``\\n`` escaped), one row per crop, replaced whole on each
 export: ``ok`` / ``edit`` (or a sub typed without either) → status ``ok`` with the main box
 (``orig`` = the proposal for ``ok``) and the sub (the exported one, ``-`` = none); ``drop`` →
@@ -58,7 +58,7 @@ TARGETS = {
     "furigana": ["sfxp_speech"],
 }
 DOUJIN = Path(__file__).resolve().parents[1] / "assets" / "sfx_labels_sincos_597.tsv"
-MAINSUB = {"mainsub_det", "mainsub_speech"}
+MAINSUB = {"mainsub_det", "mainsub_speech", "mainsub_nolabel"}
 APPLY_OK = {"linebreak_suspicious", "dots_suspicious", "odd_dots"}
 """Sources whose page text is a proposal, not the manifest's text: ``ok`` applies it."""
 
@@ -204,9 +204,7 @@ def write_marks(rv: pd.DataFrame, dry_run: bool) -> None:
     new = touched[touched.sfx == "1"].assign(
         text=lambda x: x.new.where(x.status == "edit", x.orig).str.replace("\n", "\\n")
     )[["source", "id", "text"]]
-    out = pd.concat(
-        [old[~key(old).isin(set(key(touched)))], new], ignore_index=True
-    )
+    out = pd.concat([old[~key(old).isin(set(key(touched)))], new], ignore_index=True)
     print(
         f"[sfx_marks] set {len(new)}, removed {int((touched.sfx == '0').sum())}; "
         f"file {len(old)} → {len(out)} rows"

@@ -30,6 +30,11 @@ leaves this file for a report.
 - Read the Manga109 test SFX rows that only `sfxpc_1121_0117` reads right (156 against 108 the
   other way, [report](reports/mainsub_1124_0151.md)) and the 11 non-empty `OCR2:` answers on the
   292 crops: not done.
+- The no-label boxes (`neg_other` 22,718, `drop` 2,678 train) are on the review page as
+  `mainsub_nolabel` with hayai v2.7's read as a first pass
+  ([report](reports/hayai_first_pass_2026_11_24.md)). Pending: `load_mainsub` reading the
+  reviewed ones (their crops are cut; the loader reads `manifest_sfxp_det_all` only), and the
+  val boxes (1,955 + 168, not on the page).
 - `AosugiruHaru_028_21`: the main `アハハハ` covers only part of the SFX (a `キ…` column beside
   it); no one has read the whole. Trains as proposed.
 - 141 speech mains held by the line-break agents (15+ characters: 76 label and crop differ, 9
@@ -65,5 +70,8 @@ leaves this file for a report.
 - [`mainsub_1124_0151.md`](reports/mainsub_1124_0151.md): the 2-epoch run (whole val main
   91.8 %, sub 54.7 %; doujin SFX 334 / 593, Manga109 test SFX 80.8 %, speech 89.0 %, K3 KO 30,
   ZH 33) against `sfxpc_1121_0117` and v6; shipped as Hub `v7/` (`59768fc6`).
+- [`hayai_first_pass_2026_11_24.md`](reports/hayai_first_pass_2026_11_24.md): hayai v2.7 over
+  all 164,090 detector boxes; 12,947 of the 122,853 main / sub rows differ from the main; the
+  25,396 no-label rows on the page.
 - [`mainsub_sfx_agents_2026_11_23.md`](reports/mainsub_sfx_agents_2026_11_23.md): the SFX-only
   check (190 / 2 / 8 of 200) and the agent subs of the 636 SFX crops with speech partly inside.

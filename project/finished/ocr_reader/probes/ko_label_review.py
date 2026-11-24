@@ -45,6 +45,16 @@ hito rows also show the twin crop (the other edition's lettering of the same reg
 its v4 read, and the read's mean token logprob (``prelabel_v4lp.jsonl``); they sort lowest
 logprob first by default.
 
+``--hayai`` (``hayai_read.py``'s reads of every detector box, hayai-ocr v2.7 Supernova): a
+``mainsub_*`` row shows the read under its meta line, and the ``hayai disagrees`` sort lists
+the rows whose main the read does not match (whitespace-blind, with ``exact_key``'s folds; a
+read equal to main + sub counts as a match), largest distance first. hayai reads a crop as
+one string with no line breaks, so it says nothing about a row's breaks. ``mainsub_nolabel``:
+the detector boxes with no label (``neg_other``: no annotation inside; ``drop``: an SFX cut
+partway; train), the main box holding hayai's read as a first pass; their crops are cut on
+the first build to ``crops_sfxp/det_nolabel/``. ``apply_ko_review.py`` writes these rows to
+``assets/m109_mainsub.tsv`` too; the training loader does not read them yet.
+
 A row whose main label is over the training cap (``crop_dataset.MAX_TARGET_CHARS``, which
 drops it) is not listed or counted (``mark_over_cap``); it stays in the page's data, so
 a state it holds still exports. ``doujin_sfx``, a gate, is not capped. Every other row is
@@ -76,13 +86,14 @@ import json
 import os
 import re
 import sys
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ocr"))
 import manga109 as m109  # noqa: E402
-from build_sfx_prefix import ellipsis_fold  # noqa: E402
+from build_sfx_prefix import ellipsis_fold, margin_box  # noqa: E402
 from crop_dataset import (  # noqa: E402
     MAX_TARGET_CHARS,
     break_proposals,
@@ -91,6 +102,7 @@ from crop_dataset import (  # noqa: E402
     waiting_break,
     with_breaks,
 )
+from textnorm import exact_key  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[4]
 GELNOTE = Path("/media/sorryhyun/new/dataset/gelnote_crops")
@@ -172,6 +184,7 @@ header .pager { margin:0; }
     <option value="lb">linebreak suspicious: proposed breaks, largest read distance first (mainsub)</option>
     <option value="furi">furigana: rows with a ruby proposal (mainsub)</option>
     <option value="furisus">furigana suspicious: most doubtful ruby first (mainsub)</option>
+    <option value="hy">hayai disagrees with the main, largest distance first (mainsub)</option>
     <option value="id">id</option><option value="todo">unreviewed first</option></select></label>
   <label>has <select id="has"><option value="">all</option><option value="main">main only</option>
     <option value="sub">sub only</option><option value="both">main + sub</option>
@@ -188,7 +201,7 @@ const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
                       "doujin_sfx": "__DOUJIN_SORT__",
-                      "mainsub_det": "sus", "mainsub_speech": "sus"};
+                      "mainsub_det": "sus", "mainsub_speech": "sus", "mainsub_nolabel": "id"};
 // mainsub rows carry paths relative to the Manga109 folder
 const M109 = __M109__;
 const url = (p) => !p || p.includes(":") ? p : M109 + p;
@@ -305,6 +318,7 @@ function rows() {
   else if (k === "lb") r = r.filter(x => x.lbs != null).sort((a, b) => b.lbs - a.lbs || a.id.localeCompare(b.id));
   else if (k === "furi") r = r.filter(x => x.rb).sort((a, b) => a.id.localeCompare(b.id));
   else if (k === "furisus") r = r.filter(x => x.rb).sort((a, b) => b.rsus - a.rsus || a.id.localeCompare(b.id));
+  else if (k === "hy") r = r.filter(x => x.hyd > 0).sort((a, b) => b.hyd - a.hyd || a.id.localeCompare(b.id));
   else if (k === "id") r = r.slice().sort((a, b) => a.id.localeCompare(b.id));
   else r = r.slice().sort((a, b) => !!store[s + ":" + a.id] - !!store[s + ":" + b.id]);
   // has: what the row's boxes hold now (a drop holds nothing)
@@ -344,6 +358,7 @@ function render() {
       <div class="orig">${marked(x.text, +minIn.value || 0)}</div>
       ${x.note ? `<div class="meta">${esc(x.note)}</div>` : ""}
       ${x.rd != null ? `<div class="meta">__READER__${x.rsfx ? " SFX:" : ""} (${x.conf.toFixed(2)})${x.rwhy ? " [" + x.rwhy + "]" : ""}: ${esc(x.rd || "—").replace(/\n/g, " ⏎ ")}${x.edge ? " · edge " + esc(x.edge) : ""}</div>` : ""}
+      ${x.hy != null ? `<div class="meta">hayai v2.7: ${esc(x.hy || "—")}</div>` : ""}
       ${x.twin_img ? `<div class="twin"><img loading="lazy" src="${x.twin_img}"><div class="meta">twin (${esc(x.twin_lang)}) v4: ${esc(x.twin || "—").replace(/\n/g, " ⏎ ")}</div></div>` : ""}
       ${x.ms ? `<div class="meta">main (OCR:) · the largest text</div>` : ""}
       <textarea class="mainta" rows="${Math.max(2, x.text.split("\n").length + 1)}"></textarea>
@@ -723,8 +738,82 @@ def doujin_rows(reads_path: Path | None) -> dict[str, list[dict]]:
     return {"doujin_sfx": rows}
 
 
+def hayai_reads(path: Path | None) -> dict[str, dict]:
+    """``hayai_read.py``'s JSON lines by box id (``<book>_<page>_<n>``)."""
+    if path is None or not path.exists():
+        return {}
+    return {x["id"]: x for x in map(json.loads, open(path, encoding="utf-8"))}
+
+
+def hayai_distance(read: str, main: str, sub: str) -> float:
+    """0 where hayai's read is the main, or the main and the sub's items in either order
+    (whitespace-blind, ``exact_key``'s folds); else 1 − the similarity to the main."""
+    h, m = exact_key(read), exact_key(main)
+    s = exact_key(sub)
+    if h in (m, m + s, s + m):
+        return 0.0
+    return round(1.0 - SequenceMatcher(None, h, m, autojunk=False).ratio(), 3) or 0.001
+
+
+def nolabel_rows(d: Path, hayai: dict[str, dict]) -> dict[str, list[dict]]:
+    """``mainsub_nolabel``: the train boxes ``m109_mainsub.py`` has no row for
+    (``neg_other`` / ``drop``), each with hayai's read in its main box. The crop is cut
+    with the training margin on the first build (``crops_sfxp/det_nolabel/train/``)."""
+    xs = [
+        x
+        for x in hayai.values()
+        if x["cat"] in ("neg_other", "drop") and x["split"] == "train" and x["read"]
+    ]
+    if not xs:
+        return {}
+    import cv2
+
+    base, out_dir = d.parent, d / "crops_sfxp" / "det_nolabel" / "train"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    xs.sort(key=lambda x: (x["book"], x["page"], x["id"]))
+    rows, cur, img, n_cut = [], None, None, 0
+    for x in xs:
+        f = out_dir / f"{x['id']}.png"
+        if not f.exists():
+            if cur != (x["book"], x["page"]):
+                cur = (x["book"], x["page"])
+                img = cv2.imread(str(m109.page_path(*cur)))
+            if img is None:
+                continue
+            H, W = img.shape[:2]
+            x0, y0, x1, y1 = margin_box(*x["box"], W, H)
+            cv2.imwrite(str(f), img[y0:y1, x0:x1])
+            n_cut += 1
+        t = x["read"]
+        rows.append(
+            dict(
+                id=x["id"],
+                text=t,
+                run=0,
+                sus=0.0,
+                why="",
+                lf=0,
+                len=len(t),
+                status=x["cat"],
+                note="no label: the main box holds hayai v2.7's read of the whole crop"
+                + (" · an SFX cut by the box" if x["cat"] == "drop" else ""),
+                sub="",
+                part=0,
+                ms=1,
+                img=os.path.relpath(f, base),
+                page=os.path.relpath(m109.page_path(x["book"], x["page"]), base),
+                box=x["box"],
+            )
+        )
+    print(f"[review] mainsub_nolabel: {len(rows)} rows ({n_cut} crops cut)", flush=True)
+    return {"mainsub_nolabel": rows}
+
+
 def mainsub_rows(
-    d: Path, path: Path | None, ruby: list[dict] | None = None
+    d: Path,
+    path: Path | None,
+    ruby: list[dict] | None = None,
+    hayai: dict[str, dict] | None = None,
 ) -> dict[str, list[dict]]:
     """``m109_mainsub.py``'s crops, one source each, every row. A crop holding
     ``<text>`` boxes the furigana source holds (``sp``) takes their ruby reads (the
@@ -796,6 +885,9 @@ def mainsub_rows(
                 if len(hits) == 1:
                     extra["fk"] = "furigana:" + hits[0]["id"]
                 n_rb += 1
+            if (hy := (hayai or {}).get(x["id"])) and hy["read"] is not None:
+                extra["hy"] = hy["read"]
+                extra["hyd"] = hayai_distance(hy["read"], extra.get("raw", main), sub)
             rows.append(
                 dict(
                     id=x["id"],
@@ -955,6 +1047,12 @@ def main():
         "their sub replaces the furigana prefill, the verdict leads the meta line",
     )
     ap.add_argument(
+        "--hayai",
+        type=Path,
+        help="hayai_read.py's output/ocr/hayai/<name>.jsonl: hayai's read per detector "
+        "box (shown on the mainsub rows; the main of the mainsub_nolabel rows)",
+    )
+    ap.add_argument(
         "--mainsub",
         type=Path,
         help="m109_mainsub.py's output/ocr/mainsub/m109_mainsub.jsonl: the Manga109 "
@@ -1019,7 +1117,9 @@ def main():
     # the furigana rows are not a source of their own: they head the mainsub sub
     # proposals (and their earlier sub edits carry over through ``fk``)
     fur = furigana_rows(d, a.ruby, a.ruby_fix).get("furigana")
-    data.update(mainsub_rows(d, a.mainsub, fur))
+    hayai = hayai_reads(a.hayai)
+    data.update(mainsub_rows(d, a.mainsub, fur, hayai))
+    data.update(nolabel_rows(d, hayai))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     applied = applied_state()
