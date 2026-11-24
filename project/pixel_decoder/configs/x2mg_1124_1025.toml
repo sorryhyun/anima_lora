@@ -12,7 +12,7 @@
 #   one stage holds the amp and another the stamp -> that mix goes to the user's sheets as a ship
 #   candidate, and a finer search (per layer, more α) is worth its tool. Every number moves
 #   together along α and in every stage -> the mix is a strength dial only; the pattern is not
-#   separable by stage, and x2_plan Open 3 (the unpaired discriminator) is next.
+#   separable by stage, and the unpaired discriminator (reports/x2_unpaired_2026_11_24.md) is next.
 # Records it rests on:
 #   - reports/x2_overlap_12k_2026_11_24.md: x2ovll on the same 32 renders, amp 0.603 / 0.620 of
 #     the chain's, stamp32 0.414 / 1.573, flat tokens patch / token border × 1.09 / × 1.19.

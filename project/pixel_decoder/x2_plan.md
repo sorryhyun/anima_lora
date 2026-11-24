@@ -1,232 +1,94 @@
 # ×2 output — plan
 
-- Done: `x2llgf1024_1122_1919` (GAN finetune 2k, 1024 crop, eager PE) from `x2bll_1122_1629`
-  (B only 12k). Design and step 1: [the report](reports/x2_b12k_gft2k_2026_11_22.md).
-- Done: `x2llgf512_1122_2209`, the same finetune at a 512 crop with the PE tower compiled
-  ("The crop, 1024 against 512", at the end).
-- The crop is settled at 512 (the user, 2026-11-22: "512가 훨씬 낫다고 적어두자"; README, Rules).
-- Done 2026-11-23: `x2dll_1123_1537` (B only 12k, DINO, from `x1dll_1123_0821`) and its GAN finish
-  `x2dgf512_1123_1701`, read on held-out sheets and 32 generated renders
-  ([report](reports/x2_dll_dgf_2026_11_23.md)). Every ×2 head writes token seams (border / within
-  first difference 1.23 – 1.28, chain 1.02).
-- Done 2026-11-23: `x2nz_1123_1920`, noise inputs on the GAN finish: level with `x2dgf512` on
-  every tile number, draw gap 0.08 – 0.09 levels ([report](reports/x2_noise_2026_11_23.md)).
-- Done 2026-11-23: `x2ov_1123_2012`, the overlapping output (16 × 16 patches at stride 8 under a
-  window) as a 2,000-rollout B finetune of `x2dll`: the patch and token steps are gone (flat
-  tokens × 0.99 / × 0.98, token edge ratio on textured tiles 0.96 / 1.10), sharpness level with
-  `x2dll`, 30.42 / 26.04 dB against 30.48 / 26.13 ([report](reports/x2_overlap_2026_11_23.md)).
-  It closes the seam item (the shifted double decode and the border term are dropped).
+What is waiting or ahead on the ×2 head. What was found: `README.md`, Findings, "×2 training".
+The records: `reports/README.md`. Tidied on 2026-11-24 (the user: "x2 plan이 좀 너저분하니까
+한번 쭉 정리하면서 돌아보자"); the 2026-11-22 sections went to
+[reports/x2_stamp_crop_2026_11_22.md](reports/x2_stamp_crop_2026_11_22.md), the comparison
+with the reference code to [reports/x2_slope_2026_11_24.md](reports/x2_slope_2026_11_24.md).
 
-## The ×2 form from here (2026-11-23)
+## Where the head stands
 
-- The user: "그럴거면 x2 자체를 stride 버전으로 하고, 거기에 gan을 얹는게 맞나? 뭐... 12k 학습을
-  해야하는지는 모르겠다만... 일단 이건 x2 plan으로 갱신하자".
-- The ×2 head's output is the overlapping one; the B head is trained with it and the GAN finish
-  goes on top of that head. `x2dll` / `x2dgf512` (the 8 × 8 output) stay as the references.
+- The form is the overlapping output (16 × 16 patches at stride 8 under a window), the B head
+  trained with it and the GAN finish on top (the user, 2026-11-23: "그럴거면 x2 자체를 stride
+  버전으로 하고, 거기에 gan을 얹는게 맞나?"). B head: `x2ovll_1124_0139`, 12,000 rollouts.
+- The GAN finishes of that head, on the 32 renders (amp = high-pass share of the chain's; the
+  tile column is `tile_dict.py`'s departed share on castle s0; held out against the real 2×
+  image, test / text):
 
-- The user (2026-11-24): "ovll로 하고 일단 원래 하던대로 gan finetune 4k 돌리자", then "5e-5 대신 2e-5로
-  걸어보자": `x2ovll_1124_0139` is the B head and `x2ovgf_1124_0920` its GAN finish.
-- Done 2026-11-24: `x2ovgf_1124_0920` (4,000 rollouts, LR 2e-5) and the mixes `x2mg_1124_1025`
-  ([report](reports/x2_ovgf_mix_2026_11_24.md)). On the 32 renders the finish reads at
-  `x2dgf512`'s amp (0.771 / 0.698 against 0.770 / 0.692) with the token border at × 1.08 against
-  × 1.37; held out 29.69 / 25.62 dB. `x2dgf512`'s head file was deleted on 2026-11-23; its
-  sheets (`x2gen_1123_1720`, local) remain.
-
-Open:
-
-1. Waiting on the user's read: `x2ovgf_1124_0920` as the ×2 ship candidate. Sheets (local, under
-   `bench/pixel_readout/results/20261124-1033-tex_x2mga_1124/`): `x2ovll` | `x2ovgf` of the 32
-   renders, `x2dgf512` | `x2ovgf` crops of candle, kotatsu and manga_page, and the α strips
-   `x2ovll` | 0.5 | `x2ovgf` | 1.5. The Hub ×2 file stays until that read.
-   The user's read of two regions (2026-11-24, in the record): the sharp line is the identity
-   of the upscale; the lines are distorted (in `x2ovll` too, sharper here) and the flat blue
-   carries a slight pattern. No ship decision given yet.
-2. An α under 1 as a sharpness setting, if the user reads `x2ovgf` as too grainy: the file is
-   written by `head_merge.py --alphas <α>` in seconds; the α strips show 0.5.
-3. Closed 2026-11-24: the unpaired discriminator, as a 1,000-rollout pair `x2gf1k_1124_1256`
-   (paired control) and `x2unp_1124_1256` ([record](reports/x2_unpaired_2026_11_24.md)). The
-   margin ends at 7.08 in both; the unpaired arm reads amp 0.675 / 0.672 against 0.723 / 0.688
-   with stamp32 0.583 / 2.428 against 0.607 / 2.800 and the same grid on flat colour. Pair
-   sheets wait on the user's read (local,
-   `bench/pixel_readout/results/20261124-1333-tex_x2unp_1124_1256/`).
-   `x2flat_1124_1341`, the control with no GAN gradient into the flat cells of the crop (the
-   user: "평탄한쪽은 gan을 빼는거 좋다"; same record): flat-token grain 0.37 against the control's
-   0.41 and `x2ovll`'s 0.23, the sky patch's 8-px fold 0.25 against 0.27 and 0.09, amp
-   unchanged; not passed. Proposed, not queued: a high-pass penalty on the pixels whose target
-   is flat, on `x2gf1k`'s recipe (18 min + the read).
-4. The noise inputs again with a nonzero init and their own LR, if 3 moves the margin: only then
-   does a loss reward the draw.
-5. `x2lora_1124_1113`, the GAN finish as a rank-8 LoRA on the frozen `x2ovll` (LR 2e-4, 1,000
-   rollouts; the user's settings), ran with its render read
-   ([record](reports/x2_ovgf_mix_2026_11_24.md)): amp 0.709 / 0.664, stamp32 0.688 / 2.100,
-   grain on flat tokens 0.36 (`x2ovgf` 0.771 / 0.698, 0.657 / 2.678, 0.39). Waiting on the
-   user's read of the pair sheets `x2ovgf` | `x2lora` (local,
-   `bench/pixel_readout/results/20261124-1136-tex_x2lorap_1124/`). Proposed, not queued: the
-   factor reads of `x2_idea.md` steps 2 – 4 (the read script is not written).
-   The LR arm `x2lora_1124_1151` (LR 1e-4, nothing else changed) ran with its read (same
-   record): amp 0.702 / 0.685, stamp32 0.631 / 2.766, grain 0.45; the update 0.41 – 0.74 of
-   `1113`'s size per layer, its cosine to the full finish's change +0.04 … +0.20. By its
-   config's rule the LR was not the cause. Waiting on the user's read of the pair sheets `1113`
-   | `1151` (local,
-   `bench/pixel_readout/results/20261124-1210-tex_x2lora_1124_1151/`). Proposed, not queued:
-   rank 64 with nothing else changed (18 min + the read), or the finish stays a full finetune.
-6. `x2r05_1124_1908`, the control `x2gf1k_1124_1256` with `pegan_ratio` 2.0 → 0.5 (the user:
-   "gan + dino(lpips) + mse 가 정석 upscaler잖아", "ㅇㅋ 1번 해보자"), ran with its read
-   ([record](reports/x2_ratio_2026_11_24.md)): amp 0.687 / 0.659 against the control's 0.723 /
-   0.688, stamp32 0.519 / 1.861 against 0.607 / 2.800, flat-token grain 0.29 against 0.41, the
-   sky patch's 8-px fold 0.15 against 0.27, margin 7.29 against 7.05. By its config's rule the
-   first outcome (under the α line at its amp). Waiting on the user's read of the pair sheets
-   control | arm (local,
-   `bench/pixel_readout/results/20261124-1931-tex_x2r05_1124_1908/`).
-   The 4,000-rollout finish `x2r05gf_1124_1941` (the user: "4k 먼저 돌려보자") ran with its
-   read (same record), against `x2ovgf_1124_0920`: amp 0.710 / 0.646 against 0.771 / 0.698,
-   stamp32 0.494 / 1.799 against 0.657 / 2.678, grain 0.29 against 0.39, the sky patch's 8-px
-   fold 0.11 against 0.32, held out 30.20 / 25.94 dB against 29.69 / 25.62, margin 7.53. By
-   its config's rule the first outcome on colour: the ×2 ship candidate in `x2ovgf`'s place,
-   waiting on the user's read of the pair sheets `x2ovgf` | arm (local,
-   `bench/pixel_readout/results/20261124-2049-tex_x2r05gf_1124_1941/`). The convolution tail
-   is not proposed while this holds.
-7. The reference code against this GAN term (2026-11-24; the user: "fastframes repo 한번
-   구경해볼래? 처음에 구현할때 이게 반영됐는진 모르겠다만"). Read:
-   `github.com/apple-aiml-research/ml-fastframes` at `a65c592`
-   (`fastframes/training/dinov3_discriminator.py`, `configs/ffs_decoder_gan.yaml`) and the
-   paper's §3.2 / App. C from its PDF. The paper gives λ_center 0.01, λ_slope 0.25, ε 0.01 on
-   25 % of the clips and "a cap" on the adversarial RGB gradient; the cap's value, the crop
-   and the slope's form are in the code only.
-
-   | | reference code | here (`PEDisc`, `_x2_trainer.py`) |
-   |---|---|---|
-   | R1 / R2 | 0.25 · mean(((D(x + εn) − D(x)) / ε)²), ε 0.01: 2,500 · Δ² | 0.1 · mean(Δ²), σ 0.01 |
-   | centring | 0.01 · mean((D(y) + D(ŷ))²) | none |
-   | generator weight | the adversarial RGB gradient capped per sample at 0.2 × the reconstruction's (mean abs); scaled down only | the gradient norm over the head set to `pegan_ratio` × the regression's (2.0; 0.5 in Open 6) |
-   | start | 25 discriminator-only updates, then the cap ramps over 250 | the term at its ratio from update 0 |
-   | tower | DINOv3 ViT-S/16, layers 4 / 8 / 12, ImageNet-normalised input | PE-Spatial-B16, blocks 3 / 7 / 11 |
-   | heads | LayerNorm, Linear 128, SiLU, Linear 1 per token | a convolutional head of width 256 per tap |
-   | crops per update | 16 of 224 px per GPU, 8 GPUs | 1 of 512 px |
-   | real crop | from real videos, another clip (the regression target is the VAE's decode) | the regression target at the same place |
-   | head LR / length | 1e-5, 20,000 updates | 2e-5, 16,000 – 64,000 updates |
-   | regression | L1, MSE, gradient (+ temporal, motion); no perceptual term | the same three + DINO 245.2 + dc |
-   | decoder | ConvNeXt blocks at the token grid, one linear 16 × 16 unpatchify | two upsample stages, the overlapping patch output |
-
-   Logged here: `d_r1` / `d_r2` 0.05 – 0.10 over a run (Δ about 0.2 – 0.3 logits for noise of
-   1.3 levels), margin 7.0 – 7.3 in every arm.
-   Claude's reading (not measured): the slope term here is 25,000 times lighter than the
-   reference's, so the discriminator is free to separate on sub-level high-frequency content,
-   which is the scale of the pattern on flat colour (0.3 – 0.5 levels) and of the grain; the
-   saturated margin fits it. The reference decoder has no convolution at pixel resolution, so
-   the tail of Open 6 is not what the reference relies on.
-   The user (2026-11-24, after `x2r05gf_1124_1941`'s read, with a screenshot of a dot grid on
-   a grey gradient; which head's sheet is not stated): "내생각에 slope 항을 2500으로 거는게
-   중요한것 같아. 문제가... 그 32픽셀 격자? 같은게 더 심해져서 slope를 거는게 맞을듯".
-   Queued on that: `x2slope_1124_2055`, `x2gf1k_1124_1256` with `pegan_r` 0.1 → 2500 (the
-   reference's slope term on this σ), nothing else changed, 18 min + the read; read by the
-   margin (under 7 or not) and by stamp32 (mono first) / grain / fold at its amp against the α
-   line. The cap at 0.2 in RGB space, the centring term and the DINO tower at 224 px are
-   later single changes.
-
-## A fixed pattern after the GAN finetune (2026-11-22)
-
-### Facts
-
-- The user (2026-11-22, on `x2llgf1024_1122_1919`'s sheets): "x2 gan은 뭔가 일정한 패턴이
-  생겨버리네 … 뭔가 그 애매한게 있어".
-- Measured on the training job's end sheets `<run>/<image>_full.png` (local; left half the 2×
-  original, right half the head), the mean of the three channels, 5 images:
-  - stamp: the head's high-pass (minus a Gaussian blur at σ 3 px) folded at 32 px (one DiT token
-    at ×2) and averaged over all tiles; the std of that 32 × 32 mean, 8-bit levels. On the
-    original of `test_00` the same measure reads 0.19 (0.06 at 8 px, 0.10 at 16 px).
-  - seam: in flat regions of the original (smoothed gradient under 1 level), the residual
-    head − original averaged per 8 × 8 cell; mean |difference| of horizontally adjacent cells
-    across a 32-px token border / within a token.
-
-  | image | stamp, `x2bll` | stamp, `x2llgf1024` | seam border / within, `x2bll` | `x2llgf1024` |
-  |---|---|---|---|---|
-  | `test_00_10153824` | 1.15 | 1.59 | 0.61 / 0.60 | 0.88 / 0.76 |
-  | `test_01_10808923` | 1.18 | 1.89 | 0.56 / 0.54 | 0.75 / 0.68 |
-  | `test_02_13340817` | 0.24 | 0.38 | 0.11 / 0.11 | 0.21 / 0.16 |
-  | `test_03_13351964` | 0.26 | 0.49 | 0.43 / 0.42 | 0.55 / 0.48 |
-  | `text_01_11318466` | 0.42 | 0.94 | 0.24 / 0.20 | 0.35 / 0.25 |
-
-- The two highest stamps are the two originals with a visible paper grain (`test_00`, `test_01`).
-- Claude's read (labelled; 1:1 crops of flat regions, original | head | difference × 4): on
-  `test_02`'s skin the difference shows square patches of about one token at a slight colour
-  offset; on `test_00`'s grain the difference is grain-like noise with no visible tile edge.
-- Spread unknown: no seed twin of either run.
-
-### Interpretation
-
-- Two patterns, of different causes.
-  1. Stamp: the same high-frequency texture in every token. Already in the B-only parent, raised
-     1.4 – 2.2× by the GAN. The grain the originals carry is random and mostly not in the latent;
-     the head has no source of randomness, so the texture that LPIPS and the GAN ask for can only
-     be a fixed function of position inside the token where the feature is flat.
-  2. Token seams: a per-token colour offset on flat regions. Absent in the parent (border = within),
-     present after the GAN.
-- A full-resolution refine stage after the output layer lets pixels on either side of a seam see
-  each other and can address 2. It is deterministic as well, so it can learn the stamp as easily
-  as the trunk; it does not address 1. On the alpha head the same stage (`rgbarf_1122_2110`,
-  reverted) left that head's patches as they were, a decision error rather than a seam
-  ([report](reports/rgba_refine_2026_11_22.md)); the ×2 seams are a colour offset, not shown to
-  be the same kind.
-
-### Proposal (not queued)
-
-- Noise injection: per-pixel Gaussian noise channels, a fresh draw per forward, fed into the last
-  ×2 stage (the up blocks), StyleGAN-style. With a refine stage written again for ×2.
-- Run: the GAN finetune 2k again from `x2bll_1122_1629`, everything else as
-  `x2llgf512_1122_2209` (the 512 crop). Cost about 50 min (2,000 rollouts at 1.54 s) plus the
-  new stage's.
-- Read: the stamp and seam numbers above on the same 5 sheets against both runs, and the sheets
-  side by side; the user's read decides. Bars: spread unknown.
-- What each answer leads to: stamp and seams down with grain kept → the form for the ×2 ship read.
-  Stamp down, seams kept → the seams are the trunk's, not the output layer's. Stamp kept → the
-  pattern does not come from missing randomness; look at the discriminator's crop phase
-  (interpolated PE positions at 1024).
-
-## The crop, 1024 against 512 (2026-11-22)
-
-### Facts
-
-- `x2llgf512_1122_2209` (job `20261122-220918-06c2f3`, rc 0, 2,000 rollouts) and the read
-  `x2sp_1122_2209` (`bench/pixel_readout/experiments/x2_stamp_phase.py`; local:
-  `bench/pixel_readout/results/20261122-2301-x2sp_1122_2209/`).
-- Against the real 2× image, test / text:
-
-  | run | dB | LPIPS | s per rollout | peak GB |
-  |---|---|---|---|---|
-  | `x2bll_1122_1629` (parent) | 30.55 / 26.16 | 0.137 / 0.134 | 0.78 | 9.1 |
-  | `x2llgf1024_1122_1919` | 29.63 / 25.42 | 0.178 / 0.181 | 3.73 | 13.8 |
-  | `x2llgf512_1122_2209` | 30.00 / 25.78 | 0.155 / 0.145 | 1.54 | 13.0 |
-
-- Stamp at 32 px and seam border / within, as `x2_stamp_phase.py` reads them on the end sheets:
-
-  | image | stamp parent | 1024 | 512 | seam parent | 1024 | 512 |
+  | head | what | amp, colour / mono | flat-token grain | sky patch, 8-px fold | tile, castle s0 | held out, dB |
   |---|---|---|---|---|---|---|
-  | `test_00_10153824` | 1.15 | 1.59 | 1.59 | 0.61 / 0.59 | 0.88 / 0.75 | 0.66 / 0.63 |
-  | `test_01_10808923` | 1.18 | 1.89 | 1.75 | 0.56 / 0.53 | 0.77 / 0.68 | 0.62 / 0.57 |
-  | `test_02_13340817` | 0.24 | 0.38 | 0.26 | 0.14 / 0.13 | 0.25 / 0.19 | 0.18 / 0.14 |
-  | `test_03_13351964` | 0.26 | 0.49 | 0.31 | 0.43 / 0.41 | 0.55 / 0.47 | 0.50 / 0.44 |
-  | `text_00_5847100` | 0.18 | 0.33 | 0.23 | 0.30 / 0.28 | 0.39 / 0.33 | 0.35 / 0.30 |
-  | `text_01_11318466` | 0.42 | 0.94 | 0.63 | 0.29 / 0.23 | 0.42 / 0.28 | 0.33 / 0.24 |
-  | `text_02_dan_5341366` | 0.26 | 0.49 | 0.38 | 0.25 / 0.23 | 0.33 / 0.28 | 0.30 / 0.25 |
-  | `text_03_12540050` | 0.48 | 0.70 | 0.53 | 0.26 / 0.22 | 0.40 / 0.27 | 0.31 / 0.23 |
-  | `text_04_10841155` | 0.45 | 0.99 | 0.77 | 0.55 / 0.54 | 0.72 / 0.66 | 0.62 / 0.57 |
+  | `x2ovll_1124_0139` | B head, no GAN | 0.603 / 0.620 | 0.23 | 0.09 | 0.002 | 30.45 / 26.11 |
+  | `x2ovgf_1124_0920` | ratio 2.0, 4,000 rollouts | 0.771 / 0.698 | 0.39 | 0.32 | 0.054 | 29.69 / 25.62 |
+  | `x2r05gf_1124_1941` | ratio 0.5, 4,000 | 0.710 / 0.646 | 0.29 | 0.11 | 0.003 | 30.20 / 25.94 |
+  | `x2r10gf_1125_0104` | ratio 1.0, 4,000 | 0.739 / 0.673 | 0.33 | 0.16 | 0.013 | 29.95 / 25.77 |
+  | `x2slope_1124_2055` | ratio 2.0 + slope term, 1,000 | 0.782 / 0.733 | 0.36 | 0.19 | 0.093 | 29.63 / 25.35 |
+  | `x2slr05_1124_2316` | ratio 0.5 + slope term, 1,000 | 0.754 / 0.718 | 0.33 | 0.14 | 0.066 | 29.81 / 25.49 |
+  | `x2slcap_1125_0011` | the same, the weight's cap lifted | 0.754 / 0.716 | 0.32 | 0.14 | 0.072 | 29.82 / 25.50 |
+  | `x2r200_1125_0036` | the same, slope term at 200 | 0.702 / 0.680 | 0.31 | 0.14 | 0.028 | 30.01 / 25.69 |
+  | `x2r05_1124_1908` | ratio 0.5, no slope term, 1,000 | 0.687 / 0.659 | 0.29 | 0.15 | 0.003 | 30.20 / 25.89 |
 
-- Stamp rise over the parent on `test_02` / `test_03` / `text_01`: 512 crop +0.02 / +0.05 /
-  +0.21; 1024 crop +0.14 / +0.23 / +0.52; the 512-crop finetunes of `x2b4k` +0.02 – 0.03 /
-  +0.05 – 0.06 / +0.11 – 0.25 (the config header's record).
-- PE phase, d(run) / d(parent) at the last tap, the highest ratio off the 16-px grid minus the
-  lowest on it, over the 9 images: 1024 crop +0.06 … +0.16, 512 crop +0.00 … +0.06.
-- The user (2026-11-22, on these numbers): "512가 훨씬 낫다고 적어두자". The README's crop rule
-  now reads 512.
-- Sheets: `output/pixel_head/x2llgf512_1122_2209/*_crop.png` (local). Spread unknown: no seed
-  twin.
+- No ship candidate. `x2r05gf_1124_1941` has the best balance so far and is not enough to ship
+  (the user's read, below). The Hub ×2 file stays.
+- The user's reads so far:
+  - of `x2ovgf_1124_0920`, two regions ([record](reports/x2_ovgf_mix_2026_11_24.md)): the
+    sharp line is the identity of the upscale; the lines are distorted (in `x2ovll` too,
+    sharper here) and the flat blue carries a slight pattern.
+  - of the PE-GAN term (2026-11-24): "선명함을 확실히 주는게 꾸준히 보였으니 ㅇㅋ". It stays.
+  - of `x2slope_1124_2055`: "가능성은 있어 보이는데 03 s0 의 경우는 좀...".
+  - of `x2r05gf_1124_1941` (2026-11-24): "r05gf가 제일 무난하긴 했지만 배포후보로까진 아쉬워 그래도 여태까지중에 제일 밸런스는 좋아".
+  - of `x2r05gf_1124_1941` | `x2r10gf_1125_0104` (2026-11-25): "사실상 둘이 동률이다".
+- Three patterns are open, each with its own source (README, "×2 training", the last items):
+  1. The token tile on halftone and the breaks in lines: the B head's. No GAN setting removed
+     them.
+  2. The 8-px grid on flat colour: the GAN finish's. Lower at ratio 0.5 and with the slope
+     term.
+  3. The token tile on fine colour texture (castle, neon_rain): the GAN finish's. Near zero at
+     ratio 0.5, higher with the slope term at either ratio.
 
-### Interpretation
+## Waiting on the user's read
 
-- By the rule in `archive/configs/x2llgf512_1122_2209.toml` (local): the 512 crop's stamp rise is inside the
-  earlier 512 runs' and its off-grid penalty is small, so the 1024 crop raised the fixed pattern
-  and costs 2.4× the time.
-- On the two grainy originals (`test_00`, `test_01`) the stamp is as high at 512 as at 1024:
-  the crop does not explain that part, and the noise-injection proposal above still stands
-  for it.
+Labelled pair sheets of the 32 renders, local, under `bench/pixel_readout/results/`:
+
+| pair | folder | what it decides |
+|---|---|---|
+| `x2slcap` \| `x2r200` | `20261125-0056-tex_x2r200_1125_0036/pairs_x2slcap_1125_0011_x2r200_1125_0036/` | slope weight 2500 against 200 at ratio 0.5 |
+| `x2slope` \| `x2slr05` | `20261124-2336-tex_x2slr05_1124_2316/pairs_x2slope_1124_2055_x2slr05_1124_2316/` | ratio 2.0 against 0.5 under the slope term |
+
+The pair sheets of the closed arms (unpaired, flat-cell cut, the LoRA finishes, the 1,000-rollout
+ratio and slope arms) are named in their records.
+
+## Next
+
+1. Nothing queued; the next step is the user's call. `x2r10gf_1125_0104` (`x2r05gf_1124_1941`
+   at ratio 1.0, the user's pick; [record](reports/x2_ratio_2026_11_24.md)) read half of the
+   amp between ratio 0.5 and 2.0 (0.739 / 0.673) with a fifth to a quarter of the castle tile
+   and the flat-colour fold; the user's read of the pair: "사실상 둘이 동률이다".
+2. The settings of this GAN term are read through: ratio (2.0, 0.5), slope
+   weight (0.1, 200, 2500), the weight's cap, the pairing and the tower each move along one
+   line where more amp comes with more of a token-locked pattern
+   ([record](reports/x2_slope_2026_11_24.md), the last section). `x2r200_1125_0036` (the
+   user's value, "ㅇㅋ 200으로 가자") read between the two ends: castle s0 0.028, amp 0.702 /
+   0.680, the sky patch's fold 0.14, margin 1.28. The next step is the user's call; what
+   Claude would propose is in the chat record of 2026-11-25 and is not a plan item until
+   the user takes one.
+
+## Parked, no step proposed
+
+- The DINOv3 discriminator (`DinoDisc`, `pegan_tower = "dino"`): closed by the user
+  (2026-11-25: "아냐 dino는 그냥 취소하자 그냥 안좋아") after `x2dino_1124_2348` (margin 0.012,
+  the weight cut at a twentieth of the ratio, the head where its parent is) and 102 rollouts
+  of `x2dinocap_1125_0007` ([record](reports/x2_slope_2026_11_24.md)).
+
+- The reference's cap on the adversarial gradient, per sample at the RGB output: the other
+  difference from the reference not tried. After Next 1.
+- An α under 1 of a finish as a sharpness setting: `head_merge.py --alphas <α>` writes the file
+  in seconds ([record](reports/x2_ovgf_mix_2026_11_24.md)). A strength setting only; no α
+  separates sharpness from the pattern.
+- The noise inputs with a nonzero init and their own LR: they were waiting on an arm that moves
+  the discriminator's margin. The slope term does (0.17 – 0.19 against 7); not proposed while
+  the tile on fine texture is open.
+- The GAN finish as a LoRA (`x2_idea.md`): rank 8 at two LRs ran; rank 64 and the factor reads
+  of its steps 2 – 4 are not proposed. The finish stays a full finetune.
+- A convolution tail at pixel resolution: the reference decoder has none; not proposed.
+- A high-pass penalty on the pixels whose target is flat: the user read that direction as
+  "애매"; dropped.

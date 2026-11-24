@@ -5,7 +5,7 @@
 #   pegan_r * mean((D(x + sigma n) - D(x))^2); the reference code
 #   (github.com/apple-aiml-research/ml-fastframes at a65c592, dinov3_discriminator.py) has
 #   0.25 * mean(((D(x + eps n) - D(x)) / eps)^2) at eps 0.01, which is 2,500 on the same
-#   difference. x2_plan.md, Open 7.
+#   difference. reports/x2_slope_2026_11_24.md.
 # The user (2026-11-24): "내생각에 slope 항을 2500으로 거는게 중요한것 같아. 문제가... 그 32픽셀
 #   격자? 같은게 더 심해져서 slope를 거는게 맞을듯" (with a screenshot of a dot grid on a grey
 #   gradient).
@@ -25,7 +25,7 @@
 #     0.28 / 0.09.
 #   - reports/x2_ratio_2026_11_24.md: d_r1 / d_r2 0.03 - 0.10 over a run at pegan_r 0.1 (the
 #     logit moves 0.2 - 0.3 for noise of 1.3 levels); margin 7.0 - 7.5 at ratio 2.0 and 0.5.
-#   - x2_plan.md, Open 7: the table of differences from the reference code.
+#   - reports/x2_slope_2026_11_24.md: the table of differences from the reference code.
 # Not known before the run: whether PE's frozen tower in bf16 leaves a rounding floor under
 #   the difference that the heads can only lower by flattening every logit (the reference runs
 #   its DINO tower in bf16 as well); the slope term here acts on the one crop of each update,

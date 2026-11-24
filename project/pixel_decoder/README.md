@@ -70,9 +70,11 @@ There is no linear skip from f. Output layers run in fp32. A ×2 file has no ×1
   (`bench/pixel_readout/experiments/disc_backbone_probe.py`, `discprobe_1123_1108`).
 - Paired relativistic loss on the output and the real image at the same place:
   L_D = softplus(−(D(real) − D(fake))), L_G = softplus(−(D(fake) − D(real))).
-- R1 / R2 in noise-perturbation form: 0.1 · mean((D(x + σε) − D(x))²), σ 0.01. LR 1e-4.
+- R1 / R2 in noise-perturbation form: `pegan_r` · mean((D(x + σε) − D(x))²), σ 0.01, `pegan_r`
+  0.1 by default (2,500 is the reference code's slope term). LR 1e-4.
 - Generator weight, set once per rollout on one replay sample:
-  λ = ratio · ‖∇ regression‖ / ‖∇ L_G‖ over the head, at most 1.0.
+  λ = ratio · ‖∇ regression‖ / ‖∇ L_G‖ over the head, at most 1.0 (logged as `lam_pegan`; before
+  the limit as `lam_pegan_raw`).
 - ×1 finish: original-image samples only, the whole image. ×2: a 512-px crop of the 2× output.
 
 ## Findings
@@ -146,7 +148,7 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   0.134): at 1024 px 29.63 / 25.42, 0.178 / 0.181, 3.73 s per rollout; at 512 px 30.00 / 25.78,
   0.155 / 0.145, 1.54 s. Stamp rise over the parent on three images: 1024 +0.14 / +0.23 / +0.52,
   512 +0.02 / +0.05 / +0.21; on the two grainy originals the stamp is 1.59 / 1.89 at 1024 and
-  1.59 / 1.75 at 512. The user: "512가 훨씬 낫다" ([record](x2_plan.md)).
+  1.59 / 1.75 at 512. The user: "512가 훨씬 낫다" ([record](reports/x2_stamp_crop_2026_11_22.md)).
 - Noise inputs on the GAN finish (64 Gaussian channels per position before each second-stage
   block, zero-init): two decodes of one input differ by 0.08 – 0.09 levels at the end, after 0.14 –
   0.16 at rollout 500; tile numbers and dB level with the finish without them
@@ -173,6 +175,36 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
 - The same change cut by singular directions: the top 8 per matrix (13 – 37 % of its energy)
   give amp 0.829 with stamp32 1.188 and a first difference on flat tokens of 0.91 levels; the
   rest 0.632, 1.695 and 1.94; the whole finish 0.771, 0.657 and 0.39 (same record).
+- The discriminator's real crop taken from another replay window (unpaired), 1,000 rollouts:
+  the margin ends at 7.08 as in the paired control, amp 0.675 / 0.672 against 0.723 / 0.688,
+  the same grid on flat colour ([record](reports/x2_unpaired_2026_11_24.md)).
+- No GAN gradient into the crop's flat-target cells (28 % of it): flat-token grain 0.37 against
+  the control's 0.41 and the parent's 0.23. The pattern on flat colour arrives through the
+  shared weights (same record).
+- The finish as a rank-8 LoRA on the frozen parent: amp 0.709 / 0.664 with stamp32 0.688 / 2.100
+  at LR 2e-4, 0.702 / 0.685 with 0.631 / 2.766 at 1e-4 (the full finetune at 1,000 rollouts
+  0.723 / 0.688 with 0.607 / 2.800) ([record](reports/x2_ovgf_mix_2026_11_24.md)).
+- The ratio is the finish's strength setting; LR and length are not. At ratio 0.5 against 2.0,
+  4,000 rollouts: amp 0.710 / 0.646 against 0.771 / 0.698, flat-token grain 0.29 against 0.39,
+  the sky patch's 8-px fold 0.11 against 0.32, the tile share on castle s0 0.003 against 0.054,
+  held out 30.20 / 25.94 dB against 29.69 / 25.62. The margin ends at 7.0 – 7.5 in every arm
+  without a slope term ([record](reports/x2_ratio_2026_11_24.md)).
+- The reference code's GAN term differs from this one in the slope term (2,500 · Δ² against
+  0.1 · Δ²), the cap on the adversarial gradient (per sample at the RGB output, 0.2 of the
+  reconstruction's), the tower and crops (DINOv3 ViT-S/16, 16 crops of 224 px) and the real
+  crop (unpaired) ([record](reports/x2_slope_2026_11_24.md)).
+- With the slope term at 2,500 the margin stays at 0.17 – 0.19 over 1,000 rollouts and the
+  generator weight sits at its 1.0 limit for much of the run. Flat colour and halftone read
+  under the control's (8-px fold 0.19 against 0.27, the halftone box's 32-px fold 13.38 against
+  22.35) with amp over it (0.782 / 0.733 against 0.723 / 0.688); the token tile on fine colour
+  texture rises (castle s0 0.093 against 0.024; the user's read) and stays at ratio 0.5 (0.066,
+  where ratio 0.5 without the term reads 0.003) (same record).
+- Three patterns, by source. The token tile on halftone (manga_page s1: 0.40 of the textured
+  tiles on the B head, 0.39 – 0.46 after any finish) and the breaks in lines are the B head's.
+  The 8-px grid on flat colour and the token tile on fine colour texture (0.002 on the B head's
+  castle s0) are the GAN finish's. The whole-image stamp32 does not follow the halftone tile;
+  the fold of a halftone box and the departed share do
+  ([records](reports/x2_ratio_2026_11_24.md)).
 - The discriminator's margin on held-out heads is 6.33 against a null of 0.05
   ([record](archive/x2_disc_probes_2026_11_21.md), local). In training it stays at 5.9 – 7.3 after
   its rise ([record](reports/x2_full_run_deploy_2026_11_21.md)).

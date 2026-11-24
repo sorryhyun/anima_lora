@@ -76,11 +76,13 @@ class X2TrainRequest(Request):
     pegan_start: int = 1000
     pegan_lambda_max: float = 1.0
     pegan_crop: int = 512
+    pegan_crops: int = 1  # crops per update
     pegan_unpaired: bool = False  # the real crop from another replay window
     pegan_flat_level: float = 0.0  # > 0: no GAN gradient into flat-target cells
     seed: int = 0
     # the discriminator
-    pegan_layers: str = "3,7,11"  # PE blocks tapped, 0-based
+    pegan_tower: str = "pe"  # pe (PE-Spatial-B16, conv heads) | dino (DinoDisc)
+    pegan_layers: str = "3,7,11"  # the tower's blocks tapped, 0-based
     pegan_lr: float = 1e-4
     pegan_r: float = 0.1
     pegan_r_sigma: float = 0.01
@@ -114,6 +116,7 @@ def run(req: X2TrainRequest) -> Path:
     from scripts.pixel_head.train._common import (
         DinoFeat,
         DiTRollout,
+        DinoDisc,
         PEDisc,
         densest_window,
         pair_sheet,
@@ -205,8 +208,22 @@ def run(req: X2TrainRequest) -> Path:
             "trainable, the head frozen",
             flush=True,
         )
+    dn = DinoFeat(device, req.dino, compile=req.compile)
     disc = None
-    if cfg.pegan_ratio > 0:
+    assert req.pegan_tower in ("pe", "dino"), req.pegan_tower
+    if cfg.pegan_ratio > 0 and req.pegan_tower == "dino":
+        from transformers import AutoModel
+
+        disc = DinoDisc(  # the reference's tower, DINOv3 ViT-S/16, its own copy
+            device,
+            AutoModel.from_pretrained(DINO_REPO),
+            layers=tuple(int(v) for v in req.pegan_layers.split(",")),
+            lr=req.pegan_lr,
+            r_weight=req.pegan_r,
+            r_sigma=req.pegan_r_sigma,
+            compile=req.compile,
+        )
+    elif cfg.pegan_ratio > 0:
         disc = PEDisc(
             device,
             layers=tuple(int(v) for v in req.pegan_layers.split(",")),
@@ -215,7 +232,6 @@ def run(req: X2TrainRequest) -> Path:
             r_sigma=req.pegan_r_sigma,
             compile=req.compile,  # one crop size: a graph per batch size (1 and 2)
         )
-    dn = DinoFeat(device, req.dino, compile=req.compile)
     trainer = X2Trainer(head, cfg, dino=dn, disc=disc, compile=req.compile)
 
     # --- held-out: whole-image features and the real 2× image, kept on the CPU ---
@@ -295,6 +311,7 @@ def run(req: X2TrainRequest) -> Path:
         "pegan_ratio": req.pegan_ratio,
         "pegan_start": req.pegan_start,
         **({"pegan_unpaired": 1} if req.pegan_unpaired else {}),
+        **({"pegan_tower": req.pegan_tower} if req.pegan_tower != "pe" else {}),
         **({"pegan_flat_level": req.pegan_flat_level} if req.pegan_flat_level else {}),
         "rollouts": req.rollouts,
         "run": req.output_name,
@@ -344,7 +361,8 @@ def run(req: X2TrainRequest) -> Path:
             win = pick_window(*f.shape[:2], cfg.window, cfg.margin, win_rng)
             trainer.push(f, lat, real2(item, px.result(), f), win)
             if r == cfg.pegan_start and disc is not None:
-                print(f"PE-GAN term on from rollout {r}", flush=True)
+                tower = "DINOv3" if req.pegan_tower == "dino" else "PE"
+                print(f"GAN term ({tower} tower) on from rollout {r}", flush=True)
             for k, v in trainer.update(r).items():
                 ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
             done = r + 1

@@ -1,13 +1,13 @@
 # x2 B only with the overlapping output from the start: x2dll_1123_1537 with overlap false -> true
 #   (out2 writes 16x16 patches at stride 8 under a sin^2 window, a fresh layer on the x1 init),
 #   nothing else changed (init x1dll_1123_0821, 12,000 rollouts, lr 5e-5, DINO 245.2, no GAN,
-#   seed 0, the x2flex data). x2_plan.md, Open 2.
+#   seed 0, the x2flex data). reports/x2_overlap_12k_2026_11_24.md.
 # The user (2026-11-24): "x2 12k run (아마 블록 제거하는 방법 썼던거같은데) b only 큐 넣자". No GAN
 #   finish is queued behind it.
 # Question: which B head is the parent of the GAN finish and the x2 ship read, this one or
 #   x2ov_1123_2012 (x2dll's trunk, out2 converted, 2,000 more rollouts)? Level or better than
 #   x2ov on the DINO distance and the user's read, with the flat-token border ratios still near
-#   1.0 -> this head is the x2 B head and the GAN finish (Open 1) resumes from it. Softer or the
+#   1.0 -> this head is the x2 B head and the GAN finish resumes from it. Softer or the
 #   steps back -> x2ov stays the parent.
 # Records it rests on:
 #   - x2dll_1123_1537 (the 8x8 output, same recipe): held out 30.48 / 26.13 dB, DINO 2.49 / 2.72

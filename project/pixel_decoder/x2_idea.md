@@ -80,5 +80,5 @@ What each outcome leads to: a low-rank finish with its own balance → a full-le
 rank, and the LoRA as a possible form of the sharp file (a multiplier in place of a second
 file; the form is the user's call). Sharp but off balance like the cut → rank 64, or the
 finish stays a full finetune and step 6 is dropped. Neither stamp nor the fixed tile on halftone
-is expected to go by rank alone; the unpaired discriminator (`x2_plan.md`, Open 3) is the step
+is expected to go by rank alone; the unpaired discriminator (`reports/x2_unpaired_2026_11_24.md`) is the step
 aimed at them.

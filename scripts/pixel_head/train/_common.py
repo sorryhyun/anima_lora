@@ -452,6 +452,135 @@ class PEDisc:
         }
 
 
+class MlpTokenHead(nn.Module):
+    """(B, N, C) tokens → (B, N) logits, each token alone: LayerNorm, Linear, SiLU,
+    Linear (the reference code's head, ``ml-fastframes`` ``dinov3_discriminator.py``)."""
+
+    def __init__(self, in_ch: int, width: int = 128):
+        super().__init__()
+        self.norm = nn.LayerNorm(in_ch)
+        self.inp = nn.Linear(in_ch, width)
+        self.out = nn.Linear(width, 1)
+        nn.init.normal_(self.inp.weight, std=0.02)
+        nn.init.zeros_(self.inp.bias)
+        nn.init.normal_(self.out.weight, std=0.01)
+        nn.init.zeros_(self.out.bias)
+
+    def forward(self, tok: torch.Tensor) -> torch.Tensor:
+        return self.out(F.silu(self.inp(self.norm(tok.float())))).squeeze(-1)
+
+
+class DinoDisc:
+    """The discriminator in the reference code's form (``ml-fastframes`` at a65c592,
+    ``dinov3_discriminator.py``, its spatial heads): a frozen DINOv3 ViT-S/16, the patch
+    tokens after each block of ``layers`` scored by an ``MlpTokenHead``, on a batch of
+    small crops (the reference: 16 of 224 px) in [-1, 1].
+
+    Same calls as ``PEDisc``. The paired relativistic loss per token, plus
+    ``center · mean((D(real) + D(fake))²)`` and the slope terms
+    ``r_weight · mean((D(x + σε) − D(x))²)`` on ``r_fraction`` of the crops
+    (``r_weight`` 2500 at σ 0.01 is the reference's 0.25 · mean((Δ / ε)²))."""
+
+    def __init__(
+        self,
+        device,
+        net: nn.Module,
+        layers: tuple[int, ...] = (3, 7, 11),
+        width: int = 128,
+        lr: float = 1e-4,
+        r_weight: float = 2500.0,
+        r_sigma: float = 0.01,
+        r_fraction: float = 0.25,
+        center: float = 0.01,
+        compile: bool = False,
+    ):
+        self.device = device
+        self.net = net.to(device).eval().requires_grad_(False)
+        cfg = self.net.config
+        assert cfg.model_type == "dinov3_vit", cfg.model_type
+        assert max(layers) < cfg.num_hidden_layers, (layers, cfg.num_hidden_layers)
+        self.patch = cfg.patch_size
+        self.skip = 1 + cfg.num_register_tokens  # CLS and registers lead the sequence
+        self.layers = tuple(layers)
+        self.r_weight, self.r_sigma, self.r_fraction = r_weight, r_sigma, r_fraction
+        self.center = center
+        self.mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        self.std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+        self.heads = nn.ModuleList(
+            MlpTokenHead(cfg.hidden_size, width) for _ in self.layers
+        ).to(device)
+        self.opt = torch.optim.AdamW(
+            self.heads.parameters(), lr=lr, betas=(0.0, 0.99), weight_decay=0.0
+        )
+        self._rng = torch.Generator(device="cpu").manual_seed(0)  # the slope subset
+        self._stash: tuple | None = None
+        self._taps_c = torch.compile(self._taps_raw) if compile else self._taps_raw
+
+    def _taps_raw(self, x: torch.Tensor) -> list[torch.Tensor]:
+        x = ((x + 1) / 2 - self.mean) / self.std
+        hs = self.net(pixel_values=x, output_hidden_states=True).hidden_states
+        return [hs[i + 1][:, self.skip :] for i in self.layers]  # hs[0]: the input side
+
+    def taps(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """(B, 3, c, c) in [-1, 1] → the patch tokens after each tapped block."""
+        assert x.shape[-1] % self.patch == 0 and x.shape[-2] % self.patch == 0, x.shape
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            return self._taps_c(x)
+
+    def heads_on(self, taps: list[torch.Tensor]) -> torch.Tensor:
+        return torch.cat([head(tok) for tok, head in zip(taps, self.heads)], 1)
+
+    def logits(self, x: torch.Tensor) -> torch.Tensor:
+        """(B, 3, c, c) in [-1, 1] → (B, n_heads · tokens) logits."""
+        return self.heads_on(self.taps(x))
+
+    def gen_term(self, fake: torch.Tensor, real: torch.Tensor) -> torch.Tensor:
+        self.heads.requires_grad_(False)
+        tf = self.taps(fake)
+        lf = self.heads_on(tf)
+        with torch.no_grad():
+            tr = self.taps(real)
+            lr_ = self.heads_on(tr)
+        self.heads.requires_grad_(True)
+        self._stash = (fake.detach(), real.detach(), [t.detach() for t in tf], tr)
+        return F.softplus(-(lf - lr_)).mean()
+
+    def step(self) -> dict[str, float]:
+        assert self._stash is not None, "gen_term before step"
+        fake, real, tf, tr = self._stash
+        self.opt.zero_grad(set_to_none=True)
+        lr_, lf = self.heads_on(tr), self.heads_on(tf)  # the tower is frozen
+        d = F.softplus(-(lr_ - lf)).mean()
+        cen = (lr_ + lf).pow(2).mean()
+        loss = d + self.center * cen
+        r1 = r2 = torch.zeros((), device=fake.device)
+        if self.r_weight > 0:
+            nb = real.shape[0]
+            k = min(max(round(nb * self.r_fraction), 1), nb)
+            idx = torch.randperm(nb, generator=self._rng)[:k].to(real.device)
+            rs, fs = real[idx], fake[idx]
+            xn = torch.cat(
+                [
+                    rs + self.r_sigma * torch.randn_like(rs),
+                    fs + self.r_sigma * torch.randn_like(fs),
+                ]
+            )
+            ln = self.logits(xn)
+            r1 = (ln[:k] - lr_[idx]).pow(2).mean()
+            r2 = (ln[k:] - lf[idx]).pow(2).mean()
+            loss = loss + self.r_weight * (r1 + r2)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.heads.parameters(), 1.0)
+        self.opt.step()
+        return {
+            "d_loss": d.item(),
+            "d_margin": (lr_ - lf).mean().item(),
+            "d_r1": r1.item(),
+            "d_r2": r2.item(),
+            "d_center": cen.item(),
+        }
+
+
 # --------------------------------------------------------------------------- schedule
 
 

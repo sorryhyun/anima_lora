@@ -1,0 +1,53 @@
+# x2 GAN finish, the PE discriminator with the slope term and the weight's cap lifted:
+#   x2slr05_1124_2316 with pegan_lambda_max 1.0 -> 100, nothing else changed (resume
+#   x2ovll_1124_0139, 1,000 rollouts on one cosine, LR 2e-5, window 32 on manifest_w32, DINOv3
+#   ViT-S/16 feature term at 245.2, PE-Spatial-B16 discriminator on one 512 crop, pegan_r 2500,
+#   sigma 0.01, disc LR 1e-4, pegan_ratio 0.5 from rollout 0, seed 0).
+# The user (2026-11-25): "그래 arm 상한 풀기로 가자 dino가 좋으면 dino로 가고, 아니면 pe gan을
+#   상한풀기로", then on the DINOv3 arms: "아냐 dino는 그냥 취소하자 그냥 안좋아".
+# Question: does the ratio 0.5 held over the whole run (x2slr05's weight was cut on part of
+#   rollouts 50 - 500) change what the slope-term finish writes? castle s0 / s1 departed and
+#   amp within about 0.01 of x2slr05's 0.066 / 0.076 and 0.754 / 0.718 -> the cap was not what
+#   shaped that arm; the slope term on PE is read as it stands (the tile on fine colour
+#   texture comes with it) and the next change is the user's call (pegan_r between 0.1 and
+#   2500, or the reference's cap at the RGB output). castle departed up with amp -> the
+#   tile follows the push under the slope term as well; a ratio under 0.5 is the dial.
+#   castle departed down -> the cut first half was part of the tile; read the weight's
+#   course.
+# Records it rests on:
+#   - reports/x2_slope_2026_11_24.md: x2slr05's lam_pegan_raw read 1.87 / 1.31 / 1.78 over
+#     rollouts 50 - 149 / 150 - 299 / 300 - 499 and 0.73 / 0.57 after, so the cap cut the
+#     weight by up to a half in the first half and not at all in the second; castle s0 / s1
+#     departed 0.066 / 0.076, neon_rain s0 0.061, amp 0.754 / 0.718, stamp32 0.591 / 2.715,
+#     flat-token grain 0.33, sky patch 0.35 / 8-px fold 0.14, held out 29.81 / 25.49 dB.
+# Expected before the run (Claude's estimate): a small difference from x2slr05, since only
+#   the first half's weight changes and by under a factor of two. Spread unknown, so a gap of
+#   that size cannot be told from a rerun's.
+# Read: lam_pegan_raw and the margin beside x2slr05's; evals; castle s0 / s1 and neon_rain s0
+#   first (tile_dict.py's departed share, 1:1 crops), p3_generated.py --x2 on the 32 renders
+#   with x2slr05 | this arm, sheet_texture.py --x2 --pairs, the sky patch and the halftone box
+#   (the boxes of reports/x2_ratio_2026_11_24.md); labelled pair sheets; the user's read
+#   decides.
+# Bars: spread unknown; no twin of a 1,000-rollout finish.
+# Cost: 1,000 rollouts at about 1.0 s: about 18 min, + a 5-min render read.
+# make daemon-run ARGS="--queue --stall-timeout 900 scripts/pixel_head/train_x2.py --config <this file>"
+
+output_name = "x2slcap_1125_0011"
+resume = "output/pixel_head/x2ovll_1124_0139/head_x2.safetensors"
+x2flex = "post_image_dataset/x2flex/manifest_w32.json"
+rollouts = 1000
+lr = 2e-5
+eval_every = 500
+window = 32
+overlap = true
+
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 245.2
+dino_tiles = 4
+
+pegan_crop = 512
+pegan_ratio = 0.5
+pegan_lambda_max = 100.0
+pegan_start = 0
+pegan_r = 2500.0
+seed = 0

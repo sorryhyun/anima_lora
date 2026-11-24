@@ -1,6 +1,6 @@
 # x2 GAN finish with an unpaired discriminator: x2gf1k_1124_1256 with pegan_unpaired false ->
 #   true, nothing else changed (the real 512 crop is cut from another replay window at a place of
-#   its own; the window and the fake crop's place are drawn as in the control). x2_plan.md, Open 3.
+#   its own; the window and the fake crop's place are drawn as in the control). reports/x2_unpaired_2026_11_24.md.
 #   It leaves the paper's paired form.
 # The user (2026-11-24): "근데 다른 샘플에서 크롭을 뽑는건 … 판별기가 약간 집착? 이 생기지 않게?", then
 #   "unpaired로 해볼만은 한것같아" and "뭐 ㅇㅋ 그러자".
@@ -9,7 +9,7 @@
 #   flat colour under the control's at an amp at or over it -> the 4,000-rollout unpaired finish
 #   against x2ovgf is the next run. The margin down and amp not up from x2ovll's -> the term gives
 #   too little at ratio 2; the ratio is the next variable. The margin as high as the control's ->
-#   the pairing is not what saturates it; Open 3 closes and the flat-token term comes next. The
+#   the pairing is not what saturates it; the unpaired item closes and the flat-token term comes next. The
 #   lines read as more distorted by the user -> the pairing held the strokes in place; dropped.
 # Records it rests on:
 #   - README, GAN term: PE's linear probe of original against head output, 0.999 paired and

@@ -1,7 +1,7 @@
 # x2 GAN finish at ratio 0.5, 4,000 rollouts: x2ovgf_1124_0920 with pegan_ratio 2.0 -> 0.5,
 #   nothing else changed (resume x2ovll_1124_0139, one cosine over 4,000, LR 2e-5, window 32 on
 #   manifest_w32, DINOv3 ViT-S/16 at 245.2, PE-GAN from rollout 0 on a 512 crop, disc LR 1e-4,
-#   seed 0). x2_plan.md, Open 6.
+#   seed 0). reports/x2_ratio_2026_11_24.md.
 # The user (2026-11-24), on x2r05_1124_1908's numbers: "흠 ㅇㅋ 4k 먼저 돌려보자 ㄱㄱ".
 # Question: does the trade of ratio 0.5 hold at the ship candidate's length? Flat-token grain,
 #   the sky patch's 8-px fold and stamp32 under the alpha line (x2ovll -> x2ovgf mixes) at this

@@ -32,6 +32,7 @@ from library.anima.pixel_head import (
 )
 from scripts.pixel_head.train._common import (
     DinoFeat,
+    DinoDisc,
     PEDisc,
     _grad_norm,
     cosine_lr,
@@ -158,6 +159,9 @@ class X2TrainConfig:
     pegan_start: int = 1000  # first rollout with the term and the discriminator
     pegan_lambda_max: float = 1.0
     pegan_crop: int = 512  # ×2 px, a multiple of 16
+    pegan_crops: int = (
+        1  # crops per update, each at its own place (DinoDisc: 16 of 224)
+    )
     # the discriminator's real crop comes from another replay window, at its own place:
     # no logit can rest on comparing the two crops pixel by pixel
     pegan_unpaired: bool = False
@@ -180,11 +184,14 @@ class X2Trainer:
         head: PixelHeadX2,
         cfg: X2TrainConfig,
         dino: DinoFeat | None = None,
-        disc: PEDisc | None = None,
+        disc: PEDisc | DinoDisc | None = None,
         compile: bool = False,
     ):
         assert cfg.lambda_dino == 0 or dino is not None, "lambda_dino needs a DinoFeat"
-        assert cfg.pegan_ratio == 0 or disc is not None, "pegan_ratio needs a PEDisc"
+        assert cfg.pegan_ratio == 0 or disc is not None, "pegan_ratio needs a disc"
+        assert cfg.pegan_crops == 1 or not (
+            cfg.pegan_unpaired or cfg.pegan_flat_level > 0
+        ), "pegan_unpaired / pegan_flat_level take one crop"
         assert cfg.pegan_crop % 16 == 0, "pegan_crop: a multiple of 16"
         self.head, self.cfg, self.dino, self.disc = head, cfg, dino, disc
         self.head_c = torch.compile(head, dynamic=True) if compile else head
@@ -199,6 +206,7 @@ class X2Trainer:
         self._replay_rng = random.Random(cfg.seed + 3)
         self._crop_rng = random.Random(cfg.seed + 9)
         self.lam_pegan = 0.0
+        self.lam_pegan_raw = 0.0
         self.gan_live = False
         self._dino_rng = random.Random(cfg.seed + 11)  # the tiles of an update
         self._pair_rng = random.Random(cfg.seed + 13)  # the unpaired real crop
@@ -237,9 +245,14 @@ class X2Trainer:
             c = cfg.pegan_crop
             h, w = p2.shape[-2:]
             assert min(h, w) >= c, (h, w, c)
-            y, x = self._crop_rng.randint(0, h - c), self._crop_rng.randint(0, w - c)
-            sl = (..., slice(y, y + c), slice(x, x + c))
-            fake, real = p2[None].float()[sl], t2[None][sl]
+            rng = self._crop_rng
+            at = [
+                (rng.randint(0, h - c), rng.randint(0, w - c))
+                for _ in range(cfg.pegan_crops)
+            ]
+            pf = p2.float()
+            fake = torch.stack([pf[:, y : y + c, x : x + c] for y, x in at])
+            real = torch.stack([t2[:, y : y + c, x : x + c] for y, x in at])
             if cfg.pegan_flat_level > 0 and flat_off:
                 flat = flat_cells(real[0], cfg.pegan_flat_level)
                 fake = self.cut_flat(fake, flat)
@@ -284,7 +297,8 @@ class X2Trainer:
         )
         g_gan = torch.autograd.grad(t["pegan"], params, allow_unused=True)
         lam = self.cfg.pegan_ratio * _grad_norm(g_reg) / (_grad_norm(g_gan) + 1e-12)
-        self.lam_pegan = min(lam.item(), self.cfg.pegan_lambda_max)
+        self.lam_pegan_raw = lam.item()  # before the cap: says whether the ratio held
+        self.lam_pegan = min(self.lam_pegan_raw, self.cfg.pegan_lambda_max)
 
     def update(self, r: int) -> dict[str, float]:
         cfg = self.cfg
@@ -318,6 +332,7 @@ class X2Trainer:
                 )
             if self.gan_live:
                 log["lam_pegan"] = self.lam_pegan
+                log["lam_pegan_raw"] = self.lam_pegan_raw
                 log.update(self.disc.step())  # on this step's paired crop, detached
         return log
 
