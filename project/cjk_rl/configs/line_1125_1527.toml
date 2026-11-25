@@ -1,0 +1,31 @@
+# Row line, the null of the loo arm (probes/row_line.py): line_1125_1517 with the arm loo ->
+#   rnd, nothing else changed (the same pages, read and references). rnd puts every row at
+#   its start plus a drawn direction with the norm of that row's loo vector (0.18 - 0.20 row
+#   norms; a row its own draw, seeded by shuffle_seed + the row's id).
+# Question: is line_1125_1517's loo gain the direction the rows share, or what any
+#   displacement of that size does?
+#   - rnd level with the start rows -> the gain is the shared direction's.
+#   - rnd up as loo is -> the start rows gain from being moved at all, and the loo read
+#     says nothing about a shared part.
+# Records it rests on:
+#   - line_1125_1517 (results/20261125-1526-row_line-line_1125_1517/): solo of 256, start
+#     59, loo 112 (hayai 59, 104), 13 glyphs up and 1 down; no-box pages 44 -> 16; the 16-step
+#     save read again gives the run's own read page for page (175, hayai 171).
+# Read: totals and solo a glyph beside the start rows and loo; the pair start against rnd.
+# Bars: a save read again repeats page for page (line_1125_1517, s16r), so the read adds no
+#   spread; spread between draws unknown (one draw).
+# Cost: one read of 256 renders, about 2.5 min, and the load.
+
+run = "g1long_1125_1335"
+rows = "seed_1008"
+hira = "ひあぬうさがめを"
+kanji = "死王太二味楽人行"
+frame = "bubble"
+read_scenes = [6, 12, 45, 15]
+read_seeds = [0, 1, 2, 3]
+conf_min = 0.6
+shuffle_seed = 1125
+pairs = [["start", "rnd"]]
+
+[arms]
+rnd = { save = "s24", loo = true, rand = true }

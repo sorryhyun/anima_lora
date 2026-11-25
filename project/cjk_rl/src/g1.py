@@ -31,6 +31,12 @@ Tables: the start rows against each save. Sheets: per glyph the start rows and t
 last save as rows ``A`` / ``B`` in an order drawn per glyph (``sheets/key.json`` holds
 it).
 
+With ``[start_shift]`` in the config (``run``, ``save``), every row trained here begins
+at its start plus the mean displacement, to that save, of the rows that run trained, the
+row's own left out (:func:`shared_start`). The ``start`` arm of the read stays the
+unshifted rows, the shifted ones are read as ``s00``, and a row's ``drift`` counts from
+the shifted start.
+
 The run's settings, question and gate are its config's header
 (``configs/<handle>_<mmdd>_<hhmm>.toml``). Writes ``output/cjk_rl/g1/<config stem>/``
 (``log.jsonl`` a row step, ``rows.pt`` and a ``rows_s<steps>.pt`` a save, the read's
@@ -74,6 +80,26 @@ def glyphs(cfg: dict, smoke: bool) -> list:
                 continue
             out.append((cls, key, keys[(n + 1) % len(keys)]))
     return out
+
+
+def shared_start(spec: dict, row: dict, start):
+    """``start`` with each row of ``row`` (``{glyph: index}``) moved by the mean
+    displacement, to save ``spec["save"]``, of the rows run ``spec["run"]`` trained,
+    the glyph's own left out."""
+    import torch
+
+    sv = torch.load(
+        ROOT / spec["run"] / f"rows_{spec['save']}.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    init = sv["init"].float()
+    disp = {k: sv["raw"][i].float() - init[i] for k, i in sv["rows"].items()}
+    table = start.clone()
+    for k, i in row.items():
+        v = torch.stack([d for j, d in disp.items() if j != k]).mean(0)
+        table[i] = start[i] + v.to(start)
+    return table
 
 
 def train(
@@ -488,6 +514,17 @@ def main() -> None:
             flush=True,
         )
 
+    if cfg.get("start_shift"):
+        row = {k: pol.row_of(G.framed(sc[tr[0]][frame], k)) for _, k, _ in gl}
+        shifted = shared_start(cfg["start_shift"], row, start)
+        moved = (shifted - start).norm(dim=1) / pol.row_scale
+        print(
+            f"  start_shift {cfg['start_shift']}: {int((moved > 0).sum())} rows moved "
+            f"{float(moved[moved > 0].min()):.3f} … {float(moved.max()):.3f} row norms",
+            flush=True,
+        )
+        on_save(0, shifted)
+        pol.raw.data.copy_(shifted)
     res = train(pol, rdr, cfg, gl, sc, tr, out, hy, on_save)
     print(f"train: {res['info']}", flush=True)
     pol.raw.data.copy_(res["trained"])

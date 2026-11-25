@@ -99,6 +99,17 @@ Inside a (string, scene) group of 4 seeds: `r_seq` not constant in 0.67 of the h
   (行 read as イチ, 生 as 王, 待 as 緋); seed 0 draws the same bubble of small Latin lettering
   whatever is asked.
 
+### The reader's confidence on the crossed grid
+
+Counted from the run's `reads.json`, rows arm, 896 pages (renders
+`output/cjk_rl/glyph_scenes/m15v11_px/cross/seed_1008/`, local).
+
+- No box on 193 pages; a box but none at a confidence of 0.6 or over on 195 more.
+- Of the 130 boxes that read the asked glyph exactly, 9 are under 0.6; of the 660 that read
+  something else, 36 %.
+- The user's call (11-25): a box the reader reads under about 0.6 counts as nothing drawn, and
+  a page where AnimeText finds no box takes the detector's own score as its signal to draw.
+
 ### Cost
 
 Sampling 0.40 s an image at 4 a forward (0.39 s at 8 in G0), the four steps 1.2 s a forward;

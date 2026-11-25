@@ -1,0 +1,56 @@
+# G1 from a shared start (plan.md item 3b): g1long_1125_1335's passes 0 and 1 (8 steps a row;
+#   passes 6 -> 2) with every row started at its start plus the mean 24-step displacement of
+#   that run's other 15 rows, its own left out ([start_shift], src/g1.py shared_start),
+#   nothing else changed: the same rows, scenes, seeds, shuffle, update and hayai term, so
+#   the two passes draw the parent's renders' seeds in the parent's order.
+#   The shift is the `loo` arm of line_1125_1517, 0.18 - 0.20 row norms a row.
+#   Not separated: the other rows' displacement was trained on these training scenes and on
+#   seeds 1000 - 1023, which hold this run's seeds 1000 - 1007. The read scenes and seeds
+#   were in no update.
+# Question (the user, 11-25, on plan.md 3b's proposal: "해볼까??"): do 8 steps from the shared
+#   start read where the parent's 16 steps do?
+#   - the 8-step save at the parent's 16-step save (175, hayai 171) or over -> item 4 can
+#     run 8 steps a row from the start rows plus the 16 rows' mean displacement, half its
+#     renders; the user decides.
+#   - between the parent's 8-step (136) and 16-step saves -> the shared start is worth some
+#     steps and not eight; the saves at 4 and 8 steps say how many.
+#   - at the parent's 8-step save or under -> a row's own steps do not add onto the shared
+#     start; item 4 stays as set.
+# Records it rests on:
+#   - reports/g1long_2026_11_25.md (g1long_1125_1335): solo of 256 on the read pages, start
+#     -> 8 -> 16 -> 24 steps: 59 -> 136 -> 175 -> 199 (hayai 59 -> 136 -> 171 -> 189).
+#   - reports/row_line_2026_11_25.md (line_1125_1517, line_1125_1527): the shifted start
+#     itself reads 112 (hayai 104), a drawn direction of its length 59; a save read again
+#     repeats page for page.
+# Read: the start rows, the shifted start (arm s00) and the saves at 4 and 8 steps, read in
+#   the process on the parent's read scenes and seeds; totals and solo a glyph under the two
+#   readers beside the parent's 8- and 16-step saves; め, 楽, を, 人, which the shift alone left
+#   near their start, and ぬ, う, which lost at twice their 8-step displacement. Sheets a
+#   glyph, the start rows against the 8-step save, as rows A / B in a drawn order; the
+#   8-step save against the parent's 16-step save from the two runs' records. The user's
+#   read decides.
+# Bars: a read repeats page for page (line_1125_1517); no twin run, spread between runs
+#   unknown.
+# Cost: 512 groups at about 3.05 s, 26 min; four reads of 256 renders, about 10 min.
+
+rows = "seed_1008"
+hira = "ひあぬうさがめを"
+kanji = "死王太二味楽人行"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+passes = 2
+save_passes = [1, 2]  # 4 steps a row a pass: saves at 4 and 8 steps
+train_seed0 = 1000  # pass p: train_seed0 + 4p … + 3
+read_seeds = [0, 1, 2, 3]
+shuffle_seed = 1125
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2
+
+[start_shift]
+run = "g1long_1125_1335"
+save = "s24"

@@ -1,0 +1,58 @@
+# Row line (probes/row_line.py): g1long_1125_1335's saved rows moved along what they learned
+#   and read with no training, on that run's read pages (the 16 glyphs x scenes 6, 12, 45, 15
+#   x seeds 0-3, bubble frame, m15v11, G1's read). Forward only.
+# Arms:
+#   - s16r: the 16-step save read again.
+#   - x2s08: every row at its start plus twice its displacement to the 8-step save. This is
+#     the 8 steps at eta 0.06 with each step's direction left as it was measured at eta 0.03
+#     (the update is a fixed-length step along the momentum, src/g1.py), so it carries twice
+#     the 8-step save's consistent part and twice its noise; the 16-step save carries about
+#     twice the consistent part and 1.57 times the noise.
+#   - loo: every row at its start plus the mean 24-step displacement of the other 15 rows;
+#     the row's own training is not in it.
+# Question (the user, 11-25: "lr 올려서 스텝 아끼거나 grad acc 쓸 여지는 없을까?"): would steps
+#   twice as long reach the 16-step read in 8 steps, and is part of what the rows learned
+#   shared across glyphs?
+#   - x2s08 level with the 16-step save or over it -> an eta 0.06 arm of 8 steps on the 16
+#     rows (about 35 min) is proposed as item 4's recipe at half its renders.
+#   - x2s08 under it by more than the repeat -> the doubled step loses something on a frozen
+#     direction; the real arm re-measures its gradient each step and may still hold, so the
+#     arm is proposed with that said, and a front-loaded eta beside it.
+#   - loo well over the start rows -> the shared part is a start for rows not yet trained
+#     (item 4's rows would begin from the start rows plus the mean displacement); proposed.
+#   - loo level with the start rows -> what the rows share (cosine 0.18 between two rows'
+#     24-step displacements) does not letter a glyph by itself.
+# Records it rests on:
+#   - reports/g1long_2026_11_25.md (g1long_1125_1335): solo of 256 on these pages, start ->
+#     8 -> 16 -> 24 steps: 59 -> 136 -> 175 -> 199 (hayai 59 -> 136 -> 171 -> 189); the
+#     cosine of a row's successive 16-render mean gradients 0.115 in pass 0 and 0.02 - 0.06
+#     after pass 2.
+#   - that run's rows_s08 / s16 / s24.pt and log.jsonl, counted for this probe: a row's
+#     8-step segments are 0.14 - 0.20 row norms long where a walk of 8 such steps on noise
+#     alone is 0.166; the first and the last segment of a row have cosine 0.16 at the mean of
+#     15 rows; two rows' 24-step displacements have cosine 0.18 at the mean (-0.14 … 0.33),
+#     and the mean displacement is 0.186 row norms against a row's 0.384.
+# Read: totals and solo a glyph under the tuned reader and under hayai, each arm beside the
+#   run's own reads of the start rows and the three saves (its records.json, the same pages);
+#   pairs s16 against s16r, s16 against x2s08, start against loo, with sheets per glyph as
+#   rows A / B in a drawn order. Claude reads the sheets of the glyphs that move; the numbers
+#   and the sheets go to the user.
+# Bars: s16r against the run's 16-step read (175, hayai 171) is the one repeat on these
+#   pages; no twin run, spread between runs unknown.
+# Cost: three reads of 256 renders, about 8 min, and the load.
+
+run = "g1long_1125_1335"
+rows = "seed_1008"
+hira = "ひあぬうさがめを"
+kanji = "死王太二味楽人行"
+frame = "bubble"
+read_scenes = [6, 12, 45, 15]
+read_seeds = [0, 1, 2, 3]
+conf_min = 0.6
+shuffle_seed = 1125
+pairs = [["s16", "s16r"], ["s16", "x2s08"], ["start", "loo"]]
+
+[arms]
+s16r = { save = "s16" }
+x2s08 = { save = "s08", scale = 2.0 }
+loo = { save = "s24", loo = true }
