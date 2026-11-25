@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 """bake_vocab_pack — fold a wake-line ext-row delta (``trained.pt``) into a
-vocab pack, producing a new ``.safetensors`` + ``.json`` pair.
+vocab pack, producing a new ``.safetensors`` + ``.json`` pair. A glyph-stage
+save of ``project/cjk_rl/src/g1.py`` (``rows.pt``) is taken the same way: it
+holds the whole table the run rendered with, the start rows and the trained
+ones, so it is baked onto the pack those start rows were baked onto.
 
 The JA line (``project/cjk_anima_reseed/``) trains a delta on the
 pack's ext rows through the ``ExtDelta`` hook. That hook adds
@@ -60,6 +63,8 @@ def load_delta(path: Path) -> dict:
     if path.is_dir():
         path = path / "trained.pt"
     sd = torch.load(path, map_location="cpu", weights_only=False)
+    if "delta" not in sd:
+        return _g1_delta(path, sd)
     d = sd["delta"]
     ids = [int(e) for e in d["ext_ids"]]
     if len(set(ids)) != len(ids):
@@ -94,6 +99,31 @@ def load_delta(path: Path) -> dict:
         "train_steps": args.get("train_steps"),
         "units": args.get("units"),
         "init_rows": args.get("init_rows"),
+    }
+
+
+def _g1_delta(path: Path, sd: dict) -> dict:
+    """A glyph-stage save (``project/cjk_rl/src/g1.py``: ``rows.pt`` or
+    ``rows_s<steps>.pt``) as a delta record. Its ``raw`` is every ext row of the
+    run's table in effective units (the start rows' delta with the trained rows
+    moved), so the scale is 1; a row at zero is the pack's own and is left out."""
+    for k in ("ext_ids", "raw", "rows", "steps"):
+        if k not in sd:
+            raise ValueError(f"{path}: neither a trained.pt nor a glyph-stage save")
+    raw = sd["raw"].float()
+    keep = torch.nonzero(raw.abs().amax(dim=1) > 0).flatten().tolist()
+    cfg = sd.get("cfg") or {}
+    return {
+        "path": str(path),
+        "arm": "glyph",
+        "ext_ids": [int(sd["ext_ids"][i]) for i in keep],
+        "raw": raw[keep],
+        "row_scale": 1.0,
+        "arm_tag": path.parent.name,
+        "data_tag": None,
+        "train_steps": max(sd["steps"].values()),
+        "units": f"{len(sd['rows'])} rows trained",
+        "init_rows": cfg.get("rows"),
     }
 
 
@@ -243,7 +273,9 @@ def link_into(comfy_dir: Path, st: Path, js: Path, overwrite: bool) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("table", help="trained.pt, or the arm dir holding one")
+    p.add_argument(
+        "table", help="trained.pt, the arm dir holding one, or a glyph-stage rows.pt"
+    )
     p.add_argument(
         "--base",
         default=None,

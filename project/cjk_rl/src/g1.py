@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""G1 — sixteen rows trained on the reader's loss through G-D's path (``plan.md`` item 2).
+"""G1 — rows trained on the reader's loss through G-D's path, one row a glyph.
 
 Policy and path: ``gd.Policy`` (``m15v11``, 4 Euler steps, pixel-head decode, rows
 ``seed_1008``) and ``gd.Reader``. A group is one glyph on one training scene
@@ -19,7 +19,14 @@ weight, and the read gains hayai's ``solo`` on the tuned reader's boxes (``hy_so
 A row steps when ``accum`` of its renders are in: the mean gradient joins the row's
 momentum (``beta``), and the row moves ``eta`` row norms against the momentum's
 direction. A pass is every (glyph, training scene) once, shuffled; pass p draws seeds
-``train_seed0 + 4p …``.
+``train_seed0 + 4p …``. With ``max_steps`` in the config a row that has taken that many
+steps is passed over for the rest of the run, and a save is named by the steps taken.
+
+Glyphs come from the config's ``hira``, ``kata`` and ``kanji`` strings; a class may be
+left out. With ``fold_small`` a small kana and its full-size glyph are one glyph to the
+loss and the read (:func:`same`): a small kana's row takes the full-size glyph as its
+target, either read counts as ``solo`` for either row, and a record of such a row also
+holds ``strict``, the count with the glyph itself only.
 
 The read (same process): every glyph on the read scenes at the read seeds, each page
 read as training reads it; the start rows before training, then the rows after each
@@ -40,7 +47,7 @@ the shifted start.
 The run's settings, question and gate are its config's header
 (``configs/<handle>_<mmdd>_<hhmm>.toml``). Writes ``output/cjk_rl/g1/<config stem>/``
 (``log.jsonl`` a row step, ``rows.pt`` and a ``rows_s<steps>.pt`` a save, the read's
-pages) and
+pages, and ``records.json`` rewritten after each arm's read) and
 ``results/<ts>-g1-<config stem>/``.
 
     make daemon-run ARGS="--queue --stall-timeout 900 project/cjk_rl/src/g1.py --config project/cjk_rl/configs/<name>.toml"
@@ -67,18 +74,51 @@ import turbo_read as T  # noqa: E402
 import gd  # noqa: E402
 
 ROOT = T.REPO / "output" / "cjk_rl" / "g1"
-CLASSES = ("hira", "kanji")
+CLASSES = ("hira", "kata", "kanji")  # a config may leave a class out
+# a small kana and its full-size glyph: one glyph to a reader of a lone glyph
+SMALL = dict(
+    zip(
+        "ぁぃぅぇぉっゃゅょァィゥェォッャュョヵヶ",
+        "あいうえおつやゆよアイウエオツヤユヨカケ",
+    )
+)
+FULL = {v: k for k, v in SMALL.items()}
+
+
+def same(key: str, fold: bool) -> list:
+    """The reads that count as ``key``, the loss's target first: with ``fold`` a small
+    kana is its full-size glyph, and a full-size glyph read as its small one counts."""
+    if fold and key in SMALL:
+        return [SMALL[key], key]
+    if fold and key in FULL:
+        return [key, FULL[key]]
+    return [key]
+
+
+def terms(keys: list, reads: list) -> dict:
+    """``glyph_g0.page_terms`` over the reads that count as the glyph: the best of
+    each term."""
+    ts = [G.page_terms(k, reads) for k in keys]
+    return {
+        "solo": max(t["solo"] for t in ts),
+        "on_page": max(t["on_page"] for t in ts),
+        "extra": min(t["extra"] for t in ts),
+        "r_seq": max(t["r_seq"] for t in ts),
+    }
 
 
 def glyphs(cfg: dict, smoke: bool) -> list:
-    """``[(cls, key, alt)]``; ``alt`` is the next glyph of the class."""
+    """``[(cls, key, alt)]``; ``alt`` is the next glyph of the class that does not
+    count as ``key`` (:func:`same`)."""
     out = []
+    fold = bool(cfg.get("fold_small"))
     for cls in CLASSES:
-        keys = list(cfg[cls])
+        keys = list(cfg.get(cls, ""))
         for n, key in enumerate(keys):
             if smoke and n:
                 continue
-            out.append((cls, key, keys[(n + 1) % len(keys)]))
+            later = keys[n + 1 :] + keys[:n]
+            out.append((cls, key, next(k for k in later if k not in same(key, fold))))
     return out
 
 
@@ -123,11 +163,13 @@ def train(
     init = pol.raw.detach().clone()
     cap = {(k, si): G.framed(sc[si][frame], k) for _, k, _ in gl for si in scenes}
     row = {k: pol.row_of(cap[(k, scenes[0])]) for _, k, _ in gl}
+    ok = {k: same(k, bool(cfg.get("fold_small"))) for k in row}
     acc = {k: torch.zeros(dim, device=pol.dev) for k in row}
     mom = {k: torch.zeros(dim, device=pol.dev) for k in row}
     prev: dict = {}
     since = {k: [] for k in row}  # the renders since the row's last step
     steps = dict.fromkeys(row, 0)
+    cap_steps = cfg.get("max_steps")  # a row at the cap is passed over
     rng = random.Random(cfg["shuffle_seed"])
     log = open(out / "log.jsonl", "a")
     t_run, n_groups, phase = time.time(), 0, {}
@@ -151,11 +193,17 @@ def train(
             path,
         )
 
+    per_row = cfg["passes"] * len(scenes)  # groups a row
+    if cap_steps:
+        per_row = min(per_row, cap_steps * accum // 4)
+    total_groups = per_row * len(row)
     for p in range(cfg["passes"]):
         seeds = [cfg["train_seed0"] + 4 * p + k for k in range(4)]
         order = [(k, si) for k in row for si in scenes]
         rng.shuffle(order)
         for key, si in order:
+            if cap_steps and steps[key] >= cap_steps:
+                continue
             t = time.time()
             e_graph = pol.embed(cap[(key, si)], grad=True)
             e = e_graph.detach()
@@ -167,7 +215,8 @@ def train(
                 img = px.detach()
                 bgrs, reads = rdr.read(img)
                 t = lap("read", t)
-                case, r = gd.pick(key, reads[0], cfg["conf_min"])
+                tgt = ok[key][0]
+                case, r = gd.pick(tgt, reads[0], cfg["conf_min"])
                 leaf = img.clone().requires_grad_(True)
                 p01 = (gd.ste_clamp(leaf, -1.0, 1.0) + 1) / 2
                 aux = None
@@ -177,10 +226,10 @@ def train(
                     total = loss
                 else:
                     box = gd.crop_box(r["box"], W, H)
-                    loss = rdr.ce([p01[0]], bgrs, [box], [key]).sum()
+                    loss = rdr.ce([p01[0]], bgrs, [box], [tgt]).sum()
                     total = loss
                     if hy is not None:
-                        aux = hy.ce([p01[0]], [box], [key]).sum()
+                        aux = hy.ce([p01[0]], [box], [tgt]).sum()
                         total = loss + cfg["hayai_weight"] * aux
                 g_px = torch.autograd.grad(total, leaf)[0]
                 t = lap("loss", t)
@@ -196,7 +245,11 @@ def train(
                         "loss": float(loss.detach()),  # the tuned reader's term
                         "hy": None if aux is None else float(aux.detach()),
                         "norm": n,
-                        "exact": bool(r and r["sfx"] and G.boxes([r]) == [_norm(key)]),
+                        "exact": bool(
+                            r
+                            and r["sfx"]
+                            and G.boxes([r]) in [[_norm(x)] for x in ok[key]]
+                        ),
                     }
                 )
             del e_graph
@@ -246,7 +299,7 @@ def train(
                 since[key] = []
             if n_groups % 16 == 0:
                 print(
-                    f"  pass {p} group {n_groups} / {cfg['passes'] * len(order)} "
+                    f"  pass {p} group {n_groups} / {total_groups} "
                     f"steps {sum(steps.values())} peak "
                     f"{torch.cuda.max_memory_allocated() / 2**30:.2f} GiB "
                     f"({(time.time() - t_run) / 60:.1f} min)",
@@ -307,8 +360,15 @@ def read(
     for arm, table in arms.items():
         pol.raw.data.copy_(table)
         for si in scenes:
-            for cls, key, alt in gl:
+            for n, (cls, key, alt) in enumerate(gl):
+                if n and n % 32 == 0:
+                    print(
+                        f"  read {arm} scene {si} glyph {n} / {len(gl)} "
+                        f"({(time.time() - t0) / 60:.1f} min)",
+                        flush=True,
+                    )
                 caption = G.framed(sc[si][cfg["frame"]], key)
+                ok = same(key, bool(cfg.get("fold_small")))
                 _, px = pol.rollout(pol.noise(seeds, G.SHAPE), pol.embed(caption))
                 bgrs, reads = rdr.read(px)
                 if hy is not None:
@@ -328,7 +388,7 @@ def read(
                         r["hy"] = text
                 p01 = (px.clamp(-1, 1) + 1) / 2
                 for b, seed in enumerate(seeds):
-                    case, r = gd.pick(key, reads[b], cfg["conf_min"])
+                    case, r = gd.pick(ok[0], reads[b], cfg["conf_min"])
                     ce = None
                     if r is not None:
                         with torch.no_grad():
@@ -337,7 +397,7 @@ def read(
                                     [p01[b]],
                                     [bgrs[b]],
                                     [gd.crop_box(r["box"], W, H)],
-                                    [key],
+                                    [ok[0]],
                                 )
                             )
                     f = out / "read" / arm / f"{key}_sc{si:02d}_s{seed}.webp"
@@ -346,19 +406,23 @@ def read(
                     recs.append(
                         {"arm": arm, "cls": cls, "key": key, "scene": si, "seed": seed}
                         | {"case": case, "ce": ce, "file": str(f)}
-                        | {
-                            x: G.page_terms(key, reads[b])[x]
-                            for x in ("solo", "on_page", "extra", "r_seq")
-                        }
+                        | terms(ok, reads[b])
                         | {"null": G.page_terms(alt, reads[b])["solo"]}
                         | {"boxes": G.boxes(reads[b])}
                     )
                     if hy is not None:
                         as_hy = [x | {"sfx": x.get("hy")} for x in reads[b]]
                         recs[-1] |= {
-                            "hy_solo": G.page_terms(key, as_hy)["solo"],
+                            "hy_solo": terms(ok, as_hy)["solo"],
                             "hy_boxes": G.boxes(as_hy),
                         }
+                    if len(ok) > 1:  # the count with the glyph itself only
+                        recs[-1] |= {
+                            "same": ok,
+                            "strict": G.page_terms(key, reads[b])["solo"],
+                        }
+                        if hy is not None:
+                            recs[-1]["hy_strict"] = G.page_terms(key, as_hy)["solo"]
         print(f"  read {arm} ({(time.time() - t0) / 60:.1f} min)", flush=True)
     return recs
 
@@ -481,6 +545,8 @@ def main() -> None:
     if a.smoke:
         tr, rd_sc = tr[:2], rd_sc[:1]
         cfg = cfg | {"passes": 2, "accum": 4, "save_passes": [1, 2]}
+        if cfg.get("max_steps"):
+            cfg["max_steps"] = 3  # 2 steps a pass: the cap falls inside pass 2
     cfg = {"save_passes": [cfg["passes"]]} | cfg
     assert cfg["passes"] in cfg["save_passes"], "the last pass is a save"
     gl = glyphs(cfg, a.smoke)
@@ -503,9 +569,18 @@ def main() -> None:
     recs = read(pol, rdr, cfg, gl, sc, rd_sc, {"start": start}, out, hy)
     tables: dict = {}
 
+    def keep() -> None:  # the records so far, beside the rows
+        (out / "records.json").write_text(
+            json.dumps(recs, ensure_ascii=False, indent=1), "utf-8"
+        )
+
+    keep()
+
     def on_save(p: int, rows) -> None:
-        arm = f"s{p * per_pass:02d}"
+        taken = min(p * per_pass, cfg.get("max_steps") or p * per_pass)
+        arm = f"s{taken:02d}"
         recs.extend(read(pol, rdr, cfg, gl, sc, rd_sc, {arm: rows}, out, hy))
+        keep()
         pair = [r for r in recs if r["arm"] in ("start", arm)]
         tables[arm] = tabulate(pair, ["start", arm])
         print(

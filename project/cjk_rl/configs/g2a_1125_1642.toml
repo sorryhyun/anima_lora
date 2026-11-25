@@ -1,0 +1,72 @@
+# G2a (plan.md item 4): g1shared_1125_1538 with the rows 8 hiragana + 8 kanji -> the 81
+#   hiragana and the 83 katakana that hold one trained row in the frame, and the steps a row
+#   8 -> 6 (max_steps 6: the first pass, then the first 8 of a row's 16 scenes in the second
+#   pass's order), nothing else changed: the scenes, the split, the update, hayai's term, the
+#   seeds a pass, [start_shift].
+#   With the rows change the shuffle's order and a row's null (the next glyph of its class).
+#   The shift of a row outside g1long_1125_1335's 16 is the mean displacement of all 16; for
+#   the eight hiragana among them (ひ あ ぬ う さ が め を) their own is left out, as in the parent.
+#   Not separated: the rows and the steps change together (the user's call, 11-25). The eight
+#   shared hiragana are read beside the parent's saves, here with 156 other rows in the run.
+# Question (the user, 11-25: "아예 그냥 6스텝만, 히라가나+카타카나 학습으로"): six steps from the
+#   shared start on every kana row — which rows read, and which do not?
+#   - the rows' table decides whether the rows in `not_learned` get more steps, and whether
+#     the frequent kanji run the same way or need the cheaper step of proposal_glyph.md § 2;
+#     the user decides on the table and the sheets.
+#   - the shifted start (arm s00) on the katakana and on the 73 hiragana outside the 16: at
+#     the start rows' count -> the shared displacement does not carry past the rows it was
+#     measured on, and the kanji's start is set again; over it -> it carries.
+# Records it rests on:
+#   - reports/g1shared_2026_11_25.md (g1shared_1125_1538): solo of 256 on the read pages,
+#     start -> shifted start -> 4 -> 8 steps: 59 -> 112 -> 148 -> 156 (hayai 59 -> 104 -> 147
+#     -> 167); あ 13 of 16 on the training side at its 6th step, 1 of 16 read at its 8th.
+#   - reports/g1long_2026_11_25.md (g1long_1125_1335): from the start rows 59 -> 136 -> 175
+#     at 8 and 16 steps; the failures in the kanji (行, 二 read as ニ).
+#   - reports/row_line_2026_11_25.md: the other rows' mean displacement alone 59 -> 112, a
+#     drawn direction of its length 59.
+#   - Six steps were read on no held-out page before this run.
+# Read: the start rows, the shifted start (s00) and the saves at 4 and 6 steps, in the
+#   process, on the read scenes and seeds (16 pages a row and arm); then
+#   probes/g2_rows.py --run <this> --refs g1shared_1125_1538 g1long_1125_1335: per row solo
+#   under the two readers at every arm, on_page, extra, no-box pages, the picked crop's ce,
+#   the training log's exact count a step, and the groups of plan.md item 4 (not_learned,
+#   past, reader; counts of 16 pages). Two counts the plan left open are set here before the
+#   run (Claude's): `past` also takes 4 or more pages where a box holds the glyph with other
+#   characters and none reads it alone; `reader` also takes 4 or more pages where a box
+#   reads exactly a look-alike under either reader. Labelled sheets (start against 6 steps)
+#   of every row in a group; the user's read decides.
+# Small kana (the user, 11-25, on the first smoke's read: at its 3-step save ぁ read as あ on
+#   4 of 4 pages and ァ as ア on 3 of 4, neither as itself at any arm): fold_small. A small
+#   kana and its full-size glyph are one glyph to a reader of a lone glyph, so the 20 small
+#   rows (ぁぃぅぇぉっゃゅょ ァィゥェォッャュョヵヶ) take the full-size glyph as the loss's
+#   target, and either read counts as solo for either row of a pair (a row's null is the
+#   next glyph outside its pair). The records keep `strict`, the count with the row's own
+#   glyph only. The size of a small kana is not read here; it is left to the word stage.
+#   A first submit without it (g2a_1125_1630, job 20261125-163016-9f2a19) was stopped 6 min
+#   into the start rows' read.
+# Bars: spread unknown (no twin run). A read repeats page for page (line_1125_1517).
+# Cost: 3 936 groups at about 3.05 s, 3.3 h; four reads of 2 624 renders, about 1.6 h.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+passes = 2
+max_steps = 6        # a row at 6 steps is passed over
+save_passes = [1, 2]  # saves at 4 and 6 steps
+train_seed0 = 1000  # pass p: train_seed0 + 4p … + 3
+read_seeds = [0, 1, 2, 3]
+shuffle_seed = 1125
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2
+fold_small = true    # a small kana is read and trained as its full-size glyph
+
+[start_shift]
+run = "g1long_1125_1335"
+save = "s24"

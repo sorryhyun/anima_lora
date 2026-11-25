@@ -9,7 +9,7 @@ It has two stages. The first (2026-11-13) ran GRPO on sentence captions; its arm
 nothing on the ruler ([reports/p1_2026_11_13.md](reports/p1_2026_11_13.md)), and its other
 arms ([proposal.md](proposal.md)) wait. The second, the glyph stage (2026-11-25), is the one
 running: one glyph a caption, and the reader's loss carried back to that glyph's row by
-gradient (G-D). The next step is in [plan.md](plan.md), item 4.
+gradient (G-D). The next step is in [plan.md](plan.md), item 5.
 
 ## The glyph stage, as it runs
 
@@ -54,7 +54,7 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   mean joins the row's momentum (0.7), and the row moves 0.03 row norms against the
   momentum's direction. The step has that length whatever the gradient's size.
 - A pass is every (glyph, training scene) once, shuffled, 4 steps a row; each pass draws new
-  seeds. No x_3 cache.
+  seeds. No x_3 cache. With `max_steps` a row at that many steps is passed over.
 - A render teaches the one row in its caption, so the cost grows with the row count: 3.05 s a
   group, 12 s a row step, 14.2 GiB peak on the 16 GB card.
 
@@ -86,10 +86,16 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   common to all rows, and that part alone lifts a row that spent no render (same report).
 - From the shared start a row needs 4 – 6 steps fewer, and a row that already reads can be
   pushed past its glyph by the fixed step ([g1shared](reports/g1shared_2026_11_25.md)).
+- The 164 kana rows read alone on 0.28 of held-out pages before, 0.50 at the shared start and
+  0.68 after 6 steps; 28 rows sit in a group of the plan's, many of them a reader's naming of
+  a shape two glyphs share ([g2a](reports/g2a_2026_11_25.md)).
 
 ## Files
 
 - [plan.md](plan.md) — the glyph stage's next step, what is parked, and the runs done.
+- [turbo_refl.md](turbo_refl.md) — the method as a note: the reward carried through the
+  distilled student to rows the base model reads, what has been measured, the conditions it
+  seems to need, open points.
 - [proposal_glyph.md](proposal_glyph.md) — what follows the kana: the frequent kanji and
   words (G2), transfer and ship reads (G3).
 - [proposal.md](proposal.md) — the sentence stage: reward, arms R / A (GRPO), D (reader-NLL
@@ -137,6 +143,10 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   - [g1shared_2026_11_25.md](reports/g1shared_2026_11_25.md) — G1 from a shared start: 8
     steps a row after the other rows' mean displacement; solo 112 → 148 → 156 of 256 at 0, 4
     and 8 steps (the parent 136 at 8, 175 at 16); 行 starts, あ falls to あら.
+  - [g2a_2026_11_25.md](reports/g2a_2026_11_25.md) — G2a: the 81 hiragana and the 83
+    katakana, 6 steps a row from the shared start, small kana folded; solo 743 → 1 322 →
+    1 686 → 1 785 of 2 624 at the start, the shifted start, 4 and 6 steps; the rows not
+    learned, past their glyph, or misread by a reader.
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -163,13 +173,13 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   in a prompt of its config and reads them beside the start rows. `row_walk.py` (CPU) counts
   how far a G1 run's rows moved and how much of it is one direction, `row_geom.py` (CPU) where
   the trained rows sit in the table before and after; `row_line.py` reads a run's saved rows
-  displaced along what they learned, with no training.
+  displaced along what they learned, with no training. `g2_rows.py` (CPU) reads a G1 run's
+  records and log per row and sorts the rows into the plan's groups (not learned, pushed
+  past the glyph, a reader's problem), with labelled sheets of those rows.
 - `configs/` — one file a run, its question and gate in the header.
 - `assets/glyph_scenes.json` (gitignored) — the selected scene prompts, written by
   `glyph_scenes.py screen`.
 - `results/` (gitignored) — one directory per probe run; renders under `output/cjk_rl/`.
-
-## Rules
 
 ## Rules
 

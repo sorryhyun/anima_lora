@@ -74,3 +74,35 @@ def test_bake_formula_and_provenance():
     assert mapping["provenance"] == ["mapped"] * ROWS, "base mapping mutated"
     assert summary["rows"] == 2 and summary["scale"] == 0.5
     assert pack_digest(baked, m) != pack_digest(table, mapping)
+
+
+def test_glyph_stage_save_is_baked_at_scale_one(tmp_path):
+    """A ``project/cjk_rl/src/g1.py`` save holds the run's whole table in
+    effective units: its rows are added as they are, and a row at zero (the
+    pack's own row in that run) is not touched or re-tiered."""
+    table, mapping = _base()
+    g = torch.Generator().manual_seed(2)
+    raw = torch.zeros(4, DIM)
+    raw[[0, 2]] = torch.randn(2, DIM, generator=g) * 40.0
+    path = tmp_path / "g1run" / "rows.pt"
+    path.parent.mkdir()
+    torch.save(
+        {
+            "ext_ids": [1, 3, 5, 6],
+            "rows": {"あ": 0},
+            "raw": raw,
+            "init": torch.zeros(4, DIM),
+            "row_scale": 206.0,
+            "steps": {"あ": 6},
+            "cfg": {"rows": "seed"},
+        },
+        path,
+    )
+    delta = bvp.load_delta(path)
+    assert delta["ext_ids"] == [1, 5] and delta["row_scale"] == 1.0
+    assert delta["arm_tag"] == "g1run" and delta["train_steps"] == 6
+    baked, m, _ = bvp.bake(table, mapping, delta)
+    assert torch.equal(baked[[1, 5]], table[[1, 5]] + raw[[0, 2]])
+    others = torch.tensor([0, 2, 3, 4, 6, 7])
+    assert torch.equal(baked[others], table[others])
+    assert [i for i, p in enumerate(m["provenance"]) if p == "render"] == [1, 5]
