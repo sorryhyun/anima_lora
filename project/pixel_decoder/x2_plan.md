@@ -89,6 +89,9 @@ ratio and slope arms) are named in their records.
   the tile on fine texture is open.
 - The GAN finish as a LoRA (`x2_idea.md`): rank 8 at two LRs ran; rank 64 and the factor reads
   of its steps 2 – 4 are not proposed. The finish stays a full finetune.
+- A Jacobian lens on the second stage, to fold pattern directions out of the head without
+  training (`x2_idea.md`, the last section): written down on the user's word (2026-11-25);
+  nothing run.
 - A convolution tail at pixel resolution: the reference decoder has none; not proposed.
 - A high-pass penalty on the pixels whose target is flat: the user read that direction as
   "애매"; dropped.

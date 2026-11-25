@@ -1,4 +1,4 @@
-# ×2 idea — tuning the head in weight space, and reading a LoRA finish
+# ×2 idea — tuning the head in weight space, reading a LoRA finish, and a Jacobian lens
 
 A proposal, opened 2026-11-24. Runs and their numbers: `reports/x2_ovgf_mix_2026_11_24.md`; what
 is queued or waiting: `x2_plan.md`.
@@ -82,3 +82,63 @@ file; the form is the user's call). Sharp but off balance like the cut → rank 
 finish stays a full finetune and step 6 is dropped. Neither stamp nor the fixed tile on halftone
 is expected to go by rank alone; the unpaired discriminator (`reports/x2_unpaired_2026_11_24.md`) is the step
 aimed at them.
+
+## A Jacobian lens on the head (2026-11-25)
+
+The user (2026-11-25): "픽셀 디코더 x2 있잖아 jlens 쓰면 직접 수정 등 가능성이 있으려나?", then
+"그냥 아이디어만 거기 써놓자". Nothing below has been run or queued.
+
+The construction is JLD's (arXiv:2610.05967), as `project/cjk_anima_reseed/_archive/idea2.md`
+(local) took it for the rows: an early representation read through the sensitivity of a late
+output, M = E[JᵀJ], fitted without a target from random output probes (g = Jᵀv, E_v[g gᵀ] = JᵀJ).
+Here the early representation is a hidden layer of the second stage and the output is the ×2
+image.
+
+What is different from the rows' probe (`_archive/reports/probe_jl_2026_10_07.md` there: 3.85 s
+an item through the DiT in fp32, A / B overlap 0.21 – 0.50 against a bar of 0.8):
+
+- The head runs alone on cached features, in fp32, with no DiT in the graph.
+- The pattern has a linear definition at the output. The token-periodic and the 8-px-periodic
+  parts of the high-pass are what `tile_dict.py` and the fold already measure. A pixel probe
+  split into that part and the rest of the high-pass gives M_pat and M_rest, disjoint as the
+  rows' in-box / out-box masks were.
+- `out2` is linear from `norm2`'s output to the 16 × 16 patches, so at the last layer its
+  weight is the Jacobian: each hidden direction's patch template under the window can be read
+  on the CPU with no probe.
+
+The edit it would give:
+
+- The generalised eigenproblem M_pat u = λ M_rest u ranks hidden directions by how much they
+  move the pattern against how much they move the rest of the high-pass.
+- The top directions damped by γ and folded into `out2` (or into the output side of the
+  `up2_blocks`): a head file written in seconds, as `head_merge.py` writes an α, with γ as the
+  setting. No training.
+- The same directions with a gain each are a space of tens of knobs, the size the first
+  section of this file asks for.
+
+How it differs from what was read above: α, the stage cut and the singular cut pick directions
+by the size of the weight change, and amp, stamp32 and grain moved together under each. The
+lens picks them by their effect on the output, so it is the first read of whether sharpness and
+the pattern separate in a linear subspace at all.
+
+What each outcome would lead to:
+
+- λ on the held-out fit well over tr(M_pat) / tr(M_rest), the top directions repeating between
+  two fits → γ strips of the fold on castle s0, the sky patch and neon_rain, read on amp, the
+  8-px fold and the tile share, and the pair sheets to the user.
+- λ flat → sharpness and the pattern ride the same directions; no fold of this kind exists,
+  and that would be the reason every GAN setting moved along one line (`x2_plan.md`, Next 2).
+
+Limits:
+
+- A subspace is content-independent. The 8-px grid on flat colour (the GAN finish's) is the
+  likeliest to sit in one; the token tile on fine colour texture is open. The token tile on
+  halftone (the B head's) replaces the dots with a fixed tile, so removing its directions is
+  expected to leave blur where the dots were.
+- The lens is a linearisation, and the paper warns that optimising against it uses its null
+  space. At `out2` the fold is exact; a fold at an earlier layer passes through a norm and a
+  block and is checked on renders.
+
+First step, if taken: the read of `out2`'s templates (CPU); a lens at `norm2`'s output fitted
+twice on disjoint halves of the cached renders; the held-out λ spectrum and the overlap of the
+two fits; then the γ strips. Estimated 10 – 20 min on the GPU, not measured.
