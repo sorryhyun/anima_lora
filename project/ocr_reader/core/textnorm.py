@@ -42,14 +42,16 @@ Folds, in order:
    ``...`` / ``・・・`` / ``…`` as labelled (``…`` shielded from NFKC, which
    spells it ``...``); ``‥`` takes NFKC's ``..``.
 
-The **training target** (:func:`training_target`, ``TARGET_NORM = 9``) keeps
+The **training target** (:func:`training_target`, ``TARGET_NORM = 10``) keeps
 the label's line breaks as ``\\n`` (one token, id 23; norm 4 collapsed them to a
-space, so v4 answers one line) and writes the heart as ``♥``: in the VL-1.6 tokenizer ``♥`` is
-one token and ``♡`` is three bytes, and ``TARGET_NORM = 3`` (``♡`` in the
-target) deleted the decoder's only cheap heart — raw ``♥`` in sincos
-predictions went 144 → 0 and the gate 350 → 319 (plan_vl_respace R5). The
-scoring key and the record form keep ``♡``, so the direction is free
-downstream.
+space, so v4 answers one line) and keeps the two hearts apart: ``♥`` (and ``❤``) for
+the filled one, ``♡`` for the outline. Norms 4–9 wrote every heart as ``♥``: in the
+stock VL-1.6 tokenizer ``♥`` is one token and ``♡`` is three bytes, and
+``TARGET_NORM = 3`` (``♡`` in the target) deleted the decoder's only cheap heart —
+raw ``♥`` in sincos predictions went 144 → 0 and the gate 350 → 319 (plan_vl_respace
+R5). Norm 10 trains with ``♡`` as a token of its own (``core/vocab_ext.py``). The
+scoring key and the record form fold every heart to ``♡``, so a read is scored
+heart-blind.
 """
 
 from __future__ import annotations
@@ -118,24 +120,27 @@ NFKC spells it ``...``. ``‥`` is left to NFKC (``..``): 99 Manga109 speech row
 from 4 books, no hand label."""
 
 
-def fold_glyphs(s: str, *, dots: bool = True) -> str:
+_SHAPE_KEEP_HEARTS = {
+    **HEART_FOLD,
+    ord("♥"): ord("♥"),
+    ord("❤"): ord("♥"),
+}
+""":data:`HEART_FOLD` with the filled heart kept (``❤`` → ``♥``)."""
+
+
+def fold_glyphs(s: str, *, dots: bool = True, hearts: bool = True) -> str:
     """The canonical spelling of ``s`` with whitespace untouched. ``dots=False``
-    skips fold 6: ``...``, ``・・・`` and ``…`` stay as written, ``‥`` → ``..``."""
+    skips fold 6: ``...``, ``・・・`` and ``…`` stay as written, ``‥`` → ``..``.
+    ``hearts=False`` keeps ``♥`` apart from ``♡`` (``❤`` → ``♥``)."""
     if not dots:
         s = s.translate(_DOT_KEEP)
     s = unicodedata.normalize("NFKC", s.translate(_DAKUTEN_FOLD)).translate(JAMO_FOLD)
-    s = s.translate(HEART_FOLD)
+    s = s.translate(HEART_FOLD if hearts else _SHAPE_KEEP_HEARTS)
     if HANGUL_RE.search(s):
         s = s.translate(KO_DASH_FOLD)
     if not dots:
         return s.translate(_DOT_RESTORE)
     return ELLIPSIS_RE.sub(ELLIPSIS, s)
-
-
-TRAIN_HEART = "♥"
-"""The heart the training target spells — the single-token one (R5b)."""
-
-_TRAIN_HEART_FOLD = str.maketrans({"♡": TRAIN_HEART})
 
 
 def normalize_target(s: str) -> str:
@@ -151,13 +156,13 @@ def collapse_keep_lines(s: str) -> str:
 
 
 def training_target(s: str) -> str:
-    """The training target (``TARGET_NORM = 9``): :func:`fold_glyphs` without
-    the dot-run fold (``dots=False``), line breaks kept as ``\\n``
-    (:func:`collapse_keep_lines`), the heart as :data:`TRAIN_HEART`.
+    """The training target (``TARGET_NORM = 10``): :func:`fold_glyphs` without
+    the dot-run fold (``dots=False``) or the heart fold (``hearts=False``: ``♥`` and
+    ``♡`` apart), line breaks kept as ``\\n`` (:func:`collapse_keep_lines`).
     ``exact_key`` / ``space_key`` stay ``♡``-spelled, whitespace-blind and
-    dot-folded, so a read with or without breaks, and with any dot spelling,
+    dot-folded, so a read with or without breaks, any dot spelling and either heart
     scores the same."""
-    return collapse_keep_lines(fold_glyphs(s, dots=False)).translate(_TRAIN_HEART_FOLD)
+    return collapse_keep_lines(fold_glyphs(s, dots=False, hearts=False))
 
 
 def exact_key(s: str) -> str:

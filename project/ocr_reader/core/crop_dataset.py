@@ -56,7 +56,7 @@ def cap_targets(out: pd.DataFrame, what: str) -> pd.DataFrame:
     return out[~long]
 
 
-TARGET_NORM = 9
+TARGET_NORM = 10
 """Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
 (every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
 (``vl16_b2_norm2``); 3 = ``textnorm.fold_glyphs`` first — hearts → ``♡``, dot
@@ -72,13 +72,15 @@ compatibility jamo (``ᄏᄏ`` → ``ㅋㅋ``; norm 3–5 taught ``ᄏ``) (2026-
 labelled, ``…`` kept from NFKC's ``...``, ``‥`` → ``..`` (2026-11-18; scoring keys
 still fold); 8 = norm 7 with a Hangul string's dashes (``―`` / ``—`` / ``–`` …) → ``-``
 (2026-11-20, ``textnorm`` fold 5); 9 = norm 8 with ``◯`` / ``〇`` → ``○`` and ``☓`` / ``✕`` … → ``×``
-(2026-11-20, ``textnorm`` fold 4)."""
+(2026-11-20, ``textnorm`` fold 4); 10 = norm 9 with ``♡`` kept apart from ``♥`` (``❤`` →
+``♥``), ``♡`` and ``💢`` trained as tokens of their own (``core/vocab_ext.py``,
+2026-11-25)."""
 
 
 def normalize_target(s: str) -> str:
     """:func:`textnorm.training_target` — folds, whitespace runs inside a line
     collapsed to one ASCII space, line breaks kept as ``\\n``, edges stripped,
-    heart spelled ``♥``.
+    ``♥`` and ``♡`` kept apart.
 
     v1 joined the split with ``""``. Korean needs the spaces (``알고 있었어``
     vs ``알고있었어``), and 3.80 % of the COO/Manga109 targets carried U+3000 or

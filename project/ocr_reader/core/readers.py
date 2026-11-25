@@ -160,6 +160,10 @@ class Vl16Reader:
                 print(f"loaded {full} ({len(sd)} tensors)")
         self.model = model.to(device).eval()
         self.proc = AutoProcessor.from_pretrained(path)
+        # ♡ / 💢 as tokens (TARGET_NORM 10) when the checkpoint carries their rows
+        from .vocab_ext import load as load_vocab_ext
+
+        load_vocab_ext(adapter or ckpt, self.model, self.proc.tokenizer)
         self.device = device
         self.min_edge = self.proc.image_processor.size["shortest_edge"]
         self.task = task

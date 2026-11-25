@@ -59,13 +59,16 @@ def test_exact_key_is_the_target_without_whitespace():
     assert m.exact_key("あ゛っ") == m.exact_key("あ゙っ")
 
 
-def test_training_target_spells_the_single_token_heart():
-    # R5b: only the training target flips to ♥; key and record stay ♡
+def test_training_target_keeps_the_two_hearts():
+    # TARGET_NORM 10: the target keeps ♥ / ♡ apart (❤ is the filled one); keys stay ♡
     m = _mod()
+    assert m.training_target("ムフッ♥!") == "ムフッ♥!"
+    assert m.training_target("えらいぞ❤\ufe0fアイー") == "えらいぞ♥アイー"
+    assert m.training_target("びく♡💢") == "びく♡💢"
+    assert m.training_target("あ♡♥❤っ") == "あ♡♥♥っ"
     for raw in ("ムフッ♥!", "えらいぞ❤\ufe0fアイー", "びく♡", "あ♡♥❤っ"):
-        assert "♡" not in m.training_target(raw)
-        assert m.training_target(raw) == m.normalize_target(raw).replace("♡", "♥")
         assert "♥" not in m.exact_key(raw)
+        assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
     raw = "あ゛っ　……\n──"
     assert m.training_target(raw) == "あ゙っ ……\n――"
     assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)

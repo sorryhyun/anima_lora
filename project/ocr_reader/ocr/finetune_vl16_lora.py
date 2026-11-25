@@ -40,6 +40,12 @@ full through the same fp32-master path at ``--lm_lr``; embed_tokens, the final
 norm and lm_head stay frozen. Those weights land in ``lm.safetensors`` beside
 the adapter, which ``Vl16Reader`` also loads after the merge.
 
+``♡`` and ``💢`` are tokens of their own (``core/vocab_ext.py``, ``TARGET_NORM`` 10):
+their embedding and ``lm_head`` rows start from ``♥`` / ``×`` plus noise (or from
+``--init_adapter``'s ``vocab.safetensors``), train at ``--vocab_lr`` through fp32
+masters with the other rows frozen, and land in ``vocab.safetensors`` beside the
+adapter.
+
 ``--init_adapter <dir>`` (LP-FT, Kumar et al. 2022) loads an already-trained
 adapter dir as the starting point instead of a zero-init LoRA — its
 ``adapter_config.json`` wins over ``--rank`` / ``--dropout``. With
@@ -61,7 +67,6 @@ import os
 import random
 import re
 import shutil
-import sys
 import time
 from pathlib import Path
 
@@ -74,6 +79,7 @@ from PIL import Image
 from torch.utils.data import DataLoader
 
 from project.ocr_reader.core import crop_dataset as cd
+from project.ocr_reader.core import vocab_ext
 from project.ocr_reader.core.paths import OUTPUT, VL16_BASE
 from project.ocr_reader.core.readers import MAX_NEW_TOKENS
 from project.ocr_reader.core.scoring import score
@@ -414,6 +420,12 @@ def main():
     )
     ap.add_argument("--lm_lr", type=float, default=1e-5)
     ap.add_argument(
+        "--vocab_lr",
+        type=float,
+        default=1e-4,
+        help="lr of the ♡ / 💢 rows in the embedding and lm_head (core/vocab_ext.py)",
+    )
+    ap.add_argument(
         "--init_adapter",
         help="start from this trained adapter dir (LP-FT stage 2); "
         "its adapter_config.json overrides --rank/--dropout",
@@ -504,13 +516,8 @@ def main():
         "--attn",
         default="sdpa",
         choices=("sdpa", "flash_attention_2"),
-        help="attn_implementation; flash_attention_2 needs a wheel with the tower's "
-        "head dim 72 (stock flash-attn, not the fa2-sm120 hdim 64/128 build)",
-    )
-    ap.add_argument(
-        "--fa_path",
-        help="directory holding a stock flash-attn install (uv pip install --target), put "
-        "ahead of the venv's on sys.path; the venv keeps its fa2-sm120 build",
+        help="attn_implementation; flash_attention_2 runs the tower's head dim 72 on the "
+        "fa2-sm120 build's 96 kernel (Linux wheel)",
     )
     ap.add_argument(
         "--token_budget",
@@ -554,14 +561,6 @@ def main():
         a.max_train, a.val_limit, a.epochs = a.max_train or 480, 64, 1
     if a.ckpt_lm_only:
         a.grad_ckpt = True
-    if a.fa_path:
-        sys.path.insert(0, str(Path(a.fa_path).resolve()))
-        import flash_attn
-
-        print(
-            f"flash_attn {flash_attn.__version__} from {flash_attn.__file__}",
-            flush=True,
-        )
 
     torch.manual_seed(a.seed)
     random.seed(a.seed)
@@ -655,6 +654,11 @@ def main():
             p.requires_grad_(True)
         full_groups.append((file, ps, lr))
     full_params = [np_ for _, ps, _ in full_groups for np_ in ps]
+    ext_ids = (
+        a.init_adapter and vocab_ext.load(a.init_adapter, model, proc.tokenizer)
+    ) or vocab_ext.extend(model, proc.tokenizer, seed=a.seed)
+    rows = vocab_ext.RowTrainer(model, ext_ids)
+    print(f"vocab ext {[t for t, _ in vocab_ext.TOKENS]} at {ext_ids}", flush=True)
     full_masters = [
         p.detach().float().clone().requires_grad_(True) for _, p in full_params
     ]
@@ -714,7 +718,12 @@ def main():
             f"to x8, B marked 2-{a.bs})",
             flush=True,
         )
-    n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    row_ids = {id(w) for w in rows.weights}
+    n_train = sum(
+        p.numel()
+        for p in model.parameters()
+        if p.requires_grad and id(p) not in row_ids
+    ) + sum(m.numel() for m in rows.masters)
     full_desc = ", ".join(
         f"{file} {sum(p.numel() for _, p in ps) / 1e6:.1f}M in {len(ps)} tensors"
         for file, ps, _ in full_groups
@@ -829,7 +838,7 @@ def main():
     if a.smoke:
         total = min(total, 30)
     warm = max(1, int(total * a.warmup))
-    full_ids = {id(p) for _, p in full_params}
+    full_ids = {id(p) for _, p in full_params} | {id(w) for w in rows.weights}
     lora_params = [
         p for p in model.parameters() if p.requires_grad and id(p) not in full_ids
     ]
@@ -838,8 +847,9 @@ def main():
     for _, ps, lr in full_groups:
         groups.append({"params": full_masters[i : i + len(ps)], "lr": lr})
         i += len(ps)
+    groups.append({"params": rows.masters, "lr": a.vocab_lr})
     opt = torch.optim.AdamW(groups, lr=a.lr, weight_decay=0.0)
-    clip_params = lora_params + full_masters
+    clip_params = lora_params + full_masters + rows.masters
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt,
         lambda s: (
@@ -938,6 +948,7 @@ def main():
             with torch.no_grad():
                 for (_, p), m in zip(full_params, full_masters):
                     p.copy_(m)
+            rows.write_back()
             if mem_f:
                 mem_f.write(
                     json.dumps({"step": step, "peak": round(take_peak(), 3)}) + "\n"
@@ -959,6 +970,7 @@ def main():
         model.save_pretrained(ep_dir)
         for file, ps, _ in full_groups:
             save_full(ep_dir / file, ps)
+        vocab_ext.save(ep_dir / vocab_ext.FILE, model, ext_ids)
         m = evaluate(f"ep{ep}", step)
         m["train_loss"] = torch.stack(losses).mean().item()
         if m[best_key] > best[0]:
