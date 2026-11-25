@@ -1,0 +1,41 @@
+# hayai-ocr v2.7 Supernova beside the tuned PaddleOCR-VL-1.6 reader on the glyph stage's pages
+#   (probes/reader_pair.py): pages already on disk, read again by AnimeText and then by both
+#   readers on the same crops. Forward only; no render, no update, no parent run.
+# Question (the user, 11-25): does hayai v2.7 fit the glyph stage's reader better than the tuned
+#   reader? This run answers the forward half: the two readers' reads of single glyphs on m15v11
+#   renders, and which one is right where they differ.
+#   - hayai right on most of the crops where they differ, and its count of g1micro's gain at or
+#     over the tuned reader's -> a G1 micro arm on hayai's loss is proposed (gd.Reader's ce on
+#     hayai, g1micro_1125_1148's settings).
+#   - the tuned reader right on most -> it stays the reader and the loss; hayai's count of
+#     g1micro's gain is kept as a second read of that run by a model the rows were not trained
+#     against.
+#   - a split -> hayai is offered as the read beside the tuned reader's loss.
+# Records it rests on:
+#   - reports/g1micro_2026_11_25.md: g1micro_1125_1148's read pages, 16 glyphs × scenes 6, 12,
+#     45, 15 × seeds 0-3, start rows and trained rows (512 pages); the tuned reader, in process:
+#     solo 59 -> 132 of 256. The trained rows took the tuned reader's own loss.
+#   - reports/glyph_scenes_2026_11_25.md: the crossed grid, 56 JA glyphs and 8 EN words on the
+#     same four scenes, seeds 0-3, start rows (896 + 128 pages).
+#   - project/ocr_reader/labeling/hayai_read.py: the hayai call (model.ocr, max_patches "auto",
+#     escalate off, greedy) and the revision.
+# Read: numbers, and the sheets of the crops one reader reads as the asked glyph and the other
+#   does not (numbered, shuffled, the asked glyph under each; key.json holds the case). Claude
+#   reads the sheets before the key is opened; the user's read decides.
+# Bars: spread unknown. Two reads of one picture by the tuned reader put 26 of 128 pages in
+#   another case (reports/gd_g0d_2026_11_25.md), and these pages are WebP, read in process in
+#   the records above.
+# Cost: 1 536 pages, about 5 minutes.
+
+hayai = "JustANormalTinkerer/hayai-ocr-v2.7-supernova"
+revision = "90fc61482c33858ee9ea227cd797f6fdff33345c"  # the labeling pass's (11-24)
+conf_min = 0.6
+
+[[sets]]
+name = "g1micro"
+records = "project/cjk_rl/results/20261125-1217-g1-g1micro_1125_1148/records.json"
+ce = true  # both readers' cross-entropy of the asked glyph on every box
+
+[[sets]]
+name = "cross"
+dir = "output/cjk_rl/glyph_scenes/m15v11_px/cross"  # <arm>/<key>_sc<NN>_bubble_s<seed>.webp

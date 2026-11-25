@@ -43,6 +43,13 @@ Facts:
   Training scenes: the 16 of the 9 folders that hold no read scene; read scenes 6, 12, 45, 15.
 - The user's calls (11-25) on the loop: no page term; the split by folder; an x_3 cache
   refreshed every 4 passes on runs after the micro arm.
+- The user's call (11-25): from the next run on, the loss carries hayai v2.7's cross-entropy of
+  the glyph on the same crop at weight 0.2 (`hayai_weight`, `src/g1.py`; two readers for
+  robustness). [reports/reader_pair_2026_11_25.md](reports/reader_pair_2026_11_25.md)
+  (`hayai_1125_1234`): the two readers on the micro arm's pages and where they differ.
+  [reports/hayai_g0_2026_11_25.md](reports/hayai_g0_2026_11_25.md) (`g0h_1125_1243`): the two
+  terms' row gradients are of one size (hayai / tuned 0.93 at the median) and share a direction
+  on a render (cosine 0.21, null 0); hayai's term costs 0.05 s a render.
 - Cost, measured: 2.90 s a group of 4 renders, 12 s a row step, 13.1 GiB peak.
 - Rows with one trained row in the frame: 81 hiragana, 83 katakana.
 - Built: `probes/turbo_read.py` (render: all text prepared before the loop; read),
@@ -74,6 +81,9 @@ Facts:
   pages 44 → 23. 人 0 → 7; を 2 → 0, 行 0 → 0, 楽 0 → 1. The best row reads 15 of 16.
 - The user's read of the blind sheets (11-25): success, clear at a glance.
 - Not run: the permuted-label control.
+- A second reader on the same pages (`hayai_1125_1234`,
+  [reports/reader_pair_2026_11_25.md](reports/reader_pair_2026_11_25.md)): hayai v2.7 counts
+  solo 60 → 125, 12 glyphs up, 2 down.
 
 Interpretation:
 
@@ -88,17 +98,22 @@ Proposed (Claude), not queued. Parent: `g1micro_1125_1148`.
 Facts:
 
 - From the start rows again, 6 passes (24 steps a row) with the x_3 cache on (the input of
-  the last step kept per glyph, scene and seed; drawn again, on new seeds, every 4 passes).
-  Nothing else changed. Two things change together, length and the cache; the read at 8 steps
-  differs from the parent by the cache alone.
+  the last step kept per glyph, scene and seed; drawn again, on new seeds, every 4 passes) and
+  `hayai_weight` 0 → 0.2 (the user's call). Nothing else changed. Three things change together:
+  length, the cache and the hayai term. The read at 8 steps differs from the parent by the
+  cache and the term, and the run cannot separate those two.
+- To build before it runs: the cache and the saves at 8, 16 and 24 steps with a read each
+  (`src/g1.py` holds neither yet).
 - The rows are saved and read at 8, 16 and 24 steps on the parent's read scenes and seeds,
   with the parent's tables and blind sheets (start against the last save).
-- Read: solo by save, per glyph; the steps at which a glyph stops rising; を, 行, 楽; ぬ and
-  死, whose pages changed without a gain; the 8-step save against the parent's 132.
+- Read: solo by save, per glyph, under the tuned reader and under hayai (`hy_solo`, the same
+  boxes); the steps at which a glyph stops rising; を, 行, 楽; ぬ and 死, whose pages changed
+  without a gain; the crops one reader alone reads as the glyph, start against the last save;
+  the 8-step save against the parent's 132 (hayai's count of the parent: 125, WebP).
 - Bars: spread unknown. The 8-step save against the parent is the first pair of runs that
   differ only by the cache and the seeds of pass 1.
-- Cost: about 55 min of training (two passes at 2.9 s a group, four estimated at 1.7 s) and
-  about 10 min of reads.
+- Cost: about 60 min of training (two passes at 3.1 s a group, four estimated at 1.9 s; the
+  hayai term adds 0.2 s a group) and about 10 min of reads.
 
 Interpretation:
 

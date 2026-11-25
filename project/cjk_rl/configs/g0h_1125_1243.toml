@@ -1,0 +1,35 @@
+# G0h: hayai v2.7's cross-entropy beside the tuned reader's on G1's path (probes/hayai_g0.py):
+#   g1micro_1125_1148's group as it ran (m15v11, start rows seed_1008, the last step with a
+#   graph, one render a forward, the tuned reader's read and pick, bubble frame), both losses of
+#   the asked glyph on the picked crop, each pulled to the image and to the row. No update.
+# Question (the user, 11-25: hayai as an auxiliary loss at about 0.2): what does a loss weight
+#   of 0.2 put on the row beside the tuned reader's term, and do the two terms point the same
+#   way?
+#   - the row-norm ratio hayai / tuned near 1 -> the arm runs at the user's 0.2 as a loss
+#     weight.
+#   - far from 1 -> the weight is set so the hayai term is 0.2 of the tuned term at the median
+#     render (0.2 / ratio), and the header of the arm says so.
+#   - the row cosine of the two terms on one render no higher than across two renders -> the
+#     terms share no direction a render; the arm still runs (16 renders are averaged a step)
+#     and the note goes in its header.
+# Records it rests on:
+#   - reports/reader_pair_2026_11_25.md (hayai_1125_1234): the two readers' cross-entropies of
+#     the asked glyph rank 505 crops at Spearman 0.89; where the readers differ.
+#   - reports/gd_g0d_2026_11_25.md (g0d_1125_1119): the tuned term's row gradient on a missed
+#     render, norm 0.013 / 0.12 / 0.87 (10th / median / 90th); two renders of a glyph share its
+#     direction at cosine 0.01.
+#   - configs/g1micro_1125_1148.toml: the path's settings, the training scenes, pass 0's seeds.
+# Read: numbers only, Claude's: per render both losses, both row and image gradient norms, the
+#   cosine of the two terms on the image and on the row; the cosine across two renders of a
+#   group (the null); the seconds of hayai's term; the tensor path against hayai's processor.
+# Bars: the cosine's null is in the run (across renders). The norm ratio: spread unknown.
+# Cost: 32 groups of 4 renders, two last-step backwards a render; about 6 minutes.
+
+rows = "seed_1008"
+hira = "ひあぬうさがめを"
+kanji = "死王太二味楽人行"
+frame = "bubble"
+scenes = [0, 3]  # g1micro's first two training scenes (ids in assets/glyph_scenes.json)
+seeds = [1000, 1001, 1002, 1003]  # g1micro's pass 0
+conf_min = 0.6
+weight = 0.2  # the loss weight the tables are read at

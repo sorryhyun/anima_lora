@@ -30,7 +30,11 @@ The embedding's cotangent is per render (the DiT treats a batch's renders apart)
 The pixel head's image is clamped to [-1, 1] for the reads; the gradient passes the
 clamp as identity (:func:`ste_clamp`), since a white bubble sits on the clamp's edge.
 
-Probe: ``probes/gd_g0d.py``.
+:class:`Hayai` is a second reader, hayai-ocr v2.7 Supernova, with the same kind of
+loss on a crop of the page tensor (:meth:`Hayai.ce`); the crop is the one picked from
+the tuned reader's read.
+
+Probes: ``probes/gd_g0d.py``, ``probes/hayai_g0.py``.
 """
 
 from __future__ import annotations
@@ -506,3 +510,152 @@ class Reader:
             d = (scores.detach().max(1).values.cpu() - ref).abs()
             check["det_top_max"] = max(check.get("det_top_max", 0.0), float(d.max()))
         return scores
+
+
+class Hayai:
+    """hayai-ocr v2.7 Supernova (SigLIP2-NaFlex tower + a 12-layer decoder, about
+    150 M): its own ``ocr`` read, a string's token probabilities on a crop, and the
+    teacher-forced cross-entropy on a page tensor with the graph kept."""
+
+    REPO = "JustANormalTinkerer/hayai-ocr-v2.7-supernova"
+    REVISION = "90fc61482c33858ee9ea227cd797f6fdff33345c"  # the labeling pass's
+    MAX_NEW = 96
+
+    def __init__(
+        self, device: str = "cuda", repo: str = REPO, revision: str = REVISION
+    ):
+        import os
+
+        from transformers import AutoModel, AutoProcessor
+
+        # the model wraps its blocks in torch.compile outside inference mode; the
+        # forward with a graph runs them as written
+        os.environ.setdefault("HAYAI_DISABLE_COMPILE", "1")
+        kw = {"revision": revision, "trust_remote_code": True}
+        self.model = AutoModel.from_pretrained(repo, **kw).to(device).eval()
+        self.model.requires_grad_(False)
+        self.proc = AutoProcessor.from_pretrained(repo, **kw)
+        self.tok = self.proc.tokenizer
+        self.device = device
+
+    def read(self, images: list) -> list:
+        """PIL RGB crops → text: ``model.ocr``, auto patches, greedy, no escalation."""
+        import torch
+
+        if not images:
+            return []
+        with torch.inference_mode():
+            texts = self.model.ocr(
+                images,
+                self.proc,
+                max_new_tokens=self.MAX_NEW,
+                max_patches="auto",
+                batch_size=64,
+                escalate=False,
+            )
+        return [(t or "").strip() for t in texts]
+
+    def _ids(self, text: str):
+        import torch
+
+        ids = self.tok(text, add_special_tokens=False).input_ids
+        inp = torch.tensor([[self.tok.bos_token_id] + ids], device=self.device)
+        tgt = torch.tensor(ids + [self.tok.eos_token_id], device=self.device)
+        return inp, tgt
+
+    def probs(self, image, text: str) -> tuple[list, int]:
+        """``(p of each token of text and of the EOS after it, the forward's first
+        argmax)`` on one PIL crop through the model's own processor, fp32."""
+        import torch
+
+        inp, tgt = self._ids(text)
+        b = self.proc(
+            images=[image], max_patches="auto", device=self.device, dtype=torch.float32
+        )
+        with torch.inference_mode():
+            lg = self.model(
+                b["pixel_values"],
+                b["pixel_attention_mask"],
+                b["spatial_shapes"],
+                text_token_ids=inp,
+            )
+        p = lg[0].float().softmax(-1)
+        return p[torch.arange(len(tgt)), tgt].tolist(), int(p[0].argmax())
+
+    def ce(self, pages, boxes, texts, check: dict | None = None):
+        """The teacher-forced cross-entropy of ``texts[k]`` on crop ``boxes[k]`` of
+        ``pages[k]`` → ``(n,)`` fp32, a mean over the text's tokens and the EOS
+        (:meth:`Reader.ce`'s shape). ``pages``: ``(3, H, W)`` RGB in [0, 1], graph
+        kept. The processor's steps on the tensor: the NaFlex size of the crop's
+        auto patch tier, a bilinear resize, 16-px patches in [-1, 1]. ``check`` takes
+        the tensor path's distance from the processor's ``pixel_values`` and loss."""
+        import sys
+
+        import torch
+        import torch.nn.functional as F
+        from PIL import Image
+
+        ip = self.proc.image_processor
+        mod = sys.modules[type(ip).__module__]
+        ps = ip.patch_size
+        kw = {
+            "patch_size": ps,
+            "min_patches": ip.min_patches,
+            "max_scale": ip.max_scale,
+        }
+        out = []
+        for page, (x0, y0, x1, y1), text in zip(pages, boxes, texts):
+            h, w = y1 - y0, x1 - x0
+            mp = mod._select_best_max_patches(h, w, **kw)[0]
+            th, tw, nh, nw = mod._naflex_target_size(h, w, max_patches=mp, **kw)
+            c = page[:, y0:y1, x0:x1][None].float()
+            if (th, tw) != (h, w):
+                c = F.interpolate(
+                    c,
+                    size=(th, tw),
+                    mode="bilinear",
+                    antialias=True,
+                    align_corners=False,
+                )
+            pv = (
+                c[0]
+                .permute(1, 2, 0)
+                .reshape(nh, ps, nw, ps, 3)
+                .permute(0, 2, 1, 3, 4)
+                .reshape(nh * nw, ps * ps * 3)
+                * 2
+                - 1
+            )
+            n = nh * nw
+            keep = max(
+                ip.pad_to_multiple_of,
+                -(-n // ip.pad_to_multiple_of) * ip.pad_to_multiple_of,
+            )
+            pv = F.pad(pv, (0, 0, 0, keep - n), value=-1.0)[None]
+            pam = torch.zeros(1, keep, dtype=torch.long, device=pv.device)
+            pam[0, :n] = 1
+            ss = torch.tensor([[nh, nw]], device=pv.device)
+            inp, tgt = self._ids(text)
+            lg = self.model(pv, pam, ss, text_token_ids=inp)
+            loss = F.cross_entropy(lg[0].float(), tgt)
+            out.append(loss)
+            if check is not None:
+                u8 = page[:, y0:y1, x0:x1].detach().clamp(0, 1).mul(255).round()
+                im = Image.fromarray(u8.byte().permute(1, 2, 0).cpu().numpy())
+                b = self.proc(
+                    images=[im],
+                    max_patches="auto",
+                    device=pv.device,
+                    dtype=torch.float32,
+                )
+                ref = b["pixel_values"]
+                assert ref.shape == pv.shape, (ref.shape, pv.shape)
+                d = (pv.detach() - ref).abs()
+                check["hy_pv_max"] = max(check.get("hy_pv_max", 0.0), float(d.max()))
+                check["hy_pv_mean"] = max(check.get("hy_pv_mean", 0.0), float(d.mean()))
+                pr, _ = self.probs(im, text)
+                c2 = -sum(torch.tensor(pr).clamp_min(1e-30).log().tolist()) / len(pr)
+                check["hy_ce_max"] = max(
+                    check.get("hy_ce_max", 0.0), abs(c2 - float(loss.detach()))
+                )
+        return torch.stack(out)

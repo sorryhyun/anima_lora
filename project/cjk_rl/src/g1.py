@@ -12,6 +12,10 @@ Policy and path: ``gd.Policy`` (``m15v11``, 4 Euler steps, pixel-head decode, ro
   detector's backward runs on those pages only); the loss is pulled to the glyph's row;
 - the render's row gradient is clipped to ``clip`` and added to the row's sum.
 
+With ``hayai_weight`` in the config (0 or absent: off), a page with a box also takes
+hayai v2.7's cross-entropy of the glyph on the same crop (``gd.Hayai.ce``) at that
+weight, and the read gains hayai's ``solo`` on the tuned reader's boxes (``hy_solo``).
+
 A row steps when ``accum`` of its renders are in: the mean gradient joins the row's
 momentum (``beta``), and the row moves ``eta`` row norms against the momentum's
 direction. A pass is every (glyph, training scene) once, shuffled; pass p draws seeds
@@ -68,7 +72,9 @@ def glyphs(cfg: dict, smoke: bool) -> list:
     return out
 
 
-def train(pol, rdr, cfg: dict, gl: list, sc: dict, scenes: list, out: Path) -> dict:
+def train(
+    pol, rdr, cfg: dict, gl: list, sc: dict, scenes: list, out: Path, hy=None
+) -> dict:
     import torch
 
     W, H = G.SHAPE
@@ -110,13 +116,19 @@ def train(pol, rdr, cfg: dict, gl: list, sc: dict, scenes: list, out: Path) -> d
                 case, r = gd.pick(key, reads[0], cfg["conf_min"])
                 leaf = img.clone().requires_grad_(True)
                 p01 = (gd.ste_clamp(leaf, -1.0, 1.0) + 1) / 2
+                aux = None
                 if r is None:
                     top = rdr.det_scores(p01).max(1).values
                     loss = top.clamp_min(1e-6).log().neg().sum()
+                    total = loss
                 else:
                     box = gd.crop_box(r["box"], W, H)
                     loss = rdr.ce([p01[0]], bgrs, [box], [key]).sum()
-                g_px = torch.autograd.grad(loss, leaf)[0]
+                    total = loss
+                    if hy is not None:
+                        aux = hy.ce([p01[0]], [box], [key]).sum()
+                        total = loss + cfg["hayai_weight"] * aux
+                g_px = torch.autograd.grad(total, leaf)[0]
                 t = lap("loss", t)
                 g_e = torch.autograd.grad((px * g_px).sum(), ei)[0]
                 g = pol.row_grads(e_graph, g_e)[0, row[key]]
@@ -127,7 +139,8 @@ def train(pol, rdr, cfg: dict, gl: list, sc: dict, scenes: list, out: Path) -> d
                 since[key].append(
                     {
                         "case": case,
-                        "loss": float(loss.detach()),
+                        "loss": float(loss.detach()),  # the tuned reader's term
+                        "hy": None if aux is None else float(aux.detach()),
                         "norm": n,
                         "exact": bool(r and r["sfx"] and G.boxes([r]) == [_norm(key)]),
                     }
@@ -164,6 +177,11 @@ def train(pol, rdr, cfg: dict, gl: list, sc: dict, scenes: list, out: Path) -> d
                     },
                     "exact": sum(x["exact"] for x in rs),
                     "ce": sum(x["loss"] for x in crop) / len(crop) if crop else None,
+                    "ce_hy": (
+                        sum(x["hy"] for x in crop) / len(crop)
+                        if crop and hy is not None
+                        else None
+                    ),
                     "clipped": sum(x["norm"] > cfg["clip"] for x in rs),
                     "groups": n_groups,
                     "min": round((time.time() - t_run) / 60, 2),
@@ -213,10 +231,22 @@ def _norm(s: str) -> str:
     return norm(s)
 
 
-def read(pol, rdr, cfg: dict, gl: list, sc: dict, scenes: list, arms: dict, out: Path):
+def read(
+    pol,
+    rdr,
+    cfg: dict,
+    gl: list,
+    sc: dict,
+    scenes: list,
+    arms: dict,
+    out: Path,
+    hy=None,
+):
     """``[{arm, cls, key, scene, seed, case, solo, on_page, extra, null, ce, reads}]``
     and the pages on disk."""
+    import numpy as np
     import torch
+    from common.readers import crop
     from PIL import Image
 
     W, H = G.SHAPE
@@ -230,6 +260,21 @@ def read(pol, rdr, cfg: dict, gl: list, sc: dict, scenes: list, arms: dict, out:
                 caption = G.framed(sc[si][cfg["frame"]], key)
                 _, px = pol.rollout(pol.noise(seeds, G.SHAPE), pol.embed(caption))
                 bgrs, reads = rdr.read(px)
+                if hy is not None:
+                    own = [
+                        (b, r)
+                        for b, rs in enumerate(reads)
+                        for r in rs
+                        if not r.get("whole")
+                    ]
+                    crops = [
+                        Image.fromarray(
+                            np.ascontiguousarray(crop(bgrs[b], r["box"])[:, :, ::-1])
+                        )
+                        for b, r in own
+                    ]
+                    for (_, r), text in zip(own, hy.read(crops)):
+                        r["hy"] = text
                 p01 = (px.clamp(-1, 1) + 1) / 2
                 for b, seed in enumerate(seeds):
                     case, r = gd.pick(key, reads[b], cfg["conf_min"])
@@ -257,6 +302,12 @@ def read(pol, rdr, cfg: dict, gl: list, sc: dict, scenes: list, arms: dict, out:
                         | {"null": G.page_terms(alt, reads[b])["solo"]}
                         | {"boxes": G.boxes(reads[b])}
                     )
+                    if hy is not None:
+                        as_hy = [x | {"sfx": x.get("hy")} for x in reads[b]]
+                        recs[-1] |= {
+                            "hy_solo": G.page_terms(key, as_hy)["solo"],
+                            "hy_boxes": G.boxes(as_hy),
+                        }
         print(f"  read {arm} ({(time.time() - t0) / 60:.1f} min)", flush=True)
     return recs
 
@@ -286,11 +337,12 @@ def tabulate(recs: list, arms: list) -> dict:
             "none": sum(r["case"] == "none" for r in xs),
             "low": sum(r["case"] == "low" for r in xs),
             "ce": round(sum(crop) / len(crop), 3) if crop else None,
-        }
+        } | ({"hy_solo": sum(r["hy_solo"] for r in xs)} if "hy_solo" in xs[0] else {})
 
     per = {k: {arm: cell(arm, k) for arm in arms} for k in keys}
     out = {"per_glyph": per, "paired": {}, "total": {}}
-    for m in ("solo", "on_page", "null", "extra", "r_seq", "none", "low", "ce"):
+    ms = ("solo", "on_page", "null", "extra", "r_seq", "none", "low", "ce")
+    for m in ms + (("hy_solo",) if "hy_solo" in recs[0] else ()):
         pairs = [
             (per[k][a][m], per[k][b][m])
             for k in keys
@@ -318,6 +370,9 @@ def tabulate(recs: list, arms: list) -> dict:
                 f"solo_{c}": sum(r["solo"] for r in xs if r["cls"] == c)
                 for c in CLASSES
             },
+            **(
+                {"hy_solo": sum(r["hy_solo"] for r in xs)} if "hy_solo" in xs[0] else {}
+            ),
         }
     return out
 
@@ -384,15 +439,16 @@ def main() -> None:
     frame = cfg["frame"]
     pol.encode([G.framed(sc[i][frame], k) for _, k, _ in gl for i in tr + rd_sc])
     rdr = gd.Reader("cuda")
+    hy = gd.Hayai("cuda") if cfg.get("hayai_weight") else None
     print(
         f"{name}: {len(gl)} glyphs × {len(tr)} training scenes × {cfg['passes']} "
         f"passes; read on {rd_sc}; row_scale {pol.row_scale:.2f}",
         flush=True,
     )
-    res = train(pol, rdr, cfg, gl, sc, tr, out)
+    res = train(pol, rdr, cfg, gl, sc, tr, out, hy)
     print(f"train: {res['info']}", flush=True)
     arms = {"start": res["init"], "trained": res["trained"]}
-    recs = read(pol, rdr, cfg, gl, sc, rd_sc, arms, out)
+    recs = read(pol, rdr, cfg, gl, sc, rd_sc, arms, out, hy)
     pol.raw.data.copy_(res["trained"])
     table = tabulate(recs, list(arms))
     for k, v in table["per_glyph"].items():
@@ -401,7 +457,8 @@ def main() -> None:
             f"  {k} solo {s['solo']:>2} → {t['solo']:>2} / {s['n']}  on_page "
             f"{s['on_page']:>2} → {t['on_page']:>2}  null {s['null']} → {t['null']}  "
             f"extra {s['extra']} → {t['extra']}  ce {s['ce']} → {t['ce']}  none "
-            f"{s['none']} → {t['none']}  drift {res['info']['drift'][k]}",
+            f"{s['none']} → {t['none']}  drift {res['info']['drift'][k]}"
+            + (f"  hayai solo {s['hy_solo']} → {t['hy_solo']}" if hy else ""),
             flush=True,
         )
     for m, v in table["paired"].items():

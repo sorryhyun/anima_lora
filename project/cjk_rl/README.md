@@ -37,6 +37,11 @@ in order, at its length, with no invented dialogue around it.
     its memory and seconds, and the size and direction of the gradient it puts on a row.
   - [g1micro_2026_11_25.md](reports/g1micro_2026_11_25.md) — G1's micro arm: 16 rows, 8 steps
     each on the reader's loss; solo on held-out scenes 59 → 132 of 256.
+  - [reader_pair_2026_11_25.md](reports/reader_pair_2026_11_25.md) — hayai v2.7 Supernova
+    beside the tuned reader on g1micro's read pages and the crossed grid: hayai counts
+    g1micro's solo 60 → 125; the crops the two differ on.
+  - [hayai_g0_2026_11_25.md](reports/hayai_g0_2026_11_25.md) — G0h: hayai's cross-entropy
+    beside the tuned reader's on G1's path; the two row gradients' sizes and cosine.
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -55,13 +60,17 @@ in order, at its length, with no invented dialogue around it.
   call) are the ones `glyph_g0.py` runs on.
   `glyph_g0.py` and `glyph_scenes.py` are the glyph stage's forward probes; `gd_g0d.py`
   measures the row gradient of `src/gd.py`.
+  `reader_pair.py` reads pages on disk with the tuned reader and hayai v2.7 on the same
+  crops; `hayai_g0.py` measures hayai's loss beside the tuned reader's on G1's path.
 - `configs/` — one file a run, its question and gate in the header.
 - `assets/glyph_scenes.json` (gitignored) — the selected scene prompts, written by
   `glyph_scenes.py screen`.
 - `results/` (gitignored) — one directory per probe run; renders under `output/cjk_rl/`.
 
 Every read is the tuned PaddleOCR-VL-1.6 reader (`anime_tools.ocr.reader.OcrReader`); stock
-VL16 is not a reader.
+VL16 is not a reader. hayai v2.7 Supernova was read beside it once (`hayai_1125_1234`). The
+user's call (11-25): from the next run on the loss carries hayai's cross-entropy at weight 0.2
+(`src/gd.py` `Hayai`, `hayai_weight` in `src/g1.py`, off unless the config sets it).
 
 State (11-25): P1 arm R failed (`grpo_1113_1940`, rows `rl_p1`). On merged15 + the turbo v1.1
 delta the rows read near their null and the EN reference at cer 0.83
@@ -71,8 +80,8 @@ delta the rows read near their null and the EN reference at cer 0.83
 The user's call (11-25): G-D is the arm, G-R is out. G-D's path is built and G0d ran
 (`g0d_1125_1119`, `reports/gd_g0d_2026_11_25.md`). G1's micro arm ran (`g1micro_1125_1148`,
 `reports/g1micro_2026_11_25.md`): solo on held-out scenes 59 → 132 of 256; the user read the
-sheets as a success. Next: `plan.md` item 3 (the sixteen rows to their ceiling, x_3 cache on),
-then item 4 (the 81 hiragana); neither queued.
+sheets as a success. Next: `plan.md` item 3 (the sixteen rows to their ceiling, x_3 cache on, hayai's
+term at 0.2), then item 4 (the 81 hiragana); neither queued.
 Arm A and the D0 probes (proposal § 4) wait behind the glyph stage.
 
 ## Rules
