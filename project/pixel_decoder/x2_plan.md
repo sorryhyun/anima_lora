@@ -54,8 +54,10 @@ Labelled pair sheets of the 32 renders, local, under `bench/pixel_readout/result
 | `x2slcap` \| `x2r200` | `20261125-0056-tex_x2r200_1125_0036/pairs_x2slcap_1125_0011_x2r200_1125_0036/` | slope weight 2500 against 200 at ratio 0.5 |
 | `x2slope` \| `x2slr05` | `20261124-2336-tex_x2slr05_1124_2316/pairs_x2slope_1124_2055_x2slr05_1124_2316/` | ratio 2.0 against 0.5 under the slope term |
 
-The pair sheets of the closed arms (unpaired, flat-cell cut, the LoRA finishes, the 1,000-rollout
-ratio and slope arms) are named in their records.
+The pair sheets of the 1,000-rollout ratio and slope arms are named in their records. The renders
+and sheets of the runs from `x2gen_1123_1720` to `x2flat_1124_1341` (the mixes, the LoRA finishes,
+unpaired, the flat-cell cut, the ×1 fit reads) were deleted on the user's word (2026-11-25); their
+`result.json` are under `bench/pixel_readout/results/archive/`, local.
 
 ## Next
 
