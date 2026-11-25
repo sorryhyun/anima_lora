@@ -17,12 +17,20 @@ seeds. Per group, in turn:
 - ``batch``: the 4 pages read in one call, one loss and one backward for the group.
 - ``cap`` / ``batch_cap``: ``serial`` / ``batch`` with the reader's ``max_new_tokens``
   at ``cap`` (the asked string is one glyph).
+- ``lone``: ``serial`` with a one-box page left unread (``gd.Reader.read(skip_lone=
+  True)``, G1's ``skip_lone_read``).
+
+A config's ``variants`` picks which of ``batch`` / ``cap`` / ``batch_cap`` / ``lone``
+run beside ``serial`` (absent: the first three), and ``split = false`` leaves the
+timer pass out.
 
 Beside the seconds: how often a variant's pick (case, box, text) equals ``serial``'s,
 the cosine of its image gradient with ``serial``'s where the box is the same, the
 decode steps a ``generate`` call ran, and the GPU's kernel seconds inside the read and
 the loss of the first ``prof_groups`` groups (``torch.profiler``) against their wall
-seconds.
+seconds. For ``lone``, on the pages it left unread: the loss forward's argmax being the
+glyph (``gd.Reader.ce``'s ``hit``) against ``serial``'s read being the glyph, and
+``serial``'s case on those pages.
 
 The run's settings, question and gate are its config's header
 (``configs/<handle>_<mmdd>_<hhmm>.toml``). Result → ``results/<ts>-reader_room-<stem>/``.
@@ -125,7 +133,7 @@ def load_groups(cfg: dict, smoke: bool) -> list:
     from PIL import Image
 
     root = PAGES / cfg["pages"] / "read"
-    keys = list(cfg["hira"] + cfg["kanji"])
+    keys = list(cfg.get("hira", "") + cfg.get("kata", "") + cfg.get("kanji", ""))
     out = []
     for arm in cfg["arms"]:
         for n, key in enumerate(keys):
@@ -151,8 +159,9 @@ def picked(key: str, reads: list, conf_min: float) -> tuple:
     return case, r, (case, None if r is None else (tuple(r["box"]), r["sfx"]))
 
 
-def loss_page(rdr, hy, cfg: dict, key: str, img, bgrs, r, laps: bool = False):
-    """G1's loss on one page and its gradient on the image ``(1, 3, H, W)``."""
+def loss_page(rdr, hy, cfg: dict, key: str, img, bgrs, r, laps: bool = False, hit=None):
+    """G1's loss on one page and its gradient on the image ``(1, 3, H, W)``. ``hit``:
+    ``gd.Reader.ce``'s."""
     import torch
 
     W, H = G.SHAPE
@@ -173,7 +182,7 @@ def loss_page(rdr, hy, cfg: dict, key: str, img, bgrs, r, laps: bool = False):
         lap("det_term")
     else:
         box = gd.crop_box(r["box"], W, H)
-        total = rdr.ce([p01[0]], bgrs, [box], [key]).sum()
+        total = rdr.ce([p01[0]], bgrs, [box], [key], hit=hit).sum()
         lap("ce")
         if hy is not None:
             total = total + cfg["hayai_weight"] * hy.ce([p01[0]], [box], [key]).sum()
@@ -257,30 +266,37 @@ def run(cfg: dict, smoke: bool) -> dict:
     instrument(rdr)
     conf, full = cfg["conf_min"], R.MAX_NEW_TOKENS
     B = len(cfg["seeds"])
-    names = ("serial", "batch", "cap", "batch_cap")
+    extra = tuple(cfg.get("variants", ("batch", "cap", "batch_cap")))
+    names = ("serial", *extra)
     sec = {v: {"read": [], "loss": []} for v in names}  # seconds a group
-    page_read = {v: [] for v in ("serial", "cap")}  # seconds a page
+    page_read = {v: [] for v in ("serial", "cap", "lone")}  # seconds a page
+    # lone's unread pages: serial's case, and the forward's argmax against its read
+    lone = {"pages": 0, "serial_case": {"box": 0, "low": 0}}
+    lone |= dict.fromkeys(("both", "read_only", "argmax_only", "neither"), 0)
     steps = {v: [] for v in names}
     agree = {v: {"case": 0, "box": 0, "text": 0, "n": 0} for v in names[1:]}
     gcos = {v: [] for v in names[1:]}
     cases = dict.fromkeys(("box", "low", "none"), 0)
     kept = []  # the first groups' serial reads, for the profiler
 
-    def serial(v: str, key: str, px):
+    def serial(v: str, key: str, px, skip_lone: bool = False):
         CK.steps = steps[v]
         out, tr, tl = [], 0.0, 0.0
         for b in range(B):
             img = px[b : b + 1]
             t = now()
-            bgrs, reads = rdr.read(img)
+            bgrs, reads = rdr.read(img, skip_lone=skip_lone)
             dt = now() - t
             page_read[v].append(dt)
             tr += dt
             t = now()
             _, r, sig = picked(key, reads[0], conf)
-            g = loss_page(rdr, hy, cfg, key, img, bgrs, r)
+            hit: list = []
+            g = loss_page(
+                rdr, hy, cfg, key, img, bgrs, r, hit=hit if skip_lone else None
+            )
             tl += now() - t
-            out.append((sig, g, bgrs, r))
+            out.append((sig, g, bgrs, r, hit[0] if hit else None))
         sec[v]["read"].append(tr)
         sec[v]["loss"].append(tl)
         return out
@@ -310,11 +326,33 @@ def run(cfg: dict, smoke: bool) -> dict:
                 )
                 gcos[v].append(float(c))
 
+    def count_lone(key: str, ref: list, got: list) -> None:
+        from common.text import norm
+
+        for (s0, *_), (s1, *_, argmax) in zip(ref, got):
+            if s1[0] != "lone":
+                continue
+            lone["pages"] += 1
+            lone["serial_case"][s0[0]] += 1
+            read = norm(s0[1][1] or "") == norm(key)
+            lone[
+                "both"
+                if read and argmax
+                else "read_only"
+                if read
+                else "argmax_only"
+                if argmax
+                else "neither"
+            ] += 1
+
     # the first group twice through every variant, untimed
     warm = to_px(groups[0][3])
     for _ in range(2):
         serial("serial", groups[0][1], warm)
-        batch("batch", groups[0][1], warm)
+        if "lone" in names:
+            serial("lone", groups[0][1], warm, skip_lone=True)
+        if {"batch", "batch_cap"} & set(names):
+            batch("batch" if "batch" in names else "batch_cap", groups[0][1], warm)
     for xs in (*page_read.values(), *steps.values()):
         xs.clear()
     for d in sec.values():
@@ -332,7 +370,7 @@ def run(cfg: dict, smoke: bool) -> dict:
 
         # the same order with a timer on each part
         CK.steps, CK.tag = None, "read"
-        for b in range(B):
+        for b in range(B if cfg.get("split", True) else 0):
             img = px[b : b + 1]
             t = now()
             bgrs = [
@@ -351,10 +389,17 @@ def run(cfg: dict, smoke: bool) -> dict:
             CK.tag = "read"
         CK.tag = None
 
-        compare("batch", ref, batch("batch", key, px))
-        R.MAX_NEW_TOKENS = cfg["cap"]
-        compare("cap", ref, serial("cap", key, px))
-        compare("batch_cap", ref, batch("batch_cap", key, px))
+        if "batch" in names:
+            compare("batch", ref, batch("batch", key, px))
+        if "lone" in names:
+            got = serial("lone", key, px, skip_lone=True)
+            compare("lone", ref, got)
+            count_lone(key, ref, got)
+        R.MAX_NEW_TOKENS = cfg.get("cap", full)
+        if "cap" in names:
+            compare("cap", ref, serial("cap", key, px))
+        if "batch_cap" in names:
+            compare("batch_cap", ref, batch("batch_cap", key, px))
         R.MAX_NEW_TOKENS = full
         if n % 8 == 7:
             print(
@@ -372,7 +417,7 @@ def run(cfg: dict, smoke: bool) -> dict:
     def losses_again():
         for key, px, ref in kept:
             for b in range(B):
-                _, _, bgrs, r = ref[b]
+                _, _, bgrs, r, _ = ref[b]
                 loss_page(rdr, hy, cfg, key, px[b : b + 1], bgrs, r)
 
     k = len(kept)
@@ -397,7 +442,7 @@ def run(cfg: dict, smoke: bool) -> dict:
             v: {p: round(statistics.median(xs), 4) for p, xs in d.items()}
             for v, d in sec.items()
         },
-        "page_read_s": {v: summary(xs) for v, xs in page_read.items()},
+        "page_read_s": {v: summary(xs) for v, xs in page_read.items() if xs},
         # a timer on each part, seconds a group (a part's mean a page × the pages)
         "split_s_per_group": {
             name: round(s / n_pages * B, 4) for name, s in sorted(CK.s.items())
@@ -410,12 +455,13 @@ def run(cfg: dict, smoke: bool) -> dict:
                 "calls": len(xs),
                 "crops": summary([c for c, _ in xs]),
                 "steps": summary([s for _, s in xs]),
-                "at_cap": sum(s >= cfg["cap"] for _, s in xs),
+                "at_cap": sum(s >= cfg.get("cap", full) for _, s in xs),
             }
             for v, xs in steps.items()
             if xs
         },
         "agree_with_serial": agree,
+        "lone": lone if "lone" in names else None,
         "grad_cos_with_serial": {v: summary(xs) for v, xs in gcos.items() if xs},
         "gpu_busy": busy,
         "peak_gib": round(torch.cuda.max_memory_allocated() / 2**30, 2),

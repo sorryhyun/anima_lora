@@ -23,7 +23,9 @@ with its cost:
 - The frequent kanji ([proposal_glyph.md](proposal_glyph.md)): 1 410 rows at 6 steps are
   about 29 h of training, and a read of all of them is 22 560 renders an arm, about 3.3 h.
   Whether they run this way, at 4 steps (most of the kana's gain), or on the cheaper step of
-  § 2 is the user's call.
+  § 2 is the user's call. `skip_lone_read` (built 11-25, off unless a config sets it) takes
+  about 0.17 s off a 3.04 s group, about 1.6 h of the 29; a log with it on has `lone` in
+  place of box / low on one-box pages.
 
 ## Parked
 
@@ -65,6 +67,7 @@ item 4's is of 2 624 (164 glyphs).
 | 2 | G1's micro arm: 16 rows, 8 steps | `g1micro_1125_1148` | [g1micro](reports/g1micro_2026_11_25.md) | solo 59 → 132 | adopted on the user's read |
 | – | hayai v2.7 beside the tuned reader | `hayai_1125_1234`, `g0h_1125_1243` | [reader_pair](reports/reader_pair_2026_11_25.md), [hayai_g0](reports/hayai_g0_2026_11_25.md) | hayai counts the micro arm 60 → 125; the two row gradients' cosine 0.21 | – |
 | – | the reader side of a group, timed | `room_1125_1324` | [reader_room](reports/reader_room_2026_11_25.md) | 0.75 s a group | – |
+| – | a one-box training page left unread (`skip_lone_read`) | `room_1125_2155`, `lone_1125_2200` (smoke) | [reader_room](reports/reader_room_2026_11_25.md), second part | read 0.317 → 0.148 s a group; same box and image gradient on 256 of 256 pages | – |
 | 3 | G1 long: 16 rows, 24 steps, hayai's term | `g1long_1125_1335` | [g1long](reports/g1long_2026_11_25.md) | solo 59 → 136 → 175 → 199 at 8, 16, 24 steps | adopted on the user's read |
 | – | the 24-step rows on the base model, sign prompt | `sign_1125_1504` | [g1long](reports/g1long_2026_11_25.md), second part | 4 glyphs, 2 seeds | – |
 | 3b | the row line: the rows' walk, their place in the table, forward reads | `line_1125_1517`, `line_1125_1527` | [row_line](reports/row_line_2026_11_25.md) | solo at twice the 8-step displacement 122, at the other rows' mean displacement 112, at a drawn direction 59 | – |

@@ -16,6 +16,13 @@ With ``hayai_weight`` in the config (0 or absent: off), a page with a box also t
 hayai v2.7's cross-entropy of the glyph on the same crop (``gd.Hayai.ce``) at that
 weight, and the read gains hayai's ``solo`` on the tuned reader's boxes (``hy_solo``).
 
+With ``skip_lone_read`` in the config, a training page where the detector finds one box
+is not read (``gd.Reader.read(skip_lone=True)``): the box is the pick whatever it
+reads, and the loss is the same. The log counts such a page under ``lone`` instead of
+``box`` / ``low``, and its ``exact`` is the loss forward's argmax being the target at
+every token (``gd.Reader.ce``'s ``hit``), which leaves out a ``fold_small`` pair's
+other glyph. The read on held-out scenes reads every box either way.
+
 A row steps when ``accum`` of its renders are in: the mean gradient joins the row's
 momentum (``beta``), and the row moves ``eta`` row norms against the momentum's
 direction. A pass is every (glyph, training scene) once, shuffled; pass p draws seeds
@@ -159,6 +166,7 @@ def train(
 
     W, H = G.SHAPE
     frame, accum = cfg["frame"], cfg["accum"]
+    skip_lone = bool(cfg.get("skip_lone_read"))
     dim = pol.raw.shape[1]
     init = pol.raw.detach().clone()
     cap = {(k, si): G.framed(sc[si][frame], k) for _, k, _ in gl for si in scenes}
@@ -213,10 +221,11 @@ def train(
                 px, ei = pol.last(x3[b : b + 1], e)
                 t = lap("last_fwd", t)
                 img = px.detach()
-                bgrs, reads = rdr.read(img)
+                bgrs, reads = rdr.read(img, skip_lone=skip_lone)
                 t = lap("read", t)
                 tgt = ok[key][0]
                 case, r = gd.pick(tgt, reads[0], cfg["conf_min"])
+                hit: list = []  # a lone page's exact, from the loss forward
                 leaf = img.clone().requires_grad_(True)
                 p01 = (gd.ste_clamp(leaf, -1.0, 1.0) + 1) / 2
                 aux = None
@@ -226,7 +235,13 @@ def train(
                     total = loss
                 else:
                     box = gd.crop_box(r["box"], W, H)
-                    loss = rdr.ce([p01[0]], bgrs, [box], [tgt]).sum()
+                    loss = rdr.ce(
+                        [p01[0]],
+                        bgrs,
+                        [box],
+                        [tgt],
+                        hit=hit if case == "lone" else None,
+                    ).sum()
                     total = loss
                     if hy is not None:
                         aux = hy.ce([p01[0]], [box], [tgt]).sum()
@@ -245,7 +260,9 @@ def train(
                         "loss": float(loss.detach()),  # the tuned reader's term
                         "hy": None if aux is None else float(aux.detach()),
                         "norm": n,
-                        "exact": bool(
+                        "exact": hit[0]
+                        if case == "lone"
+                        else bool(
                             r
                             and r["sfx"]
                             and G.boxes([r]) in [[_norm(x)] for x in ok[key]]
@@ -280,7 +297,7 @@ def train(
                     / pol.row_scale,
                     "cases": {
                         c: sum(x["case"] == c for x in rs)
-                        for c in ("box", "low", "none")
+                        for c in ("box", "low", "lone", "none")
                     },
                     "exact": sum(x["exact"] for x in rs),
                     "ce": sum(x["loss"] for x in crop) / len(crop) if crop else None,

@@ -45,6 +45,11 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   picked crop, plus 0.2 times hayai v2.7's cross-entropy on the same crop. A page with no box
   takes −log of the detector's top text score, its signal to draw at all. There is no page
   term.
+- With `skip_lone_read` in the config (off when absent; no run of record has used it), a
+  training page with one box is not read: the box is the pick either way, so the loss is the
+  same and a group takes 0.17 s less. Such a page is `lone` in the log, and its `exact` comes
+  from the loss forward's argmax
+  ([reader_room](reports/reader_room_2026_11_25.md), second part).
 - The gradient goes from the loss to the image, through the last step to the text embedding
   (the earlier steps are not differentiated), and through the LLM adapter to the glyph's row.
 
@@ -135,7 +140,8 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
     4 glyphs, 2 seeds).
   - [reader_room_2026_11_25.md](reports/reader_room_2026_11_25.md) — the reader side of G1's
     group alone: 0.75 s a group by part, the GPU busy for a third of it; a decode cap and 4
-    pages a call timed.
+    pages a call timed. Second part: a one-box page left unread (`room_1125_2155`), read
+    0.317 → 0.148 s a group with the same box and gradient on 256 of 256 pages.
   - [row_line_2026_11_25.md](reports/row_line_2026_11_25.md) — G1 long's rows: a step's
     direction against a walk on noise, and the rows read with no training at twice their
     8-step displacement (122 of 256) and at the other rows' mean displacement (59 → 112; a
@@ -169,7 +175,7 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   `reader_pair.py` reads pages on disk with the tuned reader and hayai v2.7 on the same
   crops; `hayai_g0.py` measures hayai's loss beside the tuned reader's on G1's path.
   `reader_room.py` times the reader side of G1's group by part, without the DiT, on pages a
-  G1 run wrote. `base_sign.py` renders a G1 save's rows on another model of the ruler's table
+  G1 run wrote, and its `lone` variant times `skip_lone_read`. `base_sign.py` renders a G1 save's rows on another model of the ruler's table
   in a prompt of its config and reads them beside the start rows. `row_walk.py` (CPU) counts
   how far a G1 run's rows moved and how much of it is one direction, `row_geom.py` (CPU) where
   the trained rows sit in the table before and after; `row_line.py` reads a run's saved rows

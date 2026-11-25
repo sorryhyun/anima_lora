@@ -71,13 +71,16 @@ def pick(key: str, reads: list, conf_min: float = CONF_MIN) -> tuple:
 
     ``box``: a box read at ``conf_min`` or over; among those, the best sequence score
     to ``key``, then the highest confidence. ``low``: boxes, none at ``conf_min``; the
-    best of them by the same order. ``none``: no box (``read`` is ``None``)."""
+    best of them by the same order. ``none``: no box (``read`` is ``None``).
+    ``lone``: the page's one box, left unread by ``Reader.read(skip_lone=True)``."""
     from common.text import norm
 
     k = norm(key)
     bs = [r for r in reads if not r.get("whole")]
     if not bs:
         return "none", None
+    if len(bs) == 1 and bs[0].get("unread"):
+        return "lone", bs[0]
 
     def conf(r):
         return r["sfx_conf"] or 0.0
@@ -377,9 +380,13 @@ class Reader:
         self.det.model.requires_grad_(False)
         self.device = device
 
-    def read(self, px) -> tuple[list, list]:
+    def read(self, px, skip_lone: bool = False) -> tuple[list, list]:
         """The ordinary read of pages ``(B, 3, H, W)`` in [-1, 1]: the BGR arrays the
-        readers saw and their records."""
+        readers saw and their records.
+
+        With ``skip_lone`` a page where the detector finds one box is not read: the
+        box's record holds no text and ``unread``, and :func:`pick` returns it as
+        ``lone``. The other pages' records are ``Readers.read_images``'s."""
         import numpy as np
 
         from library.inference.output import pixels_to_pil
@@ -388,15 +395,53 @@ class Reader:
             np.ascontiguousarray(np.asarray(pixels_to_pil(p))[:, :, ::-1])
             for p in px.detach()
         ]
-        return bgrs, self.rd.read_images(bgrs)
+        if not skip_lone:
+            return bgrs, self.rd.read_images(bgrs)
+        from common.readers import crop
 
-    def ce(self, pages, bgrs, boxes, texts, check: dict | None = None):
+        found = [
+            [tuple(int(v) for v in b) for b in bs] for bs in self.det.detect_batch(bgrs)
+        ]
+        crops = [crop(g, b) for g, bs in zip(bgrs, found) if len(bs) > 1 for b in bs]
+        texts = iter(self.ocr.read_scored(crops) if crops else [])
+        out = []
+        for g, bs in zip(bgrs, found):
+            page = (0, 0, g.shape[1], g.shape[0])
+            rows = []
+            for b in bs:
+                s = next(texts) if len(bs) > 1 else None
+                rows.append(
+                    {
+                        "box": list(b),
+                        "whole": b == page,
+                        "sfx": None if s is None else s[0],
+                        "sfx_conf": None if s is None else float(s[1]),
+                    }
+                    | ({"unread": True} if len(bs) == 1 else {})
+                )
+            rows.append(
+                {"box": list(page), "whole": True, "sfx": None, "sfx_conf": None}
+            )
+            out.append(rows)
+        return bgrs, out
+
+    def ce(
+        self,
+        pages,
+        bgrs,
+        boxes,
+        texts,
+        check: dict | None = None,
+        hit: list | None = None,
+    ):
         """The teacher-forced cross-entropy of ``texts[k]`` on crop ``boxes[k]`` of
         ``pages[k]`` → ``(n,)`` fp32, a mean over the text's tokens and the EOS.
 
         ``pages``: ``(3, H, W)`` RGB in [0, 1], graph kept; ``bgrs``: the same pages
         as the arrays the read saw; ``boxes``: :func:`crop_box` rectangles. ``check``
-        takes the tensor path's distance from the processor's ``pixel_values``."""
+        takes the tensor path's distance from the processor's ``pixel_values``.
+        ``hit`` takes a bool a crop: the forward's argmax is the text at each of its
+        tokens and the EOS, so a greedy decode of these pixel values gives the text."""
         import numpy as np
         import torch
         import torch.nn.functional as F
@@ -469,6 +514,9 @@ class Reader:
             logits.float().transpose(1, 2), tgt, ignore_index=-100, reduction="none"
         )
         loss = ce.sum(1) / (tgt != -100).sum(1)
+        if hit is not None:
+            same = (logits.detach().argmax(-1) == tgt) | (tgt == -100)
+            hit.extend(same.all(1).tolist())
         if check is not None:  # the same loss on the processor's own pixel values
             with torch.no_grad():
                 lg = ocr.model(**enc, logits_to_keep=K).logits[:, :-1]

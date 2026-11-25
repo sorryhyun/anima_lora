@@ -1,10 +1,13 @@
-# Reader room — the seconds of G1's reader side by part, and three changes timed (2026-11-25)
+# Reader room — the seconds of G1's reader side by part, three changes timed, and a one-box page left unread (2026-11-25)
 
-Covers run `room_1125_1324` (`../configs/room_1125_1324.toml`, `../probes/reader_room.py`,
-daemon job `20261125-132734-99a91e`). Result:
-`../results/20261125-1331-reader_room-room_1125_1324/result.json` (local).
+Covers two runs of `../probes/reader_room.py` and one smoke of G1's loop, a section each.
 
-## Facts
+## The parts and three changes (`room_1125_1324`)
+
+### Facts
+
+`room_1125_1324` (`../configs/room_1125_1324.toml`, daemon job `20261125-132734-99a91e`;
+`../results/20261125-1331-reader_room-room_1125_1324/result.json`, local).
 
 Readers only (the detector, the tuned reader, hayai v2.7; no DiT), on 128 pages
 `g1micro_1125_1148` wrote for its read: 16 glyphs × the start and the trained rows, one scene a
@@ -47,7 +50,7 @@ The changes, against the serial order on the same pages:
   no-graph forward, 0.40 s a group (`gd_g0d_2026_11_25.md`: 1.62 s for the 4 steps).
 - The user's call (11-25): item 3 runs without the x_3 cache.
 
-## Interpretation
+### Interpretation
 
 - The reader side is not held up by image preparation: the tensor copy, the detector's
   letterbox and the two processor calls sum to 0.04 s a group. Two thirds of its wall time is
@@ -64,3 +67,52 @@ The changes, against the serial order on the same pages:
   at the price of redefining those log fields. Compiling the reader would cut dispatch on
   every forward, with shapes that change by crop. Neither is worth building for item 3 (about
   5 of its 80 minutes); item 4 can take the first if its hours matter.
+
+## A one-box page left unread (`room_1125_2155`, `lone_1125_2200`)
+
+The user's call (11-25: "생략 구현 해보자") on the last point above. Built as
+`gd.Reader.read(skip_lone=True)` and G1's config key `skip_lone_read` (absent: off): on a
+training page where the detector finds one box, `generate` does not run, the box is the pick
+(case `lone` in the log), and `exact` on that page is the loss forward's argmax being the
+target at every token and the EOS (`gd.Reader.ce`'s `hit`). The read on held-out scenes is
+unchanged.
+
+### Facts
+
+`room_1125_2155` (`../configs/room_1125_2155.toml`, daemon job `20261125-215135-a961b5`;
+`../results/20261125-2153-reader_room-room_1125_2155/result.json`, local): readers only, the
+serial order against the same order with the skip, on 256 pages `g2a_1125_1642` wrote for its
+read (16 hiragana and 16 katakana, arms `s00` and `s06`, one scene a glyph, seeds 0 – 3).
+Cases under the serial order: box 203, low 30, none 23.
+
+| order | read, s a group | loss, s a group | a page's read, median (90th percentile) |
+|---|---|---|---|
+| serial | 0.317 | 0.438 | 0.072 (0.096) |
+| one-box pages unread | 0.148 | 0.439 | 0.027 (0.082) |
+
+- 201 of the 256 pages were left unread (of the 233 with a box); serial's case on them: box
+  173, low 28. `generate` calls: 233 → 32.
+- The picked box is serial's on 256 of 256 pages, and the image gradient's cosine with
+  serial's is 1.000 on every page.
+- On the 201 unread pages, the forward's argmax being the glyph against serial's read being
+  the glyph: both 139, the read only 4, the argmax only 3, neither 55.
+
+`lone_1125_2200` run with `--smoke` (`../configs/lone_1125_2200.toml`, daemon job
+`20261125-215135-0222b4`; `../results/20261125-2154-g1-smoke_lone_1125_2200/`, local): G1's
+loop with the switch on, 2 small kana, 6 groups. The log's cases over its 24 renders: lone 21,
+box 1, none 2. Seconds a group: read 0.130 (`g2a_1125_1642`: 0.368), loss 0.469 (0.451).
+The saves and the four reads ran as before.
+
+### Interpretation
+
+- The skip leaves the loss as it was: the same box and the same gradient on every page. It
+  takes 0.17 s off a group, about 5.6 % of `g2a_1125_1642`'s 3.04 s, which on the 1 410
+  kanji at 6 steps (about 29 h) is about 1.6 h.
+- The argmax stands in for the read on 194 of 201 pages. The 7 that differ are small beside a
+  step's 16 renders, but the two counts are not the same quantity: the argmax runs on the
+  tensor path's pixels and ignores the reader's guard, and with `fold_small` it counts the
+  loss's target only, not the pair's other glyph (no small kana was among this run's 32
+  glyphs, so that part is not measured here).
+- A log from a run with the switch on has no box / low split on one-box pages. The smoke's
+  6 groups are too few, and include the warm-up, to read its seconds as more than a check
+  that the loop's `read` falls as the probe's did.

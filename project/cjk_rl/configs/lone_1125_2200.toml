@@ -1,0 +1,39 @@
+# Smoke of skip_lone_read in G1's loop (src/g1.py --smoke): g2a_1125_1642 with
+#   skip_lone_read absent -> true, nothing else changed. Run with --smoke only (one glyph a
+#   class, 2 training scenes, 1 read scene, 2 passes, accum 4, max_steps 3); not a run of
+#   record, and no rows from it are kept for use.
+# Question: does the loop run with the switch on — the log's `lone` count and `exact` on
+#   those pages filled, the saves and the read as before — and what does `read` come to a
+#   group beside g2a's 0.368 s?
+#   - it runs -> the switch is there for a later config to set.
+#   - it fails -> fixed before any use.
+# Records it rests on: room_1125_2155 (the reader side alone, same switch).
+# Read: numbers only, Claude's: the log's cases and exact a step, s_per_group. 8 groups with
+#   the first ones warming up, so the seconds are a rough reading.
+# Bars: none.
+# Cost: 8 groups and four short reads; a few minutes with the load.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+passes = 2
+max_steps = 6        # a row at 6 steps is passed over
+save_passes = [1, 2]  # saves at 4 and 6 steps
+train_seed0 = 1000  # pass p: train_seed0 + 4p … + 3
+read_seeds = [0, 1, 2, 3]
+shuffle_seed = 1125
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2
+fold_small = true    # a small kana is read and trained as its full-size glyph
+skip_lone_read = true  # a one-box training page is not read; its exact is the loss forward's argmax
+
+[start_shift]
+run = "g1long_1125_1335"
+save = "s24"
