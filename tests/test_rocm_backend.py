@@ -246,8 +246,8 @@ def test_torch_stacks_pair_flash_attn_and_triton(
 
 def test_fa2_sm120_group_installs_the_release_build():
     """The group's Linux x86_64 wheel is the release library/runtime/fa2.py names
-    (TAG), as is its Windows wheel; aarch64 has no such build and keeps
-    the stock wheel. The default stack stays stock."""
+    (TAG), its Windows wheel the one WIN_TAG names; aarch64 has no such build and
+    keeps the stock wheel. The default stack stays stock."""
     rows = [
         line
         for line in _export("--no-default-groups", "--group", "fa2-sm120")
@@ -258,10 +258,9 @@ def test_fa2_sm120_group_installs_the_release_build():
         return [r for r in rows if f"/{fa2.REPO}/releases/download/{tag}/" in r]
 
     assert len(rows) == 3, rows
-    built = from_release(fa2.TAG)
-    assert len(built) == 2, rows
-    assert sum("linux_x86_64" in r for r in built) == 1, rows
-    assert sum("win_amd64" in r for r in built) == 1, rows
+    linux, win = from_release(fa2.TAG), from_release(fa2.WIN_TAG)
+    assert len(linux) == 1 and "linux_x86_64" in linux[0], rows
+    assert sum("win_amd64" in r for r in win) == 1, rows
     assert all(fa2.REPO not in line for line in rows if "linux_aarch64" in line), rows
     assert not any(fa2.REPO in line for line in _export()), "default stack is stock"
 
