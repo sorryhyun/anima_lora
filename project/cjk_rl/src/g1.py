@@ -21,16 +21,20 @@ momentum (``beta``), and the row moves ``eta`` row norms against the momentum's
 direction. A pass is every (glyph, training scene) once, shuffled; pass p draws seeds
 ``train_seed0 + 4p …``.
 
-The read (after training, same process): every glyph on the read scenes at the read
-seeds, start rows and trained rows, each page read as training reads it. Per glyph
+The read (same process): every glyph on the read scenes at the read seeds, each page
+read as training reads it; the start rows before training, then the rows after each
+pass in ``save_passes`` (absent: the last pass), which are also written as
+``rows_s<steps a row>.pt``. An arm is ``start`` or ``s<steps a row>``. Per glyph
 ``solo`` / ``on_page`` / ``extra`` (``glyph_g0.page_terms``), the next glyph's ``solo``
 on the same pages (the null), the reader's cross-entropy on the picked crop, cases.
-Sheets: per glyph the two arms as rows ``A`` / ``B`` in an order drawn per glyph
-(``sheets/key.json`` holds it).
+Tables: the start rows against each save. Sheets: per glyph the start rows and the
+last save as rows ``A`` / ``B`` in an order drawn per glyph (``sheets/key.json`` holds
+it).
 
 The run's settings, question and gate are its config's header
 (``configs/<handle>_<mmdd>_<hhmm>.toml``). Writes ``output/cjk_rl/g1/<config stem>/``
-(``log.jsonl`` a row step, ``rows.pt``, the read's pages) and
+(``log.jsonl`` a row step, ``rows.pt`` and a ``rows_s<steps>.pt`` a save, the read's
+pages) and
 ``results/<ts>-g1-<config stem>/``.
 
     make daemon-run ARGS="--queue --stall-timeout 900 project/cjk_rl/src/g1.py --config project/cjk_rl/configs/<name>.toml"
@@ -73,8 +77,18 @@ def glyphs(cfg: dict, smoke: bool) -> list:
 
 
 def train(
-    pol, rdr, cfg: dict, gl: list, sc: dict, scenes: list, out: Path, hy=None
+    pol,
+    rdr,
+    cfg: dict,
+    gl: list,
+    sc: dict,
+    scenes: list,
+    out: Path,
+    hy=None,
+    on_save=None,
 ) -> dict:
+    """``on_save(pass number, rows)`` runs after each pass in ``cfg["save_passes"]``,
+    once the rows are on disk; its seconds are left out of the run's clock."""
     import torch
 
     W, H = G.SHAPE
@@ -96,6 +110,20 @@ def train(
         torch.cuda.synchronize()
         phase[name] = phase.get(name, 0.0) + time.time() - t0
         return time.time()
+
+    def dump(path: Path, table) -> None:
+        torch.save(
+            {
+                "ext_ids": pol.r.delta.ext_ids,
+                "rows": {k: row[k] for k in row},
+                "raw": table.cpu(),  # effective units, every ext row
+                "init": init.cpu(),
+                "row_scale": pol.row_scale,
+                "steps": dict(steps),
+                "cfg": cfg,
+            },
+            path,
+        )
 
     for p in range(cfg["passes"]):
         seeds = [cfg["train_seed0"] + 4 * p + k for k in range(4)]
@@ -198,19 +226,16 @@ def train(
                     f"({(time.time() - t_run) / 60:.1f} min)",
                     flush=True,
                 )
+        if p + 1 in cfg["save_passes"]:
+            t_save = time.time()
+            table = pol.raw.detach().clone()
+            dump(out / f"rows_s{max(steps.values()):02d}.pt", table)
+            if on_save is not None:
+                on_save(p + 1, table)
+            t_run += time.time() - t_save
     log.close()
     trained = pol.raw.detach().clone()
-    torch.save(
-        {
-            "ext_ids": pol.r.delta.ext_ids,
-            "rows": {k: row[k] for k in row},
-            "raw": trained.cpu(),  # effective units, every ext row
-            "init": init.cpu(),
-            "row_scale": pol.row_scale,
-            "cfg": cfg,
-        },
-        out / "rows.pt",
-    )
+    dump(out / "rows.pt", trained)
     info = {
         "groups": n_groups,
         "minutes": round((time.time() - t_run) / 60, 2),
@@ -429,7 +454,9 @@ def main() -> None:
     )
     if a.smoke:
         tr, rd_sc = tr[:2], rd_sc[:1]
-        cfg = cfg | {"passes": 1, "accum": 4}
+        cfg = cfg | {"passes": 2, "accum": 4, "save_passes": [1, 2]}
+    cfg = {"save_passes": [cfg["passes"]]} | cfg
+    assert cfg["passes"] in cfg["save_passes"], "the last pass is a save"
     gl = glyphs(cfg, a.smoke)
     out = ROOT / name
     out.mkdir(parents=True, exist_ok=True)
@@ -445,14 +472,40 @@ def main() -> None:
         f"passes; read on {rd_sc}; row_scale {pol.row_scale:.2f}",
         flush=True,
     )
-    res = train(pol, rdr, cfg, gl, sc, tr, out, hy)
+    per_pass = len(tr) * 4 // cfg["accum"]  # steps a row a pass
+    start = pol.raw.detach().clone()
+    recs = read(pol, rdr, cfg, gl, sc, rd_sc, {"start": start}, out, hy)
+    tables: dict = {}
+
+    def on_save(p: int, rows) -> None:
+        arm = f"s{p * per_pass:02d}"
+        recs.extend(read(pol, rdr, cfg, gl, sc, rd_sc, {arm: rows}, out, hy))
+        pair = [r for r in recs if r["arm"] in ("start", arm)]
+        tables[arm] = tabulate(pair, ["start", arm])
+        print(
+            f"  {arm}: total {tables[arm]['total'][arm]}  paired solo "
+            f"{tables[arm]['paired']['solo']}",
+            flush=True,
+        )
+
+    res = train(pol, rdr, cfg, gl, sc, tr, out, hy, on_save)
     print(f"train: {res['info']}", flush=True)
-    arms = {"start": res["init"], "trained": res["trained"]}
-    recs = read(pol, rdr, cfg, gl, sc, rd_sc, arms, out, hy)
     pol.raw.data.copy_(res["trained"])
-    table = tabulate(recs, list(arms))
+    last = list(tables)[-1]
+    arms = ["start", last]
+    table = tables[last]
+    for k in table["per_glyph"]:
+        by = [table["per_glyph"][k]["start"]] + [
+            t["per_glyph"][k][arm] for arm, t in tables.items()
+        ]
+        print(
+            f"  {k} solo by save "
+            + " → ".join(str(x["solo"]) for x in by)
+            + ("  hayai " + " → ".join(str(x["hy_solo"]) for x in by) if hy else ""),
+            flush=True,
+        )
     for k, v in table["per_glyph"].items():
-        s, t = v["start"], v["trained"]
+        s, t = v["start"], v[last]
         print(
             f"  {k} solo {s['solo']:>2} → {t['solo']:>2} / {s['n']}  on_page "
             f"{s['on_page']:>2} → {t['on_page']:>2}  null {s['null']} → {t['null']}  "
@@ -468,7 +521,13 @@ def main() -> None:
     from bench._common import make_run_dir, write_result
 
     run_dir = make_run_dir("cjk_rl", label=f"g1-{name}", root=LINE / "results")
-    sheets(recs, list(arms), rd_sc, run_dir / "sheets", cfg["shuffle_seed"])
+    sheets(
+        [r for r in recs if r["arm"] in arms],
+        arms,
+        rd_sc,
+        run_dir / "sheets",
+        cfg["shuffle_seed"],
+    )
     (run_dir / "records.json").write_text(
         json.dumps(recs, ensure_ascii=False, indent=1), "utf-8"
     )
@@ -489,7 +548,7 @@ def main() -> None:
                 "cos_prev_mean": round(sum(cs) / len(cs), 4) if cs else None,
                 "cos_prev_n": len(cs),
             },
-            "read": table,
+            "read": tables,  # the start rows against each save
         },
     )
     print(f"→ {run_dir / 'result.json'}", flush=True)

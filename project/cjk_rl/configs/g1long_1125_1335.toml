@@ -1,0 +1,51 @@
+# G1 long (plan.md item 3): g1micro_1125_1148 with passes 2 -> 6 (8 -> 24 steps a row) and
+#   hayai_weight 0 -> 0.2 (hayai v2.7's cross-entropy of the glyph on the picked crop beside
+#   the tuned reader's; the user's call, 11-25). Nothing else changed: the start rows again,
+#   the same scenes, seeds, shuffle and update (src/g1.py). No x_3 cache (the user's call,
+#   11-25). Two things change together, length and the hayai term; passes 0 and 1 run on the
+#   parent's seeds and order, so the 8-step save differs from the parent by the term alone,
+#   and the 16- and 24-step saves cannot separate the two.
+# Question: how many steps does a row take to its ceiling, and do rows that already read well
+#   hold under more steps?
+#   - solo still rising at 24 steps on most glyphs -> item 4 (the 81 hiragana) runs at 24
+#     steps a row or more.
+#   - solo level from the 8- or the 16-step save on -> item 4 runs at that save's steps.
+#   - glyphs that rise and then fall, or extra letters up at the later saves -> item 4 stops
+#     a row by its own training-side reads (the log's `exact` a step).
+# Records it rests on:
+#   - reports/g1micro_2026_11_25.md (g1micro_1125_1148): 8 steps, solo on the read scenes
+#     59 -> 132 of 256 (hayai's count of those pages, WebP: 60 -> 125); 2.90 s a group; no row
+#     at its ceiling; を 2 -> 0, 行 0 -> 0, 楽 0 -> 1; ぬ and 死 level with changed pages.
+#   - reports/hayai_g0_2026_11_25.md (g0h_1125_1243): hayai's row gradient is 0.93 of the
+#     tuned reader's at the median render, cosine 0.21 on a render; the term costs 0.05 s a
+#     render.
+#   - reports/reader_room_2026_11_25.md (room_1125_1324): the reader side stays as it is.
+# Read: the rows saved after passes 2, 4 and 6 (8, 16 and 24 steps a row) and read in the
+#   process at each save, the start rows read before training: the 16 glyphs x read scenes x
+#   seeds 0-3, the parent's tables (the start rows against each save, sign test over the
+#   glyphs), solo by save per glyph under the tuned reader and under hayai on the same boxes
+#   (hy_solo); を, 行, 楽, ぬ, 死; the 8-step save beside the parent's 132. Sheets a glyph,
+#   the start rows and the 24-step save as rows A / B in an order drawn per glyph
+#   (sheets/key.json), to the user, whose read decides.
+# Bars: spread unknown (no twin of the parent; the 8-step save against the parent differs by
+#   the hayai term and sets no bar). Two reads of one picture put 26 of 128 pages in another
+#   case (the G0d report).
+# Cost: 1 536 groups at about 3.1 s, 80 min; four reads of 256 renders, about 10 min.
+
+rows = "seed_1008"
+hira = "ひあぬうさがめを"
+kanji = "死王太二味楽人行"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+passes = 6
+save_passes = [2, 4, 6]  # 4 steps a row a pass: saves at 8, 16 and 24 steps
+train_seed0 = 1000  # pass p: train_seed0 + 4p … + 3
+read_seeds = [0, 1, 2, 3]
+shuffle_seed = 1125
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2

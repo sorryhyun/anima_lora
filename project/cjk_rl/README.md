@@ -42,6 +42,13 @@ in order, at its length, with no invented dialogue around it.
     g1micro's solo 60 → 125; the crops the two differ on.
   - [hayai_g0_2026_11_25.md](reports/hayai_g0_2026_11_25.md) — G0h: hayai's cross-entropy
     beside the tuned reader's on G1's path; the two row gradients' sizes and cosine.
+  - [g1long_2026_11_25.md](reports/g1long_2026_11_25.md) — G1 long: the 16 rows over 24 steps
+    with hayai's term, read at 8, 16 and 24; solo on held-out scenes 59 → 136 → 175 → 199 of
+    256. Second part: the 24-step rows on the base model in the sign prompt (`sign_1125_1504`,
+    4 glyphs, 2 seeds).
+  - [reader_room_2026_11_25.md](reports/reader_room_2026_11_25.md) — the reader side of G1's
+    group alone: 0.75 s a group by part, the GPU busy for a third of it; a decode cap and 4
+    pages a call timed.
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -51,7 +58,7 @@ in order, at its length, with no invented dialogue around it.
 - `src/gd.py` — G-D's path: the policy with a step-by-step backward to the rows, and the
   reader's cross-entropy and the detector's score on a page tensor.
 - `src/g1.py` — G1's loop on that path (a row steps along the momentum of its renders' mean
-  gradient) and its read on held-out scenes with blind sheets.
+  gradient) and its read on held-out scenes, at each save, with blind sheets.
 - `probes/` — `grpo_p0.py` (P0), `reader_batch.py` (the reward reader). Both run on the
   reseed line's package, ruler and readers (`../cjk_anima_reseed/{reseed,src}`).
   `position_read.py` (CPU) reads the ruler results' `renders.json`. `turbo_read.py` renders
@@ -62,6 +69,9 @@ in order, at its length, with no invented dialogue around it.
   measures the row gradient of `src/gd.py`.
   `reader_pair.py` reads pages on disk with the tuned reader and hayai v2.7 on the same
   crops; `hayai_g0.py` measures hayai's loss beside the tuned reader's on G1's path.
+  `reader_room.py` times the reader side of G1's group by part, without the DiT, on pages a
+  G1 run wrote. `base_sign.py` renders a G1 save's rows on another model of the ruler's table
+  in a prompt of its config and reads them beside the start rows.
 - `configs/` — one file a run, its question and gate in the header.
 - `assets/glyph_scenes.json` (gitignored) — the selected scene prompts, written by
   `glyph_scenes.py screen`.
@@ -80,8 +90,12 @@ delta the rows read near their null and the EN reference at cer 0.83
 The user's call (11-25): G-D is the arm, G-R is out. G-D's path is built and G0d ran
 (`g0d_1125_1119`, `reports/gd_g0d_2026_11_25.md`). G1's micro arm ran (`g1micro_1125_1148`,
 `reports/g1micro_2026_11_25.md`): solo on held-out scenes 59 → 132 of 256; the user read the
-sheets as a success. Next: `plan.md` item 3 (the sixteen rows to their ceiling, x_3 cache on, hayai's
-term at 0.2), then item 4 (the 81 hiragana); neither queued.
+sheets as a success. `plan.md` item 3 ran (`g1long_1125_1335`,
+`reports/g1long_2026_11_25.md`: 24 steps a row from the start rows, hayai's term at 0.2, no
+x_3 cache): solo 59 → 136 → 175 → 199 of 256 at 8, 16 and 24 steps; the user read the sheets
+as a plain gain. Next: item 4 (the 81 hiragana and the 83 katakana at 16 steps a row, then the
+rows that did not learn and the readers' confusions read per row; the user's call, 11-25), not
+queued.
 Arm A and the D0 probes (proposal § 4) wait behind the glyph stage.
 
 ## Rules

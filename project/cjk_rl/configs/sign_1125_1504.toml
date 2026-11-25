@@ -1,0 +1,34 @@
+# Base sign (probes/base_sign.py): g1long_1125_1335's 24-step rows on the base DiT
+#   (anima-base-v1.0 at the reads of record's sampler, 28 steps, cfg 4, VAE decode), nothing
+#   but the rows on it, in the Anima sign prompt with the glyph as the sign's text. The rows
+#   were trained on m15v11 (merged15 + the turbo v1.1 delta, 4 steps, cfg 1, pixel head) in
+#   the bubble frame at 768². Model, sampler, decoder, frame and size all differ from
+#   training at once; the run reads whether the rows carry, not which of those matters.
+# Question (the user, 11-25: "아니마 프롬프트 (그냥 아니마 팻말) 을 base에 이 row만 올렸을 때에도
+#   잘 나오나 한번 보자", then "4 글리프 시드 두개만"): do the trained rows letter their glyph on
+#   the base model's sign where the start rows do not?
+#   - the trained rows' signs hold the glyph on most renders and the start rows' do not ->
+#     the gain is in the rows and not tied to m15v11 or the bubble frame.
+#   - both arms alike -> the gain as trained does not show on the base in this frame; a
+#     larger read (more glyphs, the bubble frame on the base) would say which change loses it.
+# Records it rests on:
+#   - g1long_1125_1335 (results/20261125-1504-g1-g1long_1125_1335/): on m15v11's held-out
+#     bubble scenes, solo of 16, start -> 24 steps: う 4 -> 15, が 3 -> 14, 楽 0 -> 14,
+#     人 0 -> 13.
+# Glyphs: two hiragana and two kanji with the largest rise in that table.
+# Read: the user's, on one labelled sheet (overview.png: a glyph a row, the start rows' two
+#   seeds then the trained rows' two). Beside it the tuned reader's and hayai's solo a glyph.
+# Bars: none; 2 renders a glyph and arm, a look and not a count.
+# Cost: 16 renders at 1024², about 3 minutes, and the read.
+
+run = "g1long_1125_1335"
+save = "s24"
+rows = "seed_1008"
+model = "base"  # eval.ruler MODELS
+frame = 'masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top is holding a sign that reads "{t}".'
+hira = "うが"
+kanji = "楽人"
+shape = [1024, 1024]
+seeds = [0, 1]
+conf_min = 0.6
+shuffle_seed = 1125

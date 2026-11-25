@@ -1,0 +1,39 @@
+# Reader room (probes/reader_room.py): the reader side of G1's group alone, without the DiT,
+#   on the pages g1micro_1125_1148 wrote for its read (start and trained rows, 768², WebP), a
+#   group being one glyph on one scene at seeds 0-3. No update, no parent.
+# Question (the user, 11-25: "리더쪽 여지만 한번 체크하자", with the x_3 cache off for item 3):
+#   of the 0.68 s a group that g1micro spent in `read` (0.41) and `loss` (0.27), what is the
+#   GPU working and what is waiting on Python, and which change takes seconds off without
+#   changing what G1 reads?
+#   - a part that is waiting and can be cut inside G1's one-page-a-call order (a cap on the
+#     reader's decode, a processor call done twice, the generate call's fixed cost) -> it
+#     goes into src/g1.py before item 3 runs, with its seconds.
+#   - only the 4-pages-a-call order helps -> it needs the 4 images before any graph, which
+#     costs a fourth no-graph forward (0.40 s a group, reports/gd_g0d_2026_11_25.md); the
+#     net goes beside it and item 3 runs as it is unless the net is clearly under zero.
+#   - nothing over a few hundredths of a second -> item 3 runs as it is.
+# Records it rests on:
+#   - reports/g1micro_2026_11_25.md (g1micro_1125_1148): 2.90 s a group, read 0.41, loss 0.27
+#     (the tuned reader's term alone), one page a call.
+#   - reports/gd_g0d_2026_11_25.md (g0d_1125_1119): 4 pages a call read in 0.18 s a group,
+#     the reader's ce forward and backward for the group 0.135.
+#   - reports/hayai_g0_2026_11_25.md (g0h_1125_1243): hayai's term 0.049 s a render.
+# Read: numbers only, Claude's: seconds a group by variant and by part; the GPU's kernel
+#   seconds against the wall seconds of the read and of the loss; the decode steps a generate
+#   call runs; a variant's pick (case, box, text) and image gradient against the serial
+#   order's on the same page.
+# Bars: none on the seconds. The pages are WebP copies and the first read of a page is the
+#   reference of the others; g0d put 26 of 128 pages in another case between two reads of one
+#   picture (tensor against WebP), which is not this comparison (one array, read twice).
+# Cost: 32 groups of 4 pages, five passes a group, readers only; about 4 minutes.
+
+pages = "g1micro_1125_1148"  # output/cjk_rl/g1/<pages>/read/<arm>/
+arms = ["start", "trained"]
+hira = "ひあぬうさがめを"
+kanji = "死王太二味楽人行"
+scenes = [6, 12, 45, 15]  # a glyph's scene cycles over these
+seeds = [0, 1, 2, 3]
+conf_min = 0.6
+hayai_weight = 0.2
+cap = 16          # max_new_tokens of the capped variants (the reader's own: 200)
+prof_groups = 8   # groups under torch.profiler for the GPU's kernel seconds
