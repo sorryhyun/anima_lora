@@ -55,6 +55,12 @@ MODELS = {
         "steps": 4,
         "cfg": 1.0,
     },
+    "m15v11": {  # merged15 + the official turbo v1.1 delta at 1.0 (v4_longer's stack)
+        "dit": M15,
+        "lora": "models/extracted/anima_turbo_v1.1_delta_r96_asvd_adaln.safetensors",
+        "steps": 4,
+        "cfg": 1.0,
+    },
 }
 MARK_CHARS = set("～〜~…‥♡♥、。，")
 
