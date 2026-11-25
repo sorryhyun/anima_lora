@@ -8,9 +8,10 @@ in order, at its length, with no invented dialogue around it.
 - [proposal.md](proposal.md) — design, reward, arms R / A (GRPO), D (reader-NLL reward
   gradient) and R-credit, the budget against Flow-GRPO, phases P1–P3 / D0–D1 and their gates,
   the SFX track.
-- [proposal_glyph.md](proposal_glyph.md) — the glyph-first stage (user, 11-25): a tagless
-  `Text reads as "<glyph>"` caption on the turbo, pixel-head decode, the reader's score on the
-  row's own glyph and against lettering that was not asked for; arms G-D / G-R, phases G0 – G3.
+- [plan.md](plan.md) — the glyph stage's next steps: G-D's path (the reader's loss carried
+  back to the rows), G0d, G1 on sixteen rows.
+- [proposal_glyph.md](proposal_glyph.md) — the glyph-first stage (user, 11-25) after G1: the
+  kana, the frequent kanji and words (G2), transfer and ship reads (G3).
 - [reports/](reports/) — finished probes:
   - [ruler_turbo_2026_11_13.md](reports/ruler_turbo_2026_11_13.md) — the 64-string ruler on
     base / merged14 / merged14 + v3: the soup loses the string, the turbo is a fair proxy.
@@ -25,6 +26,12 @@ in order, at its length, with no invented dialogue around it.
     text on the base, merged14 and the turbo.
   - [turbo_read_2026_11_25.md](reports/turbo_read_2026_11_25.md) — fresh renders on merged15 +
     the turbo v1.1 delta: the ruler at four seeds with its EN references, and a kanji grid.
+  - [glyph_g0_2026_11_25.md](reports/glyph_g0_2026_11_25.md) — G0a – c of the glyph proposal:
+    the tagless frame with and without `speech bubble` against one-token EN words, the reward
+    terms' spread inside a group, the pixel head against the VAE.
+  - [glyph_scenes_2026_11_25.md](reports/glyph_scenes_2026_11_25.md) — the glyph stage's scene
+    pool picked by render (128 text-free captions in two rounds, by artist folder; 25
+    selected), and every glyph on the same four scenes.
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -34,7 +41,12 @@ in order, at its length, with no invented dialogue around it.
 - `probes/` — `grpo_p0.py` (P0), `reader_batch.py` (the reward reader). Both run on the
   reseed line's package, ruler and readers (`../cjk_anima_reseed/{reseed,src}`).
   `position_read.py` (CPU) reads the ruler results' `renders.json`. `turbo_read.py` renders
-  and reads the ruler and a kanji grid on `m15v11` (pixel-head decode by default).
+  and reads the ruler and a kanji grid on `m15v11` (pixel-head decode by default); its render
+  (every caption's text prepared before the loop, 4 images a forward) and read (16 pages a
+  call) are the ones `glyph_g0.py` runs on.
+  `glyph_g0.py` and `glyph_scenes.py` are the glyph stage's forward probes.
+- `assets/glyph_scenes.json` (gitignored) — the selected scene prompts, written by
+  `glyph_scenes.py screen`.
 - `results/` (gitignored) — one directory per probe run; renders under `output/cjk_rl/`.
 
 Every read is the tuned PaddleOCR-VL-1.6 reader (`anime_tools.ocr.reader.OcrReader`); stock
@@ -42,8 +54,11 @@ VL16 is not a reader.
 
 State (11-25): P1 arm R failed (`grpo_1113_1940`, rows `rl_p1`). On merged15 + the turbo v1.1
 delta the rows read near their null and the EN reference at cer 0.83
-(`reports/turbo_read_2026_11_25.md`). Next: `proposal_glyph.md` G0, on the user's word; arm A
-and the D0 probes (proposal § 4) wait behind it.
+(`reports/turbo_read_2026_11_25.md`). G0a – c of `proposal_glyph.md` ran
+(`reports/glyph_g0_2026_11_25.md`), then the scene screen and the crossed grid
+(`reports/glyph_scenes_2026_11_25.md`; selected prompts in `assets/glyph_scenes.json`, local).
+The user's call (11-25): G-D is the arm, G-R is out. Next: `plan.md` item 1 (G-D's path and
+G0d). Arm A and the D0 probes (proposal § 4) wait behind the glyph stage.
 
 ## Rules
 
@@ -57,3 +72,4 @@ The user's calls (2026-11-13).
   filter.
 - Rows can learn order (proposal § 2), so arm A is a sample-count fallback, not an order fix.
 - Arm A starts with the `src/grpo.py` fixes: summed log π, G 16–24.
+- Renders go 4 images a forward (user, 11-25; `probes/turbo_read.py` `BATCH`).

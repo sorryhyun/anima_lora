@@ -126,7 +126,7 @@ def scan() -> tuple[list, dict]:
     kind = {TEXT_PREFIXES[0]: "text", TEXT_PREFIXES[1]: "sfx"}
     out, skip = [], Counter()
     for f in sorted(CAPTIONS.rglob("*.txt")):
-        if f.name.endswith(".variants.txt"):
+        if f.name.endswith((".variants.txt", ".history.txt")):
             continue
         p = parse_caption(f.read_text(encoding="utf-8"))
         own: dict = {"text": [], "sfx": []}

@@ -36,6 +36,7 @@ VAE; a render on disk is not drawn again); reads cached per arm. Result →
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
@@ -69,6 +70,8 @@ EN, ROWS = "en", ("seed_1008", "seed_retrain_0930")
 OUT = REPO / "output" / "cjk_rl" / "turbo_read"
 PLAIN = SCALE_OUT / "retrain_kana" / "native_r4_plain" / "native_reads.json"
 K_PROMPTS, K_SEEDS, K_SHAPE = (0, 1), (0, 1), (768, 768)
+BATCH = 4  # images a forward
+READ_PAGES = 16  # pages a detector → reader call
 KANA = "あうがくとひもりぬめねれわるろさちっゃぱぽぜゔを"  # probes/identity.py SINGLES
 WORDS = (
     "山田太郎 小山田 日本人 大丈夫 何時間 愛してる "  # the scale line's six (C3)
@@ -159,12 +162,104 @@ def img(j: dict, root: Path) -> Path:
     return old if old.exists() and not f.exists() else f
 
 
+def contexts(r, keys: list, tabs: dict) -> tuple[dict, dict]:
+    """``{(arm, caption): context}`` for ``generate_body``, built before the render loop.
+
+    The text encoder's output does not depend on the rows, so it runs once over the
+    unique captions (16 a batch, max-padded as ``prepare_text_inputs`` encodes one) and
+    then leaves the GPU. The LLM adapter does read the rows: it runs once per (arm,
+    caption), 16 a batch, with that arm's rows in place. One caption is also prepared by
+    ``prepare_text_inputs`` and the two embeds compared (``check`` in the info)."""
+    import torch
+
+    from library.anima.vocab_pack import resolve_active_pack
+    from library.inference.text import (
+        MAX_CROSSATTN_TOKENS,
+        ensure_text_strategies,
+        prepare_text_inputs,
+        process_escape,
+    )
+
+    t0 = time.time()
+    dev, te = r.device, r.shared["text_encoder"]
+    tok, enc = ensure_text_strategies(
+        r.args.text_encoder, vocab_pack=resolve_active_pack(r.args) or ""
+    )
+    caps = sorted({c for _, c in keys})
+    hid: dict = {}
+    with torch.no_grad():
+        for i in range(0, len(caps), 16):
+            chunk = caps[i : i + 16]
+            out = enc.encode_tokens(
+                tok, [te], tok.tokenize([process_escape(c) for c in chunk])
+            )
+            for k, c in enumerate(chunk):
+                hid[c] = [o[k].cpu() for o in out]
+        t_te = time.time() - t0
+        ctx: dict = {}
+        check = None
+        for arm in dict.fromkeys(a for a, _ in keys):
+            r.set_arm(None if arm == EN else tabs[arm])
+            cs = sorted({c for a, c in keys if a == arm})
+            for i in range(0, len(cs), 16):
+                chunk = cs[i : i + 16]
+                pe, am, t5, t5m = (
+                    torch.stack([hid[c][k] for c in chunk]).to(dev) for k in range(4)
+                )
+                x, _ = r.anima._preprocess_text_embeds(
+                    source_hidden_states=pe,
+                    target_input_ids=t5,
+                    target_attention_mask=t5m,
+                    source_attention_mask=am,
+                )
+                x[~t5m.bool()] = 0
+                if x.shape[1] < MAX_CROSSATTN_TOKENS:
+                    x = torch.nn.functional.pad(
+                        x, (0, 0, 0, MAX_CROSSATTN_TOKENS - x.shape[1])
+                    )
+                for k, c in enumerate(chunk):
+                    ctx[(arm, c)] = {"embed": [x[k : k + 1].cpu()], "prompt": c}
+            if check is None and arm != EN:
+                a2 = copy.deepcopy(r.args)
+                a2.prompt = cs[0]
+                one, _ = prepare_text_inputs(a2, dev, r.anima, r.shared)
+                a, b = one["embed"][0].float(), ctx[(arm, cs[0])]["embed"][0].float()
+                check = {
+                    "max_abs": round(float((a - b).abs().max()), 5),
+                    "ref_abs": round(float(a.abs().max()), 3),
+                    "cos": round(
+                        float(
+                            torch.nn.functional.cosine_similarity(
+                                a.flatten(), b.flatten(), dim=0
+                            )
+                        ),
+                        6,
+                    ),
+                }
+    r.shared.pop("text_encoder").to("cpu")
+    r.shared["conds_cache"].clear()
+    del te
+    torch.cuda.empty_cache()
+    info = {
+        "captions": len(caps),
+        "contexts": len(ctx),
+        "te_s": round(t_te, 2),
+        "total_s": round(time.time() - t0, 2),
+        "check": check,
+    }
+    return ctx, info
+
+
 def render(js: list, root: Path, decoder: str) -> dict:
     """``decoder``: ``pixel_head`` reads the DiT's last-step features (its turbo point
     was trained on this stack, 4 steps at σ 0.5) and the VAE is dropped; ``vae`` is the
-    ruler's decode. A caption's seeds are sampled as one batch. Renders are written on
-    worker threads as WebP, quality 95."""
-    import copy
+    ruler's decode. Every caption's text is prepared before the loop (``contexts``). A
+    caption's seeds are sampled ``BATCH`` at a time. Renders are written on worker threads as
+    WebP, quality 95.
+
+    A job may carry ``sampler`` (``sde07``: P0's SDE, a = 0.7, drawn from the group's
+    first seed; Euler without it) and ``vae`` (with the pixel head: the same latent is
+    also decoded by the VAE, to the part ``<part>_vae``)."""
     import gc
     from concurrent.futures import ThreadPoolExecutor
 
@@ -179,7 +274,6 @@ def render(js: list, root: Path, decoder: str) -> dict:
     from library.inference.generation import generate_body
     from library.inference.output import pixels_to_pil
     from library.inference.pixel_decoder import ensure_pixel_decoder, pixel_decode
-    from library.inference.text import prepare_text_inputs
 
     todo = [j for j in js if not img(j, root).exists()]
     if not todo:
@@ -193,9 +287,18 @@ def render(js: list, root: Path, decoder: str) -> dict:
     lat_ch = type(r.anima).LATENT_CHANNELS
     if head:
         r.args.decoder = "pixel_head"
-        r.vae = None
-        gc.collect()
-        torch.cuda.empty_cache()
+        if not any(j.get("vae") for j in todo):
+            r.vae = None
+            gc.collect()
+            torch.cuda.empty_cache()
+    if any(j.get("sampler", "euler") != "euler" for j in todo):
+        import grpo_p0 as p0
+
+        # generate_body's `lcm` slot builds the sampler ``p0._KIND`` names
+        generation.inference_utils.LCMSampler = p0._sampler_factory
+    assert r.args.guidance_scale == 1.0, "contexts() prepares no negative prompt"
+    ctx, text_info = contexts(r, [(j["arm"], j["caption"]) for j in todo], tabs)
+    print(f"  text: {text_info}", flush=True)
     t0, n = time.time(), 0
     secs = defaultdict(list)
     todo.sort(key=lambda j: (j["shape"], j["arm"], j["stem"]))
@@ -207,28 +310,33 @@ def render(js: list, root: Path, decoder: str) -> dict:
         im.save(tmp, quality=95)
         tmp.rename(fn)  # a render on disk is a whole file
 
-    # one forward per caption: its seeds are one batch (``generate_body`` takes the list)
+    # a caption's seeds go through together (``generate_body`` takes the list)
     groups: dict = {}
     for j in todo:
-        groups.setdefault((j["shape"], j["arm"], j["caption"]), []).append(j)
+        key = (j["shape"], j["arm"], j["caption"], j.get("sampler", "euler"))
+        groups.setdefault(key, []).append(j)
+    # at most BATCH images a forward (user, 11-25); a chunk's SDE noise draws from its
+    # first seed, so a render and its anchor match while both hold the same seeds
+    chunks = [
+        (key, g[b : b + BATCH])
+        for key, g in groups.items()
+        for b in range(0, len(g), BATCH)
+    ]
     with ThreadPoolExecutor(4) as pool:
-        for (shape, g_arm, caption), g in groups.items():
-            if g_arm != arm:
+        for (shape, g_arm, caption, sampler), g in chunks:
+            if g_arm != arm:  # the DiT's forward does not read the rows; kept in step
                 arm = g_arm
                 r.set_arm(None if arm == EN else tabs[arm])
             a2 = copy.deepcopy(r.args)
             a2.prompt, a2.seed = caption, g[0]["seed"]
             a2.image_size = (shape[1], shape[0])
-            t = time.time()
+            if sampler != "euler":
+                a2.sampler = "lcm"
+                p0._KIND["name"] = sampler
             with torch.no_grad():
-                context, context_null = prepare_text_inputs(
-                    a2, r.device, r.anima, r.shared
-                )
                 r.anima.reset_mod_guidance()
                 r.anima.reset_dave()
                 ensure_pixel_decoder(a2, r.anima, r.device)
-                torch.cuda.synchronize()
-                secs["text"].append((time.time() - t) / len(g))
                 t = time.time()
                 # each seed's noise as the one-image path draws it (a CPU generator)
                 noise = []
@@ -246,8 +354,8 @@ def render(js: list, root: Path, decoder: str) -> dict:
                 lat = generate_body(
                     a2,
                     r.anima,
-                    context,
-                    context_null,
+                    ctx[(g_arm, caption)],
+                    None,  # cfg 1: no negative pass
                     r.device,
                     [j["seed"] for j in g],
                     latents=torch.cat(noise, dim=0),
@@ -263,6 +371,11 @@ def render(js: list, root: Path, decoder: str) -> dict:
                         decode_image(r.vae, lat[k : k + 1], r.device)
                         for k in range(len(g))
                     ]
+                for k, j in enumerate(g):
+                    if head and j.get("vae"):
+                        im = decode_image(r.vae, lat[k : k + 1], r.device)
+                        j2 = j | {"part": j["part"] + "_vae"}
+                        saves.append(pool.submit(save, im, img(j2, root)))
             secs["decode"].append((time.time() - t) / len(g))
             saves += [pool.submit(save, im, img(j, root)) for im, j in zip(ims, g)]
             n += len(g)
@@ -278,6 +391,7 @@ def render(js: list, root: Path, decoder: str) -> dict:
         "rendered": n,
         "decoder": decoder,
         "minutes": round((time.time() - t0) / 60, 2),
+        "text": text_info,
         # a render's median seconds by stage (the median drops each graph's compile;
         # the file write is off the loop)
         "s_per_render": {k: round(sorted(v)[len(v) // 2], 4) for k, v in secs.items()},
@@ -304,12 +418,13 @@ def read(js: list, root: Path, gpu: bool) -> dict:
             assert gpu, f"{part}/{arm}: {len(todo)} renders unread (run on the daemon)"
             rd = rd or Readers("cuda")
             t0 = time.time()
-            for k in range(0, len(todo), 8):
-                chunk = todo[k : k + 8]
+            # 16 pages a call: one detector forward, their crops read in shared batches
+            for k in range(0, len(todo), READ_PAGES):
+                chunk = todo[k : k + READ_PAGES]
                 reads = rd.read_images([load_bgr(img(j, root)) for j in chunk])
                 for j, x in zip(chunk, reads):
                     got[j["stem"]] = x
-                if (k // 8) % 10 == 0:
+                if (k // READ_PAGES) % 10 == 0:
                     print(
                         f"  read {part}/{arm} {k + len(chunk)} / {len(todo)} "
                         f"({(time.time() - t0) / 60:.1f} min)",

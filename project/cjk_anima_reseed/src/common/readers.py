@@ -137,9 +137,10 @@ class Readers:
 
         t = time.time()
         pages, crops = [], []
-        for bgr in bgrs:
+        # the pages share detector forwards (``max_batch`` = 16 a forward)
+        for bgr, found in zip(bgrs, self.det.detect_batch(bgrs)):
             H, W = bgr.shape[:2]
-            boxes = [tuple(int(v) for v in b) for b in self.det.detect(bgr)]
+            boxes = [tuple(int(v) for v in b) for b in found]
             crops += [crop(bgr, b) for b in boxes]
             if whole:
                 crops.append(bgr)
