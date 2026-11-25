@@ -1,10 +1,10 @@
 # Plan: the glyph stage on G-D (opened 2026-11-25)
 
-The next steps of the glyph-first stage: build the path that carries the OCR reader's loss back
-to the rows (G-D), measure it (G0d), then train 16 rows (G1). What comes after G1 is in
-[proposal_glyph.md](proposal_glyph.md); results go to [reports/](reports/). A run's settings,
-question and gate go in its config header (`configs/<handle>_mmdd_hhmm.toml`) when it is
-submitted, and this file then names the run.
+The glyph-first stage on G-D: the OCR reader's loss carried back to the rows. Items 1 and 2
+(the path, G0d, G1's micro arm) are done; item 3 is the next run. What comes after the
+hiragana is in [proposal_glyph.md](proposal_glyph.md); results go to [reports/](reports/). A
+run's settings, question and gate go in its config header (`configs/<handle>_mmdd_hhmm.toml`)
+when it is submitted, and this file then names the run.
 
 ## Carried
 
@@ -36,98 +36,91 @@ Facts:
   `reads.json`, renders `output/cjk_rl/glyph_scenes/m15v11_px/cross/seed_1008/`, local): no box
   on 193 pages, a box but none at 0.6 or over on 195 more. Of the 130 boxes that read the asked
   glyph exactly, 9 are under 0.6; of the 660 that read something else, 36 %.
+- G1's loop as it ran (`src/g1.py`, `configs/g1micro_1125_1148.toml`): the last step's
+  backward, 1 render a forward; the reader's cross-entropy on the picked crop, the detector's
+  score on a page with no box, no page term; a render's row gradient clipped at 0.12; a row
+  steps every 16 renders along the momentum (0.7) of its mean gradients, 0.03 row norms a step.
+  Training scenes: the 16 of the 9 folders that hold no read scene; read scenes 6, 12, 45, 15.
+- The user's calls (11-25) on the loop: no page term; the split by folder; an x_3 cache
+  refreshed every 4 passes on runs after the micro arm.
+- Cost, measured: 2.90 s a group of 4 renders, 12 s a row step, 13.1 GiB peak.
+- Rows with one trained row in the frame: 81 hiragana, 83 katakana.
 - Built: `probes/turbo_read.py` (render: all text prepared before the loop; read),
   `probes/glyph_g0.py` (frames, the grid's numbers, the terms), `probes/glyph_scenes.py` (the
-  screen, the crossed grid).
+  screen, the crossed grid), `src/gd.py` (G-D's path) and `probes/gd_g0d.py`.
 
-## 1. G-D's path, and G0d
+## 1. G-D's path, and G0d — done
 
-Not started. No run yet; the probe will be `probes/gd_g0d.py` on `src/gd.py`.
-
-Facts:
-
-- The loss, a render: the reader's teacher-forced cross-entropy of the asked string on a crop,
-  plus a page term, the pixel MSE to the anchor render outside the crop. The anchor is the
-  scene with no clause, plain frame, same noise.
-- The crop comes from an ordinary read of the same render (detector and reader, detached).
-  Three cases, counted on the crossed grid's 896 JA pages:
-  - a box read at confidence 0.6 or over (57 % of the pages): the crop is that box (the best
-    `r_seq` to the asked string, then the highest confidence);
-  - boxes, none at 0.6 (22 %): "nothing drawn" by the user's rule. The cross-entropy on the
-    best of those boxes is already that signal: it is defined on any crop and is high there;
-  - no box at all (22 %): no crop, so the reader's loss has nothing to act on. The page's
-    term is the detector's score (the user's call, 11-25): AnimeText is a torch YOLO12 whose
-    per-anchor text score is differentiable in the pixels, so −log of its top score on the
-    page asks for a text block, and the reader's loss names the glyph once a box is there.
-    Not taken: the reader's cross-entropy on the whole page (the reader was tuned on crops).
-- Gradient path: reader → crop pixels → pixel head → DiT step(s) → llm_adapter → rows.
-- To build:
-  - the detector's forward on the pixel tensor with its scores kept in the graph
-    (`AnimeTextDetector.forward_batch` runs under `inference_mode` on a letterboxed array);
-  - the reader with tensors in and labels in (`OcrReader` decodes PIL crops with `generate`
-    under `inference_mode`); the crop taken from the pixel tensor by resampling;
-  - a pixel tap that keeps the graph (`PixelTap` detaches);
-  - the backward through the last step, and through all four with checkpointing.
-- G0d measures, on the 16 rows of item 2 and scenes 6 and 12, 4 seeds each:
-  - the row gradient's size against Adam's ε, for the last step alone and for all four;
-  - peak VRAM and seconds a step for both, the reader resident;
-  - the same on pages with no box for the detector-score term, and its cosine to the row's
-    gradient on pages that hold the glyph;
-  - whether the gradient is about the glyph: the cosine of a row's gradient between two seeds,
-    against the cosine between its gradient under the asked label and under another glyph's
-    label on the same render.
-- Read: Claude's, numbers only; it sets item 2's settings (which steps, the page term's weight
-  from the two terms' gradient norms on the rows, the learning rate). No renders are judged.
-- Bars: a row gradient two decades over Adam's ε (P1's was at it,
-  [reports/p1_2026_11_13.md](reports/p1_2026_11_13.md)); the fit is the 16 GB card. The cosine
-  check has no bar: spread unknown.
-- Cost: the build is code; the probe is under 10 minutes of GPU.
-
-Interpretation:
-
-- The reader's loss needs something in the crop to pull on. A box with the wrong strokes is
-  the common case on kanji (the crossed grid's sheets), and there the loss has a target per
-  position from one sample.
-- With a box on the page the 0.6 line changes nothing in the loss: the cross-entropy is
-  continuous and already large on a box the reader is unsure of. The line matters for which
-  box is taken and for the reads. Of the exact reads 7 % sit under it.
-- The no-box pages are the ones that need a term of their own. The detector's score says
-  "letter something" in the detector's terms, the same eyes that decide whether a crop exists,
-  and it is one small backward more. Its risk is a text-like scribble that satisfies the
-  detector alone; the reader's loss takes over as soon as a box appears, and the read of
-  record is the sampled read.
-- If G0d finds the score's gradient pointing away from the glyph's (a negative cosine), the
-  fallback is to skip those pages: a row is shared by every seed, so a glyph learned where a
-  box exists may bring the blank share down by itself.
-- Layout is set in the early steps, so the last step alone may reach strokes and not whether a
-  glyph is drawn. The four-step backward is the fallback for the "nothing drawn" branch.
-
-## 2. G1 — sixteen rows
-
-After item 1; its step count, steps of backward, page weight and learning rate come from G0d.
+`src/gd.py`, `probes/gd_g0d.py`, run `g0d_1125_1119`
+([reports/gd_g0d_2026_11_25.md](reports/gd_g0d_2026_11_25.md)).
 
 Facts:
 
-- Rows, picked across the crossed grid's `solo` range (out of 16): ひ 11, あ 8, ぬ 7, う 5, さ 4,
-  が 2, め 1, を 1; 死 7, 王 4, 太 3, 二 3, 味 2, 楽 1, 人 0, 行 0.
-- Frame: `speech bubble` in (proposed: G-D needs a crop, and the plain frame leaves half the
-  pages blank).
-- Scenes: the 25 of `assets/glyph_scenes.json` (the relaxed rule), split into training scenes
-  and read scenes no update sees; the split is fixed in the run's config header, by folder so
-  that a read scene's artist is not trained on. A further screen round
-  (`glyph_scenes.py screen --round N`, 64 fresh candidates of the low-text folders, about 12
-  minutes, about 11 more scenes) widens the pool if the split leaves either side thin.
-- Control: a run of the same length with the 16 labels permuted among the rows (proposed).
-- Read of record: the glyph grid on the held-out scenes at 4 seeds, `solo`, `on_page`, `extra`
-  per glyph with the null of `glyph_g0.py`, against the start rows, paired over glyphs; the 16
-  rows' neighbours on the grid, which must not move; steps to the first gain per row. Sheets go
-  to the user, whose read decides.
-- Bars: spread unknown.
-- Cost: unknown until G0d gives the step's seconds.
+- The path's three checks hold. A backward forward holds 1 render on the 16 GB card.
+- The last step's ce gradient on a render that misses its glyph is five decades over Adam's ε
+  (bar: two).
+- Two seeds of a glyph have gradient cosine 0.01, the null between glyphs 0.003 – 0.017; the
+  part that follows the label has cosine 0.025 between two renders of a glyph against 0.001.
+
+## 2. G1's micro arm — done
+
+Run `g1micro_1125_1148` ([reports/g1micro_2026_11_25.md](reports/g1micro_2026_11_25.md)).
+
+Facts:
+
+- 16 rows, 8 steps each (128 renders a row), 24.7 min.
+- Read on the held-out scenes, 256 pages an arm, start → trained: solo 59 → 132 (13 glyphs
+  up, 1 down, p 0.002), the next glyph's solo 0 → 0, extra letters a page 3.44 → 2.34, no-box
+  pages 44 → 23. 人 0 → 7; を 2 → 0, 行 0 → 0, 楽 0 → 1. The best row reads 15 of 16.
+- The user's read of the blind sheets (11-25): success, clear at a glance.
+- Not run: the permuted-label control.
 
 Interpretation:
 
-- The permuted run separates "the row learned its glyph" from "the rows learned to fill a
-  bubble": a gain in `solo` that the permuted run shares is the second.
-- を, 人 and 行 start at or near zero, so they show whether the loss can start a glyph and not
-  only sharpen one.
+- Eight steps along the averaged gradient move a row toward its glyph on scenes it was not
+  trained on. No row is at its ceiling, so the steps a row needs are still open; item 3 reads
+  them.
+
+## 3. G1 long — the sixteen rows to their ceiling
+
+Proposed (Claude), not queued. Parent: `g1micro_1125_1148`.
+
+Facts:
+
+- From the start rows again, 6 passes (24 steps a row) with the x_3 cache on (the input of
+  the last step kept per glyph, scene and seed; drawn again, on new seeds, every 4 passes).
+  Nothing else changed. Two things change together, length and the cache; the read at 8 steps
+  differs from the parent by the cache alone.
+- The rows are saved and read at 8, 16 and 24 steps on the parent's read scenes and seeds,
+  with the parent's tables and blind sheets (start against the last save).
+- Read: solo by save, per glyph; the steps at which a glyph stops rising; を, 行, 楽; ぬ and
+  死, whose pages changed without a gain; the 8-step save against the parent's 132.
+- Bars: spread unknown. The 8-step save against the parent is the first pair of runs that
+  differ only by the cache and the seeds of pass 1.
+- Cost: about 55 min of training (two passes at 2.9 s a group, four estimated at 1.7 s) and
+  about 10 min of reads.
+
+Interpretation:
+
+- This sets item 4's steps a row and says what the cache costs before 81 rows run on it.
+- Rows that already read well may be pushed off by more steps. If the 16- or 24-step save
+  shows it, item 4 stops a row by its own training-side reads.
+
+## 4. G2a — the hiragana
+
+After item 3. Proposed (Claude), not queued.
+
+Facts:
+
+- Rows: the 81 hiragana with one trained row in the frame, G1's loop, scenes and split.
+- Steps a row: the save of item 3 at which solo stops rising.
+- Read: every row on the read scenes and seeds against the start rows (81 × 16 pages an arm,
+  about 11 min an arm), blind sheets for a sample of rows picked before the run.
+- Cost: 12 s a row step without the cache. 81 rows at 8 steps 2.1 h, at 16 steps 4.3 h, at 24
+  steps 6.5 h; with the cache an estimated two thirds of that.
+
+Interpretation:
+
+- The cost grows with the row count, since a render teaches the one row in its caption. The
+  katakana (83) double it; the 1 410 kanji need a cheaper step
+  ([proposal_glyph.md](proposal_glyph.md) § 2).

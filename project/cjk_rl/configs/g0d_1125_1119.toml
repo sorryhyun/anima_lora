@@ -1,0 +1,37 @@
+# G0d (plan.md item 1): the gradient that G-D's path (src/gd.py: reader → crop pixels → pixel
+#   head → DiT step(s) → llm_adapter → rows) puts on a glyph's row, on m15v11 (4 Euler steps,
+#   cfg 1, shift 3, 768², pixel-head decode), rows seed_1008. No update, no parent run: the
+#   path's first run. probes/gd_g0d.py.
+# Question: is the row gradient large enough for Adam, does it fit the 16 GB card, and is it
+#   about the asked glyph? Each answer sets one of G1's settings (plan.md item 2):
+#   - size on the last step alone two decades over Adam's ε -> G1 backwards one step; only
+#     over the bar with all four -> G1 backwards four; under it on both -> the rows' optimizer
+#     or the loss scale is changed before G1.
+#   - the detector-score gradient on pages that hold the glyph: cosine to the ce gradient at
+#     or above 0 -> the no-box pages take the score term; negative -> those pages are skipped.
+#   - the page term's weight: the ratio of the ce and page gradient norms on the rows.
+# Records it rests on:
+#   - reports/glyph_scenes_2026_11_25.md: the crossed grid these 16 glyphs and scenes 6 / 12
+#     were read on (seeds 0-3, bubble frame): 57 % of the JA pages hold a box read at 0.6 or
+#     over, 22 % boxes under it, 22 % no box.
+#   - reports/glyph_g0_2026_11_25.md: the pixel head reads as the VAE does.
+#   - reports/p1_2026_11_13.md: P1's row gradient sat at Adam's ε (median norm 4.4e-6 over a
+#     median of 15 rows, output/cjk_rl/grpo/grpo_1113_1940/log.jsonl).
+# Read: numbers only, Claude's: the row gradient's rms per element by term (ce, ce on the next
+#   glyph's label, page MSE, detector score), depth (last step, all four) and case; cosines
+#   between seeds, scenes and glyphs, between the two labels, and of det / page to ce; seconds
+#   by phase and peak VRAM with the reader resident; the path's three checks (sampling loop,
+#   crop, letterbox). No renders are judged.
+# Bars: rms per element two decades over Adam's ε = 1e-6 (the plan's bar; P1's is printed
+#   beside it in the same unit); the 16 GB card. The cosines: spread unknown.
+# Cost: 32 groups of 4 renders, up to 4 terms × 4 step backwards each; about 10 minutes
+#   (the smoke: 4 groups in 1.5 min, the first with the compile).
+
+rows = "seed_1008"
+hira = "ひあぬうさがめを"
+kanji = "死王太二味楽人行"
+scenes = [6, 12]  # ids in assets/glyph_scenes.json
+seeds = [0, 1, 2, 3]
+frame = "bubble"
+conf_min = 0.6
+grad_bs = 1  # renders a backward forward; 4 and 2 ran out of memory in the smoke (job 20261125-111605-c262df)

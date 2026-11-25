@@ -1,8 +1,9 @@
 # Glyph-first OCR reward — after the sixteen rows
 
-Status (2026-11-25): the stage's next steps, G-D's path, G0d and G1, are in
-[`plan.md`](plan.md); what ran is in [`reports/`](reports/) (`glyph_g0_2026_11_25.md`,
-`glyph_scenes_2026_11_25.md`). This file proposes what follows G1 and nothing before it. The
+Status (2026-11-25): G-D's path, G0d and G1's micro arm ran (`reports/gd_g0d_2026_11_25.md`,
+`reports/g1micro_2026_11_25.md`; the user read the micro arm as a success). The next runs, the
+sixteen rows to their ceiling and the hiragana, are in [`plan.md`](plan.md). This file
+proposes what follows them and nothing before. The
 first draft's G-R arm (GRPO on the glyph reward) is out on the user's call of 11-25; that text
 is in the git history.
 
@@ -33,9 +34,10 @@ Evidence the later stages rest on, measured:
 ## 2. G2 — the kana, the frequent kanji, then words
 
 - Rows: the 163 kana, then the 1 410 kanji in frequency order, in G1's loss and frame.
-- Budget: rows × G1's steps to a gain × the step's seconds from G0d. Both are unknown today; if
-  the product does not fit this box for the kanji, the kana and the first few hundred kanji run
-  and the rest wait on a cheaper step.
+- Budget: rows × the steps a row needs × 12 s a row step (measured, `g1micro_1125_1148`; 8
+  steps gave the micro arm's gain, the ceiling's steps come from `plan.md` item 3). At 8 steps
+  the 164 kana are 4.4 h and the 1 410 kanji 38 h; if the kanji do not fit this box, the kana
+  and the first few hundred kanji run and the rest wait on a cheaper step.
 - Words of 2 – 4 glyphs join once singles pass, every glyph a trained row, real words only (the
   standing rule: no random strings). The reader's cross-entropy scores each position of a word
   by construction, so a word needs no separate credit rule.
