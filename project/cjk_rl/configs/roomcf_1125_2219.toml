@@ -1,0 +1,36 @@
+# Reader room, the tuned reader compiled (probes/reader_room.py, gd.Reader.compile):
+#   G1's serial order with the reader's tower and LM layers compiled (vl16_compile, one crop a
+#   call; the loss forward and backward compiled, the read eager) on flash_attention_2, readers only, on
+#   room_1125_2214's pages (g2a_1125_1642, 16 hiragana and 16 katakana at s00 and s06, seeds
+#   0-3), hayai at 0.2 on its own SDPA in fp32. 8 groups run twice untimed first (the
+#   compiles). Its pair: roomcs_1125_2219 (the same on sdpa).
+# Question (the user, 11-25: "컴파일후 속도 비교점", on room_1125_2214 where FA2 was 0.02 s a
+#   group slower than SDPA in the loss, both eager): with the layers compiled, which
+#   attention gives the shorter loss, and what does compiling take off it?
+#   - the loss seconds a group of this run against its pair's and against room_1125_2214's
+#     eager figures -> the attention and the compile G1 runs with (the user's call).
+#   - recompiles past the warm groups, or graph breaks in the log -> named beside the seconds;
+#     a run whose graphs never settle is not read for speed.
+# Records it rests on:
+#   - room_1125_2214 (eager, same pages): loss 0.460 s a group on FA2, 0.438 on SDPA (means;
+#     medians 0.477 / 0.455); read 0.350 / 0.319.
+# Read: numbers only, Claude's: read and loss seconds a group (mean, median), recompiles and
+#   graph breaks from the log, the cases against room_1125_2214's (box 204, low 29, none 23).
+# Bars: none on the seconds.
+# Cost: 64 groups of 4 pages after 8 warm groups, readers only; about 3 minutes plus the
+#   compiles.
+
+pages = "g2a_1125_1642"  # output/cjk_rl/g1/<pages>/read/<arm>/
+arms = ["s00", "s06"]
+hira = "あいうえおかきくけこさしすせそた"
+kata = "アイウエオカキクケコサシスセソタ"
+scenes = [6, 12, 45, 15]  # a glyph's scene cycles over these
+seeds = [0, 1, 2, 3]
+conf_min = 0.6
+hayai_weight = 0.2
+reader_attn = "flash_attention_2"
+reader_compile = true
+warm_groups = 8
+variants = []
+split = false
+prof_groups = 0

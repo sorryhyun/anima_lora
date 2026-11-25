@@ -50,6 +50,10 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   same and a group takes 0.17 s less. Such a page is `lone` in the log, and its `exact` comes
   from the loss forward's argmax
   ([reader_room](reports/reader_room_2026_11_25.md), second part).
+- The tuned reader runs on FlashAttention 2 (`reader_attn`, `flash_attention_2` when absent,
+  from 2026-11-25; earlier runs used SDPA), its read and its loss forward and backward alike.
+  hayai stays on SDPA in fp32: its masks (block-causal, and a column-causal flow) are not
+  FA2's, and FA2 takes no fp32.
 - The gradient goes from the loss to the image, through the last step to the text embedding
   (the earlier steps are not differentiated), and through the LLM adapter to the glyph's row.
 

@@ -369,9 +369,12 @@ class Policy:
 
 
 class Reader:
-    """The detector and the tuned reader, with tensors in."""
+    """The detector and the tuned reader, with tensors in. ``attn`` is the reader's
+    attention, its read and its loss forward and backward alike: ``flash_attention_2``
+    (the fa2-sm120 wheel holds the tower's head dim 72 and the LM's 128) or ``sdpa``
+    (``anime_tools``' own, every run before 2026-11-25)."""
 
-    def __init__(self, device: str = "cuda"):
+    def __init__(self, device: str = "cuda", attn: str = "flash_attention_2"):
         from common.readers import Readers
 
         self.rd = Readers(device)
@@ -379,6 +382,24 @@ class Reader:
         self.ocr.model.requires_grad_(False)
         self.det.model.requires_grad_(False)
         self.device = device
+        self.set_attn(attn)
+
+    def compile(self) -> None:
+        """The reader's tower and LM layers compiled for the loss forward and backward
+        (``project/ocr_reader/core/vl16_compile.py``, one crop a call; the read runs
+        eager), on the attention set at the time."""
+        from project.ocr_reader.core.vl16_compile import compile_layers
+
+        n_t, n_l = compile_layers(self.ocr.model, (16, 4095), 1, attn=self.attn)
+        print(
+            f"reader compiled on {self.attn}: {n_t} tower + {n_l} LM layers", flush=True
+        )
+
+    def set_attn(self, attn: str) -> None:
+        self.ocr.model.set_attn_implementation(attn)
+        cfg = self.ocr.model.config
+        assert cfg.vision_config._attn_implementation == attn, cfg.vision_config
+        self.attn = attn
 
     def read(self, px, skip_lone: bool = False) -> tuple[list, list]:
         """The ordinary read of pages ``(B, 3, H, W)`` in [-1, 1]: the BGR arrays the

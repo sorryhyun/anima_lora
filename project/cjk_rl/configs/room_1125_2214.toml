@@ -1,0 +1,34 @@
+# Reader room, the sdpa variant (probes/reader_room.py): G1's serial order with the tuned
+#   reader on FlashAttention 2 (gd.Reader's default from 11-25, the fa2-sm120 wheel with head
+#   dim 96 for the tower's 72) against the same order on SDPA (every run before), readers
+#   only, on room_1125_2155's pages: g2a_1125_1642's read pages (768², WebP), 16 hiragana and
+#   16 katakana at s00 and s06, a group one glyph on one scene at seeds 0-3. hayai at 0.2 as in
+#   G1, on SDPA in fp32 both ways. The other variants and the timer pass are off. No update.
+# Question (the user, 11-25: "cjk rl project에서 full fa2 쓰게 하자"): does the reader on FA2
+#   give G1 the same pick and the same image gradient, and what does it take off a group?
+#   - same pick on (nearly) every page and the gradient's cosine near 1 -> FA2 stays the
+#     default for G1 (reader_attn absent).
+#   - picks or gradients that differ beyond a greedy flip here and there -> back to sdpa as
+#     the default until the difference is found.
+# Records it rests on:
+#   - room_1125_2155 (reports/reader_room_2026_11_25.md, second part): serial read 0.317 s and
+#     loss about 0.4 s a group on these pages.
+#   - the wheel's check (flash-attention-fp16 smoke.py): head dim 72 0.0020 from fp32 SDPA;
+#     PaddleOCR-VL-1.6 greedy reads on 64 Manga109 crops equal to SDPA's on 62.
+# Read: numbers only, Claude's: seconds a group (read, loss) for serial (FA2) and sdpa; pick
+#   agreement (case, box, text) and the image gradient's cosine where the box is the same.
+# Bars: none on the seconds. One array is read twice, as in room_1125_2155.
+# Cost: 64 groups of 4 pages, two passes a group, readers only; about 3 minutes.
+
+pages = "g2a_1125_1642"  # output/cjk_rl/g1/<pages>/read/<arm>/
+arms = ["s00", "s06"]
+hira = "あいうえおかきくけこさしすせそた"
+kata = "アイウエオカキクケコサシスセソタ"
+scenes = [6, 12, 45, 15]  # a glyph's scene cycles over these
+seeds = [0, 1, 2, 3]
+conf_min = 0.6
+hayai_weight = 0.2
+reader_attn = "flash_attention_2"
+variants = ["sdpa"]
+split = false
+prof_groups = 0

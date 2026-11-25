@@ -38,19 +38,6 @@ with its cost:
 - G1's permuted-label control: not run.
 - The x_3 cache: set for the runs after the micro arm and dropped the same day (the user,
   11-25). What it costs is not measured.
-- Symbols, to review (the user, 11-25). Facts, from the two readers' tokenizers, the pack and
-  the 723 training captions with an OCR clause:
-  - 💢 (U+1F4A2): no token of its own in either reader (4 byte tokens in the tuned reader's
-    256-token byte fallback, 4 byte pieces in hayai), in no caption, and its pack row is not
-    among the 2 911 trained rows. To review: how the reader comes to read it (labels that hold
-    it, on the reader's side, `project/ocr_reader/`; whether byte tokens are enough, as they
-    are for ♡, or it gets a token), before a row can be taught on the reader's loss. 💦 💧 💕
-    💤 stand the same way.
-  - ♡ (U+2661): 3 byte tokens in the tuned reader (`<0xE2> <0x99> <0xA1>`), one token in
-    hayai, a trained pack row, and in the quoted OCR string of 266 captions; ♥ is one token
-    in both. To review before a ♡ row is trained: the tuned reader's cross-entropy runs over
-    three tokens where a kana's runs over one, and the first two bytes are shared with ♥ ♪ ♫,
-    so the term's size beside a kana's and beside hayai's one-token term is not known.
 - After the kana: [proposal_glyph.md](proposal_glyph.md) (the frequent kanji, words, transfer
   and ship reads). The sentence arms of [proposal.md](proposal.md) wait behind the stage.
 

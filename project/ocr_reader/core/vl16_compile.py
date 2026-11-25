@@ -30,6 +30,12 @@ marks go inside the callable so a checkpoint recompute re-marks.
 A token count outside the range runs unmarked and specialises on its exact count, with
 one warning per count. A call with grad off (generation, ``predict``) goes straight to
 the layer's eager forward: no marks, no warning, no compiled code.
+
+``attn="flash_attention_2"`` (the model loaded or switched to it; the fa2-sm120 wheel holds
+the tower's head dim 72) takes ``flash_attn_varlen_func`` as the tower's core instead of
+``tower_attn``: with one image ``max_seqlen`` is the token count, symbolic under the
+mark; with several it is the encoder's int, one graph per value. The LM layers run
+transformers' flash path unchanged.
 """
 
 from __future__ import annotations
@@ -126,18 +132,50 @@ def _vision_attn_forward(
     return self.out_proj(o.reshape(n, -1)), None
 
 
+def _vision_attn_forward_fa2(
+    self, hidden_states, cu_seqlens, position_embeddings, max_seqlen=None, **kwargs
+):
+    """``PaddleOCRVisionAttention.forward`` with FlashAttention as the core: one image is
+    ``flash_attn_func`` on ``(1, T, H, D)``; several are ``flash_attn_varlen_func``,
+    k's bounds a copy of q's (dynamo breaks the graph on one tensor passed to two inputs
+    of an ``autograd.Function``)."""
+    from flash_attn import flash_attn_func, flash_attn_varlen_func
+    from transformers.models.paddleocr_vl.modeling_paddleocr_vl import (
+        apply_rotary_pos_emb_vision,
+    )
+
+    n = hidden_states.shape[0]
+    q = self.q_proj(hidden_states).view(n, self.num_heads, self.head_dim)
+    k = self.k_proj(hidden_states).view(n, self.num_heads, self.head_dim)
+    v = self.v_proj(hidden_states).view(n, self.num_heads, self.head_dim)
+    cos, sin = position_embeddings
+    q, k = apply_rotary_pos_emb_vision(q, k, cos, sin)
+    if cu_seqlens.shape[0] == 2:
+        o = flash_attn_func(q[None], k[None], v[None], softmax_scale=self.scaling)[0]
+    else:
+        m = int(max_seqlen)
+        o = flash_attn_varlen_func(
+            q, k, v, cu_seqlens, cu_seqlens.clone(), m, m, softmax_scale=self.scaling
+        )
+    return self.out_proj(o.reshape(n, -1)), None
+
+
 def compile_layers(
-    base, tower_range: tuple[int, int], max_images: int
+    base, tower_range: tuple[int, int], max_images: int, attn: str = "sdpa"
 ) -> tuple[int, int]:
     """Patch the tower attention and compile every tower / LM layer in place. Run after
-    peft wraps the linears and after the checkpoint flags are set. Returns the layer
-    counts (tower, LM)."""
+    peft wraps the linears and after the checkpoint flags are set. ``attn`` is the
+    model's attention (``sdpa`` or ``flash_attention_2``). Returns the layer counts
+    (tower, LM)."""
+    if attn not in ("sdpa", "flash_attention_2"):
+        raise ValueError(f"attn must be sdpa or flash_attention_2, got {attn!r}")
+    flash = attn == "flash_attention_2"
     from library.runtime.dynamo import pin_dynamo_limit
 
     # one graph per crop count (LM) and the tower's first layer (its input has no grad)
     pin_dynamo_limit("recompile_limit", 32)
     torch._dynamo.config.specialize_float = True
-    torch._logging.set_logs(recompiles=True)  # every recompile and its guard in the log
+    torch._logging.set_logs(recompiles=True, graph_breaks=True)  # each with its reason
     lo, hi = tower_range
     if not 1 < lo <= hi:
         raise ValueError(
@@ -154,7 +192,9 @@ def compile_layers(
         def forward(hidden_states, cu_seqlens, position_embeddings, **kwargs):
             if not torch.is_grad_enabled():
                 return eager(hidden_states, cu_seqlens, position_embeddings, **kwargs)
-            for k in ("max_seqlen", "interp_indices", "interp_weights"):
+            for k in ("interp_indices", "interp_weights") + (
+                () if flash else ("max_seqlen",)
+            ):
                 kwargs.pop(k, None)
             t = hidden_states.shape[0]
             span = next(((a, b) for a, b in spans if a <= t <= b), None)
@@ -220,7 +260,8 @@ def compile_layers(
     for m in base.modules():
         name = type(m).__name__
         if name == "PaddleOCRVisionAttention":
-            m.forward = types.MethodType(_vision_attn_forward, m)
+            core = _vision_attn_forward_fa2 if flash else _vision_attn_forward
+            m.forward = types.MethodType(core, m)
         elif name == "PaddleOCRVisionEncoderLayer":
             m.forward = tower(torch.compile(m.forward, dynamic=False), m.forward)
             n_t += 1

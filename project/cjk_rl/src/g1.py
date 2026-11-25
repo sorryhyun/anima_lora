@@ -23,6 +23,11 @@ reads, and the loss is the same. The log counts such a page under ``lone`` inste
 every token (``gd.Reader.ce``'s ``hit``), which leaves out a ``fold_small`` pair's
 other glyph. The read on held-out scenes reads every box either way.
 
+``reader_attn`` sets the tuned reader's attention (``gd.Reader``): ``flash_attention_2``
+when absent, ``sdpa`` for the runs before 2026-11-25. hayai stays on its own SDPA in
+fp32. ``reader_compile = true`` compiles the reader's layers for the loss forward and
+backward (``gd.Reader.compile``; the read stays eager).
+
 A row steps when ``accum`` of its renders are in: the mean gradient joins the row's
 momentum (``beta``), and the row moves ``eta`` row norms against the momentum's
 direction. A pass is every (glyph, training scene) once, shuffled; pass p draws seeds
@@ -574,7 +579,9 @@ def main() -> None:
     pol = gd.Policy([G.SHAPE], rows=cfg["rows"], grad_bs=1)
     frame = cfg["frame"]
     pol.encode([G.framed(sc[i][frame], k) for _, k, _ in gl for i in tr + rd_sc])
-    rdr = gd.Reader("cuda")
+    rdr = gd.Reader("cuda", attn=cfg.get("reader_attn", "flash_attention_2"))
+    if cfg.get("reader_compile"):
+        rdr.compile()
     hy = gd.Hayai("cuda") if cfg.get("hayai_weight") else None
     print(
         f"{name}: {len(gl)} glyphs × {len(tr)} training scenes × {cfg['passes']} "

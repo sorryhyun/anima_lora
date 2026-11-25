@@ -19,10 +19,14 @@ seeds. Per group, in turn:
   at ``cap`` (the asked string is one glyph).
 - ``lone``: ``serial`` with a one-box page left unread (``gd.Reader.read(skip_lone=
   True)``, G1's ``skip_lone_read``).
+- ``sdpa``: ``serial`` with the tuned reader on SDPA (``serial`` runs on the config's
+  ``reader_attn``, ``flash_attention_2`` when absent).
 
-A config's ``variants`` picks which of ``batch`` / ``cap`` / ``batch_cap`` / ``lone``
-run beside ``serial`` (absent: the first three), and ``split = false`` leaves the
-timer pass out.
+A config's ``variants`` picks which of ``batch`` / ``cap`` / ``batch_cap`` / ``lone`` /
+``sdpa`` run beside ``serial`` (absent: the first three), and ``split = false`` leaves
+the timer pass out. ``reader_compile = true`` compiles the tuned reader's layers on
+``reader_attn`` (``gd.Reader.compile``: the loss forward and backward; the read stays
+eager), and ``warm_groups`` (1 when absent) groups run twice untimed before the clock.
 
 Beside the seconds: how often a variant's pick (case, box, text) equals ``serial``'s,
 the cosine of its image gradient with ``serial``'s where the box is the same, the
@@ -261,7 +265,10 @@ def run(cfg: dict, smoke: bool) -> dict:
     from library.inference.output import pixels_to_pil
 
     groups = load_groups(cfg, smoke)
-    rdr = gd.Reader("cuda")
+    attn = cfg.get("reader_attn", "flash_attention_2")
+    rdr = gd.Reader("cuda", attn=attn)
+    if cfg.get("reader_compile"):
+        rdr.compile()
     hy = gd.Hayai("cuda") if cfg.get("hayai_weight") else None
     instrument(rdr)
     conf, full = cfg["conf_min"], R.MAX_NEW_TOKENS
@@ -269,7 +276,7 @@ def run(cfg: dict, smoke: bool) -> dict:
     extra = tuple(cfg.get("variants", ("batch", "cap", "batch_cap")))
     names = ("serial", *extra)
     sec = {v: {"read": [], "loss": []} for v in names}  # seconds a group
-    page_read = {v: [] for v in ("serial", "cap", "lone")}  # seconds a page
+    page_read = {v: [] for v in ("serial", "cap", "lone", "sdpa")}  # seconds a page
     # lone's unread pages: serial's case, and the forward's argmax against its read
     lone = {"pages": 0, "serial_case": {"box": 0, "low": 0}}
     lone |= dict.fromkeys(("both", "read_only", "argmax_only", "neither"), 0)
@@ -345,14 +352,21 @@ def run(cfg: dict, smoke: bool) -> dict:
                 else "neither"
             ] += 1
 
-    # the first group twice through every variant, untimed
-    warm = to_px(groups[0][3])
+    # the first groups twice through every variant, untimed
+    t_warm = time.time()
     for _ in range(2):
-        serial("serial", groups[0][1], warm)
-        if "lone" in names:
-            serial("lone", groups[0][1], warm, skip_lone=True)
-        if {"batch", "batch_cap"} & set(names):
-            batch("batch" if "batch" in names else "batch_cap", groups[0][1], warm)
+        for _, wkey, _, wpages in groups[: cfg.get("warm_groups", 1)]:
+            warm = to_px(wpages)
+            serial("serial", wkey, warm)
+            if "lone" in names:
+                serial("lone", wkey, warm, skip_lone=True)
+            if {"batch", "batch_cap"} & set(names):
+                batch("batch" if "batch" in names else "batch_cap", wkey, warm)
+            if "sdpa" in names:
+                rdr.set_attn("sdpa")
+                serial("sdpa", wkey, warm)
+                rdr.set_attn(attn)
+    print(f"  warm {time.time() - t_warm:.0f} s", flush=True)
     for xs in (*page_read.values(), *steps.values()):
         xs.clear()
     for d in sec.values():
@@ -395,6 +409,10 @@ def run(cfg: dict, smoke: bool) -> dict:
             got = serial("lone", key, px, skip_lone=True)
             compare("lone", ref, got)
             count_lone(key, ref, got)
+        if "sdpa" in names:
+            rdr.set_attn("sdpa")
+            compare("sdpa", ref, serial("sdpa", key, px))
+            rdr.set_attn(attn)
         R.MAX_NEW_TOKENS = cfg.get("cap", full)
         if "cap" in names:
             compare("cap", ref, serial("cap", key, px))
