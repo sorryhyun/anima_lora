@@ -51,6 +51,7 @@ import turbo_read as T
 
 OUT = T.REPO / "output" / "cjk_rl" / "glyph_scenes"
 ASSET = T.LINE / "assets" / "glyph_scenes.json"  # the selected prompts
+ASSET_PLAIN = T.LINE / "assets" / "plain_scenes.json"  # plain_scenes.py's selection
 SEED = 1126
 SEEDS = (0, 1, 2, 3)
 N_LOW, N_OTHER, N_CROSS = 44, 20, 4
@@ -65,16 +66,21 @@ EN_CROSS = G.EN_WORDS[:8]
 # ---------------------------------------------------------------- candidates (CPU)
 
 
-def candidates(rounds: int = 1) -> list:
-    """``[{i, round, stem, artist, group, clause_rate, textish_rate, plain, bubble}]``
-    of rounds 1 … ``rounds``: the ruler's images and the ``$CHARACTER_REF_EXCLUDE``
-    tags held out. A folder's text-free captions are shuffled once; round r takes its
-    next ``PER_ARTIST`` (round 1) or as many as it needs, so no caption comes twice."""
-    from anime_tools.captions.position_clauses import (
-        TEXT_PREFIXES,
-        compose_caption,
-        parse_caption,
-    )
+def scenes() -> dict:
+    """``{id: scene}`` of the selected prompts: this screen's and, when it has been
+    written, ``plain_scenes.py``'s (ids from 1000)."""
+    out = {}
+    for f in (ASSET, ASSET_PLAIN):
+        if f.exists():
+            out |= {x["i"]: x for x in json.loads(f.read_text("utf-8"))["scenes"]}
+    return out
+
+
+def free_pool() -> tuple[dict, dict]:
+    """``(rate, free)``: per artist folder ``[captions, with a text clause, textish]``
+    and the ``(stem, parsed)`` of its text-free captions, the ruler's images and the
+    ``$CHARACTER_REF_EXCLUDE`` tags held out (as the variable stands when called)."""
+    from anime_tools.captions.position_clauses import TEXT_PREFIXES, parse_caption
 
     from eval.ruler import RULER
     from eval.ruler.build import CAPTIONS, DROP_TAGS
@@ -107,6 +113,19 @@ def candidates(rounds: int = 1) -> list:
         r[2] += textish
         if not textish and f.stem not in held and not excluded.intersection(tags):
             free[artist].append((f.stem, p))
+    return rate, free
+
+
+def candidates(rounds: int = 1) -> list:
+    """``[{i, round, stem, artist, group, clause_rate, textish_rate, plain, bubble}]``
+    of rounds 1 … ``rounds`` from :func:`free_pool`. A folder's text-free captions are
+    shuffled once; round r takes its next ``PER_ARTIST`` (round 1) or as many as it
+    needs, so no caption comes twice. The ids follow the pool: after a change of
+    ``$CHARACTER_REF_EXCLUDE`` they are not the ids of an earlier screen, whose
+    candidates are its ``results/*-glyph_scenes-screen/scenes.json``."""
+    from anime_tools.captions.position_clauses import compose_caption
+
+    rate, free = free_pool()
     rng = random.Random(SEED)
     out, turns = [], []
     rest: dict = {}  # folder → its shuffled captions past round 1's

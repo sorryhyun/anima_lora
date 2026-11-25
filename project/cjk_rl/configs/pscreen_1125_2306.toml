@@ -1,0 +1,35 @@
+# Plain screen (probes/plain_scenes.py): the scene screen of glyph_scenes.py read in the
+#   plain frame only, on new candidates. Against that screen: the frame bubble + plain ->
+#   plain, the probe strings `stop` and う -> four EN words (stop, home, moon, exit: the
+#   words with the most exact reads in enplain_1125_2258, 7 – 9 of 16 pages each), the pool
+#   the low folders first -> every folder in turn (2 a folder) after the whole of the
+#   folders in assets/plain_pool.json (local; the user, 11-25, named the kind), the 128
+#   scenes already screened left out. Stack, size, seeds and readers unchanged.
+# Question (the user, 11-25: "영어도 잘 나오는 장면이어야 … '해당 글씨를 일본어로 그리는'
+#   능력을 배울테니까, 이참에 프롬프트 image dataset에서 좀 발굴하면 좋을듯"): which scenes
+#   letter an EN word with no bubble tag, so a plain-frame arm trains the rows where the
+#   model already letters?
+#   - enough scenes at half their 16 EN renders or more, over several folders -> they are
+#     the plain-frame training and read scenes of the next arm.
+#   - few -> the plain frame has no scene pool at this model's EN level, and the arm trains
+#     on what the rule's next step down gives (the user's call on the table).
+# Records it rests on:
+#   - reports/plain_2026_11_25.md (plain_1125_2249, enplain_1125_2258, enbubble_1125_2258):
+#     EN solo of 64 plain pages on scenes 6 / 45 / 15 / 35: 29 / 12 / 15 / 15 (bubble 35 /
+#     14 / 26 / 29); the kana's 6-step rows 44 / 27 / 18 / 4.
+#   - results/20261125-{1030,1101}-glyph_scenes-screen/scenes.json: `stop` alone on plain
+#     pages on 134 of 512 over the 128 scenes; 41 of 80 on the 20 with a plain ground, 93
+#     of 432 on the others.
+# Read: per scene en_solo of 16, the no-clause renders with a read letter, by ground,
+#   figure count and prose; the sheets in the order of en_solo. The selection rule and the
+#   scenes are the user's call on the table and the sheets.
+# Bars: spread unknown. One word at 4 seeds misranked the four scenes of enplain_1125_2258
+#   (`stop` 4 / 3 / 0 / 0 against 29 / 12 / 15 / 15 of 64 over 16 words).
+# Cost: 160 scenes × 20 renders = 3 200 renders and their reads, about 30 min.
+
+words = ["stop", "home", "moon", "exit"]
+seeds = [0, 1, 2, 3]
+n = 160
+per_folder = 2
+pool_seed = 1125
+id0 = 1000

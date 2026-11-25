@@ -1,0 +1,46 @@
+# Plain read (probes/row_line.py): g2a_1125_1642's read with frame bubble -> plain (the
+#   scene with no `speech bubble` tag, `<scene>. Text reads as "<glyph>".`), on 16 of its
+#   164 rows and 4 scenes, the start rows and the 6-step save as saved (the shifted start
+#   in it). Changed with the frame: the rows 164 -> 16 (the eight hiragana g1long, g1shared
+#   and g2a share, and eight katakana drawn at seed 1125 from the 72 full-size ones:
+#   ゲザスヂビマヤヲ), and the scenes 6, 12, 45, 15 -> 6, 45, 15, 35 (12 left out by
+#   Claude; 35 is a selected scene no
+#   run trained or read on, from a read scene's artist folder). Stack, seeds, readers,
+#   conf_min as in g2a. A row's null here is the next glyph of these 16, not g2a's.
+# Question (the user, 11-25, on ComfyUI renders of the g2a pack: no lettering without
+#   `speech bubble`): did six steps in the bubble frame change how often a kana is
+#   lettered and read with no bubble tag?
+#   - p_s06 over p_start on the plain pages -> the rows carry outside the frame they
+#     trained in; the ComfyUI miss is then looked for in what else differs there (a
+#     sentence, the base model at 30 steps, a two-figure scene with prose).
+#   - p_s06 level with p_start or under -> the gain is the bubble frame's; the next arm
+#     trains with plain-frame renders among the bubble ones.
+# Records it rests on:
+#   - reports/g2a_2026_11_25.md (g2a_1125_1642): solo of 2 624 bubble pages 743 -> 1 785,
+#     start -> 6 steps. Its pages of these 16 rows on scenes 6, 45, 15 come along as the
+#     references `start`, `s00`, `s04`, `s06` (192 pages an arm).
+#   - reports/glyph_g0_2026_11_25.md G0a, the start rows on 24 other scenes: hiragana solo
+#     0.010 plain against 0.094 bubble, no text on 0.48 against 0.11 of the renders.
+#   - results/20261125-1030-glyph_scenes-screen/scenes.json: う alone on plain pages of
+#     scene 6 on 2 of 4 seeds, of 45, 15 and 35 on 0 of 4.
+# Read: p_start against p_s06 in g1.tabulate's table (solo, hayai's, on_page, extra, no-box
+#   pages) with the bubble references beside them on scenes 6, 45, 15; per glyph, and the
+#   sheets of the pair (rows A / B in a drawn order). An easy read: Claude's, sent to the
+#   user with the sheets.
+# Bars: spread unknown (no twin). A read repeats page for page (line_1125_1517).
+# Cost: 512 renders and their reads, about 5 min.
+
+run = "g2a_1125_1642"
+rows = "seed_1008"
+hira = "ひあぬうさがめを"
+kata = "ゲザスヂビマヤヲ"
+frame = "plain"
+read_scenes = [6, 45, 15, 35]
+read_seeds = [0, 1, 2, 3]
+conf_min = 0.6
+shuffle_seed = 1125
+pairs = [["p_start", "p_s06"]]
+
+[arms]
+p_start = {}
+p_s06 = { save = "s06", saved = true }

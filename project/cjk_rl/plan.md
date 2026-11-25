@@ -27,6 +27,15 @@ with its cost:
   about 0.17 s off a 3.04 s group, about 1.6 h of the 29; a log with it on has `lone` in
   place of box / low on one-box pages.
 
+- The plain frame (the user, 11-25, on ComfyUI renders of the g2a pack: no lettering without
+  `speech bubble`). Read ([plain](reports/plain_2026_11_25.md),
+  [pscreen](reports/pscreen_2026_11_25.md), [mix](reports/mix_2026_11_26.md)): g2a's 6-step
+  rows carry to captions with no bubble tag and are about at EN's level there; the model
+  itself letters EN on a fifth of plain pages and almost never on a scene of two figures;
+  16 rows trained in both frames on the plain screen's scenes (`mix_1125_2338`) read under
+  g2a's in both frames. Nothing queued. Open, the user's call: leave the kana on the bubble
+  frame's recipe, or a different plain-frame arm (its scenes, its share of the renders).
+
 ## Parked
 
 - A row stopped by its own training-side count, and a step that shrinks with the mean
@@ -60,6 +69,10 @@ item 4's is of 2 624 (164 glyphs).
 | 3b | the row line: the rows' walk, their place in the table, forward reads | `line_1125_1517`, `line_1125_1527` | [row_line](reports/row_line_2026_11_25.md) | solo at twice the 8-step displacement 122, at the other rows' mean displacement 112, at a drawn direction 59 | – |
 | 3c | G1 from the shared start: 16 rows, 8 steps | `g1shared_1125_1538` | [g1shared](reports/g1shared_2026_11_25.md) | solo 112 → 148 → 156 at 0, 4, 8 steps (hayai 104 → 147 → 167) | adopted on the user's read |
 | 4 | G2a: the 81 hiragana and the 83 katakana, 6 steps from the shared start, small kana folded | `g2a_1125_1642` | [g2a](reports/g2a_2026_11_25.md) | solo of 2 624: 743 → 1 322 → 1 686 → 1 785 at the start, the shifted start, 4, 6 steps (hayai 835 → 1 420 → 1 762 → 1 840) | – |
+| – | g2a's rows read with no bubble tag | `plain_1125_2249` | [plain](reports/plain_2026_11_25.md) | 16 rows, solo of 256 plain pages 22 → 93; on scene 35 0 → 4 of 64 | – |
+| – | EN words on the same scenes, both frames | `enplain_1125_2258`, `enbubble_1125_2258` | [plain](reports/plain_2026_11_25.md) | 16 words, solo of 256: plain 71, bubble 104 | – |
+| – | the plain screen: new scenes by their EN count with no bubble tag | `pscreen_1125_2306` | [pscreen](reports/pscreen_2026_11_25.md) | 160 scenes, EN solo 0.205; 24 at 8 of 16 or more | – |
+| – | 16 rows in the plain and bubble frames on 12 of the plain screen's scenes, 6 steps | `mix_1125_2338` | [mix](reports/mix_2026_11_26.md) | solo of 512 a frame, this run against g2a's rows: plain 202 against 238, bubble 297 against 329 | – |
 
 - The verdicts on items 2, 3 and 3c are the user's, in each report's Facts. Item 3c's is the
   call for item 4: the shared start at 6 steps.

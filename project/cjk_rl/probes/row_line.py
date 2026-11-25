@@ -2,8 +2,8 @@
 """Row line — a G1 run's saved rows moved along what they learned, read with no training.
 
 Each arm is the start rows with the run's glyphs' rows displaced, read as G1 reads a
-save (``g1.read``: the run's glyphs on its read scenes and seeds, bubble frame, the
-tuned reader and hayai on the same boxes). An arm in ``[arms]`` names a save of the run
+save (``g1.read``: the config's glyphs on its ``read_scenes`` and seeds in its ``frame``,
+the tuned reader and hayai on the same boxes). An arm in ``[arms]`` names a save of the run
 and
 
 - ``scale`` (default 1): a row sits at its start plus ``scale`` times its own
@@ -14,6 +14,12 @@ and
   other rows to that save (leave one out); its own training is not in it.
 - ``rand = true``: the arm's vector is swapped for a drawn direction of its norm, a row
   its own draw (the null of the arm it is set on).
+- ``saved = true``: a row sits where the save holds it, a shifted start included (the
+  other keys measure from the save's own start, which a ``[start_shift]`` run moved).
+- no ``save``: the start rows, read in this config's frame and scenes.
+
+``en`` in the config is a list of EN words read beside the glyphs (class ``en``, the
+null the next word). A word holds no trained row, so every arm reads it on the same rows.
 
 The run's own reads (``results/*-g1-<run>/records.json``: the start rows and each save,
 the same pages) are the references. Tables: ``pairs`` in the config, each a reference
@@ -52,15 +58,28 @@ def tables(cfg: dict, gl: list, start) -> tuple:
 
     saves, out, moved = {}, {}, {}
     for arm, spec in cfg["arms"].items():
+        if "save" not in spec:
+            out[arm], moved[arm] = start.clone(), {k: 0.0 for _, k, _ in gl}
+            continue
         if spec["save"] not in saves:
             saves[spec["save"]] = torch.load(
                 G1_OUT / cfg["run"] / f"rows_{spec['save']}.pt", weights_only=False
             )
         sv = saves[spec["save"]]
         init = sv["init"].float()
+        row = {k: sv["rows"][k] for _, k, _ in gl if k in sv["rows"]}
+        if spec.get("saved"):
+            table = start.clone()
+            for k, i in row.items():
+                table[i] = sv["raw"][i].float()
+            out[arm] = table
+            moved[arm] = {
+                k: round(float((table[i] - start[i]).norm()) / sv["row_scale"], 4)
+                for k, i in row.items()
+            }
+            continue
         d = float((init - start).abs().max() / start.abs().max())
         assert init.shape == start.shape and d < 1e-2, (init.shape, d)
-        row = {k: sv["rows"][k] for _, k, _ in gl}
         disp = {k: sv["raw"][i].float() - init[i] for k, i in row.items()}
         table = start.clone()
         moved[arm] = {}
@@ -93,10 +112,11 @@ def main() -> None:
     cfg = tomllib.loads(Path(a.config).read_text("utf-8"))
     name = ("smoke_" if a.smoke else "") + Path(a.config).stem
 
-    asset = json.loads(S.ASSET.read_text("utf-8"))["scenes"]
-    sc = {s["i"]: s for s in asset}
+    sc = S.scenes()
     scenes = list(cfg["read_scenes"])[: 1 if a.smoke else None]
     gl = g1.glyphs(cfg, a.smoke)
+    en = list(cfg.get("en", []))[: 1 if a.smoke else None]
+    gl += [("en", w, en[(n + 1) % len(en)]) for n, w in enumerate(en)]
     keys = {k for _, k, _ in gl}
     (ref_file,) = sorted((LINE / "results").glob(f"*-g1-{cfg['run']}/records.json"))
     ref = [

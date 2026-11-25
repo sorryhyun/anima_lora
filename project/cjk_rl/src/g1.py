@@ -53,8 +53,25 @@ it).
 With ``[start_shift]`` in the config (``run``, ``save``), every row trained here begins
 at its start plus the mean displacement, to that save, of the rows that run trained, the
 row's own left out (:func:`shared_start`). The ``start`` arm of the read stays the
-unshifted rows, the shifted ones are read as ``s00``, and a row's ``drift`` counts from
-the shifted start.
+unshifted rows, and a row's ``drift`` counts from the shifted start. The shifted rows
+are read as arm ``s00`` only with ``read_shift = true`` (the runs before 11-26 read
+them always).
+
+``frame`` is one frame or a list of them (``["plain", "bubble"]``). With a list a
+group's frame is drawn by its glyph, its scene and the pass, so a row meets each scene
+in each frame in turn and each pass holds the frames in equal parts; the read runs
+every page in each frame (a record holds ``frame``, a table ``by_frame``, and the
+sheets are a folder a frame), and a log line counts its renders ``by_frame``. Scenes
+are ids of ``glyph_scenes.scenes`` (both screens' selections).
+
+``start_from = "<run>"`` takes the ``start`` arm from that run's ``records.json``
+instead of rendering it, when it holds every page this run reads (glyph, scene, seed,
+frame) and was read on the same rows, ``conf_min``, ``fold_small`` and readers; the null
+is counted again for this run's glyphs. Otherwise the arm is read here.
+
+``[read_refs]`` names other runs' saves (``<arm> = { run, save }``): the rows this run
+trains, as that save holds them, are read on this run's pages as arm ``<arm>``, before
+training.
 
 The run's settings, question and gate are its config's header
 (``configs/<handle>_<mmdd>_<hhmm>.toml``). Writes ``output/cjk_rl/g1/<config stem>/``
@@ -134,6 +151,72 @@ def glyphs(cfg: dict, smoke: bool) -> list:
     return out
 
 
+def frames_of(cfg: dict) -> list:
+    f = cfg["frame"]
+    return [f] if isinstance(f, str) else list(f)
+
+
+def start_records(cfg: dict, gl: list, scenes: list, hayai: bool) -> list | None:
+    """The ``start`` arm of run ``cfg["start_from"]`` as this run's records, or ``None``
+    with the reason printed when a page is missing or the read's settings differ."""
+    src = cfg["start_from"]
+    old = tomllib.loads((LINE / "configs" / f"{src}.toml").read_text("utf-8"))
+    for k, default in (
+        ("rows", None),
+        ("conf_min", None),
+        ("fold_small", False),
+        ("reader_attn", "flash_attention_2"),
+    ):
+        if old.get(k, default) != cfg.get(k, default):
+            print(
+                f"  start_from {src}: `{k}` differs, the start rows are read",
+                flush=True,
+            )
+            return None
+    frames, many = frames_of(cfg), len(frames_of(cfg)) > 1
+    old_frames = frames_of(old)
+    at = {}
+    for r in json.loads((ROOT / src / "records.json").read_text("utf-8")):
+        if r["arm"] == "start":
+            f = r.get("frame", old_frames[0])
+            at[(r["key"], r["scene"], r["seed"], f)] = r
+    out = []
+    for f in frames:
+        for si in scenes:
+            for cls, key, alt in gl:
+                for seed in cfg["read_seeds"]:
+                    r = at.get((key, si, seed, f))
+                    if r is None or (hayai and "hy_solo" not in r):
+                        print(
+                            f"  start_from {src}: no page for {key} scene {si} seed "
+                            f"{seed} {f}, the start rows are read",
+                            flush=True,
+                        )
+                        return None
+                    r = {k: v for k, v in r.items() if k != "frame"}
+                    r |= {"cls": cls, "null": int(_norm(alt) in r["boxes"])}
+                    out.append(r | ({"frame": f} if many else {}))
+    print(f"  start rows: {len(out)} pages of {src}'s read", flush=True)
+    return out
+
+
+def saved_rows(spec: dict, row: dict, start):
+    """``start`` with each row of ``row`` as save ``spec["save"]`` of run
+    ``spec["run"]`` holds it."""
+    import torch
+
+    sv = torch.load(
+        ROOT / spec["run"] / f"rows_{spec['save']}.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    table = start.clone()
+    for k, i in row.items():
+        assert sv["rows"][k] == i, (k, i, sv["rows"][k])
+        table[i] = sv["raw"][i].to(start)
+    return table
+
+
 def shared_start(spec: dict, row: dict, start):
     """``start`` with each row of ``row`` (``{glyph: index}``) moved by the mean
     displacement, to save ``spec["save"]``, of the rows run ``spec["run"]`` trained,
@@ -170,12 +253,18 @@ def train(
     import torch
 
     W, H = G.SHAPE
-    frame, accum = cfg["frame"], cfg["accum"]
+    frames, accum = frames_of(cfg), cfg["accum"]
     skip_lone = bool(cfg.get("skip_lone_read"))
     dim = pol.raw.shape[1]
     init = pol.raw.detach().clone()
-    cap = {(k, si): G.framed(sc[si][frame], k) for _, k, _ in gl for si in scenes}
-    row = {k: pol.row_of(cap[(k, scenes[0])]) for _, k, _ in gl}
+    cap = {
+        (k, si, f): G.framed(sc[si][f], k)
+        for _, k, _ in gl
+        for si in scenes
+        for f in frames
+    }
+    row = {k: pol.row_of(cap[(k, scenes[0], frames[0])]) for _, k, _ in gl}
+    turn = {k: n for n, k in enumerate(row)} | {si: n for n, si in enumerate(scenes)}
     ok = {k: same(k, bool(cfg.get("fold_small"))) for k in row}
     acc = {k: torch.zeros(dim, device=pol.dev) for k in row}
     mom = {k: torch.zeros(dim, device=pol.dev) for k in row}
@@ -218,7 +307,8 @@ def train(
             if cap_steps and steps[key] >= cap_steps:
                 continue
             t = time.time()
-            e_graph = pol.embed(cap[(key, si)], grad=True)
+            fr = frames[(turn[key] + turn[si] + p) % len(frames)]
+            e_graph = pol.embed(cap[(key, si, fr)], grad=True)
             e = e_graph.detach()
             x3 = pol.head_steps(pol.noise(seeds, G.SHAPE), e)
             t = lap("head", t)
@@ -262,6 +352,7 @@ def train(
                 since[key].append(
                     {
                         "case": case,
+                        "frame": fr,
                         "loss": float(loss.detach()),  # the tuned reader's term
                         "hy": None if aux is None else float(aux.detach()),
                         "norm": n,
@@ -312,6 +403,26 @@ def train(
                         else None
                     ),
                     "clipped": sum(x["norm"] > cfg["clip"] for x in rs),
+                    **(
+                        {
+                            "by_frame": {
+                                f: {
+                                    "renders": sum(x["frame"] == f for x in rs),
+                                    "exact": sum(
+                                        x["exact"] for x in rs if x["frame"] == f
+                                    ),
+                                    "none": sum(
+                                        x["case"] == "none"
+                                        for x in rs
+                                        if x["frame"] == f
+                                    ),
+                                }
+                                for f in frames
+                            }
+                        }
+                        if len(frames) > 1
+                        else {}
+                    ),
                     "groups": n_groups,
                     "min": round((time.time() - t_run) / 60, 2),
                 }
@@ -377,11 +488,12 @@ def read(
 
     W, H = G.SHAPE
     seeds = list(cfg["read_seeds"])
+    frames = frames_of(cfg)
     recs = []
     t0 = time.time()
     for arm, table in arms.items():
         pol.raw.data.copy_(table)
-        for si in scenes:
+        for frame, si in [(f, si) for f in frames for si in scenes]:
             for n, (cls, key, alt) in enumerate(gl):
                 if n and n % 32 == 0:
                     print(
@@ -389,7 +501,7 @@ def read(
                         f"({(time.time() - t0) / 60:.1f} min)",
                         flush=True,
                     )
-                caption = G.framed(sc[si][cfg["frame"]], key)
+                caption = G.framed(sc[si][frame], key)
                 ok = same(key, bool(cfg.get("fold_small")))
                 _, px = pol.rollout(pol.noise(seeds, G.SHAPE), pol.embed(caption))
                 bgrs, reads = rdr.read(px)
@@ -422,11 +534,13 @@ def read(
                                     [ok[0]],
                                 )
                             )
-                    f = out / "read" / arm / f"{key}_sc{si:02d}_s{seed}.webp"
+                    tag = f"_{frame}" if len(frames) > 1 else ""
+                    f = out / "read" / arm / f"{key}_sc{si:02d}{tag}_s{seed}.webp"
                     f.parent.mkdir(parents=True, exist_ok=True)
                     Image.fromarray(bgrs[b][:, :, ::-1]).save(f, quality=95)
                     recs.append(
                         {"arm": arm, "cls": cls, "key": key, "scene": si, "seed": seed}
+                        | ({"frame": frame} if len(frames) > 1 else {})
                         | {"case": case, "ce": ce, "file": str(f)}
                         | terms(ok, reads[b])
                         | {"null": G.page_terms(alt, reads[b])["solo"]}
@@ -558,8 +672,7 @@ def main() -> None:
 
     cfg = tomllib.loads(Path(a.config).read_text("utf-8"))
     name = ("smoke_" if a.smoke else "") + Path(a.config).stem
-    asset = json.loads(S.ASSET.read_text("utf-8"))["scenes"]
-    sc = {s["i"]: s for s in asset}
+    sc = S.scenes()
     tr, rd_sc = list(cfg["train_scenes"]), list(cfg["read_scenes"])
     assert not {sc[i]["artist"] for i in tr} & {sc[i]["artist"] for i in rd_sc}, (
         "a read scene's folder is trained on"
@@ -577,20 +690,26 @@ def main() -> None:
     (out / "log.jsonl").unlink(missing_ok=True)
 
     pol = gd.Policy([G.SHAPE], rows=cfg["rows"], grad_bs=1)
-    frame = cfg["frame"]
-    pol.encode([G.framed(sc[i][frame], k) for _, k, _ in gl for i in tr + rd_sc])
+    frames = frames_of(cfg)
+    pol.encode(
+        [G.framed(sc[i][f], k) for _, k, _ in gl for i in tr + rd_sc for f in frames]
+    )
     rdr = gd.Reader("cuda", attn=cfg.get("reader_attn", "flash_attention_2"))
     if cfg.get("reader_compile"):
         rdr.compile()
     hy = gd.Hayai("cuda") if cfg.get("hayai_weight") else None
     print(
         f"{name}: {len(gl)} glyphs × {len(tr)} training scenes × {cfg['passes']} "
-        f"passes; read on {rd_sc}; row_scale {pol.row_scale:.2f}",
+        f"passes, frames {frames}; read on {rd_sc}; row_scale {pol.row_scale:.2f}",
         flush=True,
     )
     per_pass = len(tr) * 4 // cfg["accum"]  # steps a row a pass
     start = pol.raw.detach().clone()
-    recs = read(pol, rdr, cfg, gl, sc, rd_sc, {"start": start}, out, hy)
+    recs = None
+    if cfg.get("start_from"):
+        recs = start_records(cfg, gl, rd_sc, hy is not None)
+    if recs is None:
+        recs = read(pol, rdr, cfg, gl, sc, rd_sc, {"start": start}, out, hy)
     tables: dict = {}
 
     def keep() -> None:  # the records so far, beside the rows
@@ -600,9 +719,7 @@ def main() -> None:
 
     keep()
 
-    def on_save(p: int, rows) -> None:
-        taken = min(p * per_pass, cfg.get("max_steps") or p * per_pass)
-        arm = f"s{taken:02d}"
+    def read_arm(arm: str, rows) -> None:
         recs.extend(read(pol, rdr, cfg, gl, sc, rd_sc, {arm: rows}, out, hy))
         keep()
         pair = [r for r in recs if r["arm"] in ("start", arm)]
@@ -612,9 +729,23 @@ def main() -> None:
             f"{tables[arm]['paired']['solo']}",
             flush=True,
         )
+        if len(frames) > 1:
+            tables[arm]["by_frame"] = {
+                f: tabulate([r for r in pair if r["frame"] == f], ["start", arm])
+                for f in frames
+            }
+            for f, t in tables[arm]["by_frame"].items():
+                print(f"    {f}: total {t['total']}", flush=True)
 
+    def on_save(p: int, rows) -> None:
+        taken = min(p * per_pass, cfg.get("max_steps") or p * per_pass)
+        read_arm(f"s{taken:02d}", rows)
+
+    row = {k: pol.row_of(G.framed(sc[tr[0]][frames[0]], k)) for _, k, _ in gl}
+    for arm, spec in cfg.get("read_refs", {}).items():
+        read_arm(arm, saved_rows(spec, row, start))
+    pol.raw.data.copy_(start)
     if cfg.get("start_shift"):
-        row = {k: pol.row_of(G.framed(sc[tr[0]][frame], k)) for _, k, _ in gl}
         shifted = shared_start(cfg["start_shift"], row, start)
         moved = (shifted - start).norm(dim=1) / pol.row_scale
         print(
@@ -622,7 +753,8 @@ def main() -> None:
             f"{float(moved[moved > 0].min()):.3f} … {float(moved.max()):.3f} row norms",
             flush=True,
         )
-        on_save(0, shifted)
+        if cfg.get("read_shift"):
+            on_save(0, shifted)
         pol.raw.data.copy_(shifted)
     res = train(pol, rdr, cfg, gl, sc, tr, out, hy, on_save)
     print(f"train: {res['info']}", flush=True)
@@ -635,7 +767,7 @@ def main() -> None:
             t["per_glyph"][k][arm] for arm, t in tables.items()
         ]
         print(
-            f"  {k} solo by save "
+            f"  {k} solo by arm (start, {', '.join(tables)}) "
             + " → ".join(str(x["solo"]) for x in by)
             + ("  hayai " + " → ".join(str(x["hy_solo"]) for x in by) if hy else ""),
             flush=True,
@@ -657,13 +789,19 @@ def main() -> None:
     from bench._common import make_run_dir, write_result
 
     run_dir = make_run_dir("cjk_rl", label=f"g1-{name}", root=LINE / "results")
-    sheets(
-        [r for r in recs if r["arm"] in arms],
-        arms,
-        rd_sc,
-        run_dir / "sheets",
-        cfg["shuffle_seed"],
-    )
+    pairs = [arms] + [[ref, last] for ref in cfg.get("read_refs", {})]
+    for x, y in pairs:
+        for f in frames:
+            tag = ("" if x == "start" else f"_{x}") + (
+                f"_{f}" if len(frames) > 1 else ""
+            )
+            sheets(
+                [r for r in recs if r["arm"] in (x, y) and r.get("frame", f) == f],
+                [x, y],
+                rd_sc,
+                run_dir / f"sheets{tag}",
+                cfg["shuffle_seed"],
+            )
     (run_dir / "records.json").write_text(
         json.dumps(recs, ensure_ascii=False, indent=1), "utf-8"
     )

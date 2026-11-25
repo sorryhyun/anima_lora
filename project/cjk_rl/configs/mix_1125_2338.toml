@@ -1,0 +1,62 @@
+# Mix (src/g1.py): g2a_1125_1642 on 16 of its 164 rows, with the training scenes its 16
+#   bubble-frame scenes -> 12 of the plain screen's 16 (assets/plain_scenes.json:
+#   pscreen_1125_2306's scenes at 8 of 16 EN renders or more with clean no-clause renders)
+#   and frame bubble -> [plain, bubble] (a row meets each scene once in each frame over the
+#   two passes). With 12 scenes a pass is 3 steps a row, 6 over the two passes as in g2a;
+#   one save, at 6. The rest as g2a: the shared start, the update, hayai's term, the seeds.
+#   Rows: the 16 of plain_1125_2249 (ひあぬうさがめを, ゲザスヂビマヤヲ).
+#   Not separated: the scenes and the frames change together (the user's call, 11-25:
+#   "8장이상인걸로 ㄱㄱ bubble과 섞는걸로 하자"). A micro arm before the 164 rows (Claude's).
+# Question (the user, 11-25: train where EN lands, so a row learns its glyph and not the
+#   placing of lettering): do rows trained this way read with no bubble tag more often
+#   than g2a's, and as often with it?
+#   - s06 over g2a on the plain pages and level on the bubble pages -> the recipe is
+#     proposed for the 164 kana (about 3.3 h of training and a read cut to fit).
+#   - level on the plain pages -> training in the plain frame adds nothing to what the
+#     bubble frame already carried over; the gap left is the scene's.
+#   - under g2a on the bubble pages -> the mix costs the frame the pack is used in most.
+# Records it rests on:
+#   - reports/plain_2026_11_25.md: g2a's 6-step rows, these 16, solo of 64 plain pages on
+#     scenes 6 / 45 / 15 / 35: 44 / 27 / 18 / 4 (start rows 20 / 2 / 0 / 0); bubble 47 /
+#     46 / 38 on 6 / 45 / 15; EN words 29 / 12 / 15 / 15 plain, 35 / 14 / 26 / 29 bubble.
+#   - reports/pscreen_2026_11_25.md: the 16 selected scenes, EN on 8 – 13 of 16 plain
+#     renders each.
+# Scenes: read on g2a's read scenes 6, 45, 15 and on 35 (the pages of the records above)
+#   and on four of the selection: 1091 (a read scene's folder) and the scenes of three
+#   folders drawn at seed 1125 from the seven with one selected scene and no scene g2a
+#   trained on ([1033, 1093, 1130]). Training: the other 12, of 9 folders.
+# Read: arms start, g2a (g2a_1125_1642's s06 rows of these glyphs, [read_refs]), s00 (the
+#   shifted start) and s06, each on the 8 read scenes in both frames (512 pages an arm and
+#   frame). s06 against g2a by frame and scene: solo, hayai's, no-box pages, extra; the
+#   training log's exact count by frame. Sheets g2a | s06 a frame, rows A / B in a drawn
+#   order; the user's read decides.
+# Bars: spread unknown (no twin). g2a's rows come from another run's seeds and scenes, so
+#   the two arms differ by more than the recipe's two changes: the row count in the run
+#   (a row's render teaches its own row only) is not one of them.
+# Cost: 384 groups at about 3.05 s, 20 min; 4 096 read renders, about 38 min.
+
+rows = "seed_1008"
+hira = "ひあぬうさがめを"
+kata = "ゲザスヂビマヤヲ"
+frame = ["plain", "bubble"]
+train_scenes = [1046, 1139, 1064, 1148, 1008, 1014, 1127, 1051, 1048, 1053, 1101, 1142]  # ids in assets/plain_scenes.json
+read_scenes = [6, 45, 15, 35, 1091, 1033, 1093, 1130]  # 6 – 35: assets/glyph_scenes.json
+passes = 2
+max_steps = 6
+save_passes = [2]
+train_seed0 = 1000  # pass p: train_seed0 + 4p … + 3
+read_seeds = [0, 1, 2, 3]
+shuffle_seed = 1125
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2
+
+[start_shift]
+run = "g1long_1125_1335"
+save = "s24"
+
+[read_refs]
+g2a = { run = "g2a_1125_1642", save = "s06" }

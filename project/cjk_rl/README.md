@@ -157,6 +157,16 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
     katakana, 6 steps a row from the shared start, small kana folded; solo 743 → 1 322 →
     1 686 → 1 785 of 2 624 at the start, the shifted start, 4 and 6 steps; the rows not
     learned, past their glyph, or misread by a reader.
+  - [plain_2026_11_25.md](reports/plain_2026_11_25.md) — g2a's rows with no `speech bubble`
+    tag: 16 rows read alone on 22 → 93 of 256 plain pages at the start and after 6 steps, 44 of
+    64 on a white-ground scene and 4 of 64 in a furnished room; 16 EN words on the same pages 71
+    (bubble 104).
+  - [pscreen_2026_11_25.md](reports/pscreen_2026_11_25.md) — the plain screen: 160 new
+    scenes by how often they letter an EN word with no bubble tag (0.205 of the renders; 24
+    scenes at 8 of 16 or more, one of them with two figures).
+  - [mix_2026_11_26.md](reports/mix_2026_11_26.md) — 16 kana rows trained in both frames on
+    the plain screen's scenes: under g2a's bubble-only rows on the same pages in both frames
+    (plain 202 against 238 of 512, bubble 297 against 329).
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -174,7 +184,8 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   and reads the ruler and a kanji grid on `m15v11` (pixel-head decode by default); its render
   (every caption's text prepared before the loop, 4 images a forward) and read (16 pages a
   call) are the ones `glyph_g0.py` runs on.
-  `glyph_g0.py` and `glyph_scenes.py` are the glyph stage's forward probes; `gd_g0d.py`
+  `glyph_g0.py` and `glyph_scenes.py` are the glyph stage's forward probes
+  (`plain_scenes.py` screens scenes in the plain frame by their EN count); `gd_g0d.py`
   measures the row gradient of `src/gd.py`.
   `reader_pair.py` reads pages on disk with the tuned reader and hayai v2.7 on the same
   crops; `hayai_g0.py` measures hayai's loss beside the tuned reader's on G1's path.
@@ -220,4 +231,8 @@ The glyph stage (the user's calls, 2026-11-25):
 - The loss carries hayai v2.7's cross-entropy of the glyph on the same crop at weight 0.2
   (two readers for robustness).
 - Renders go 4 images a forward; reads go 16 pages a call.
+- A run reads the start rows and its saves; the shifted start is not read as an arm of its
+  own (the user, 2026-11-26; `read_shift = true` in a config reads it). Where an earlier run
+  read the start rows on the same pages, the config names it (`start_from`) and they are not
+  rendered again.
 - Words are real words only, no random strings.
