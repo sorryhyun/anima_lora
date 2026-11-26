@@ -28,6 +28,9 @@ status ``drop``. The manifests are not touched; training does not read the file 
 anima_lowconf (``anima_lowconf.py``'s v7 reads of the Anima training set) →
 ``assets/anima_mainsub.tsv``, the same columns and rules as ``m109_mainsub.tsv``.
 
+reader_split (cjk_rl's kana crops the two readers split on) → ``assets/reader_split_mainsub.tsv``,
+the same columns and rules.
+
 doujin_sfx → ``assets/sfx_labels_sincos_597.tsv`` (the doujin gate's labels, by ``row``):
 ``edit`` writes ``text_hand`` (a line break as a space), ``edit`` / ``ok`` set ``status`` to ``checked``, ``drop`` sets
 it to ``unchecked`` (``eval_sfx.py`` skips those rows; the row stays in the file). The file is
@@ -116,6 +119,13 @@ def main():
             rv[rv.source.isin(ANIMA)], a.dry_run, ASSETS / "anima_mainsub.tsv"
         )
         rv = rv[~rv.source.isin(ANIMA)]
+    if (rv.source == "reader_split").any():
+        write_mainsub(
+            rv[rv.source == "reader_split"],
+            a.dry_run,
+            ASSETS / "reader_split_mainsub.tsv",
+        )
+        rv = rv[rv.source != "reader_split"]
     for name in sorted(
         {m for s in rv.source.unique() if s not in GATES for m in TARGETS[s]}
     ):

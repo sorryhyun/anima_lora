@@ -199,6 +199,7 @@ The sentence stage (the user's calls, 2026-11-26):
 ## Files
 
 - [plan.md](plan.md) — the current run, what is open, what is parked, the runs done.
+- [issues.md](issues.md) — what was found and is not fixed or planned yet.
 - [turbo_refl.md](turbo_refl.md) — the method as a note: what it is, what has been measured,
   the conditions it seems to need, open points.
 - `src/` — the loops and the path (below).

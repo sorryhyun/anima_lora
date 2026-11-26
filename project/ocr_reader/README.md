@@ -156,6 +156,14 @@ so older commands still resolve.
   source. Its crops and `rows.jsonl` are under `ANIMA_LOWCONF_ROOT`
   (`/media/sorryhyun/new/dataset/anima_ocr_lowconf`); apply writes its rows to
   `assets/anima_mainsub.tsv` (the `m109_mainsub.tsv` columns). Training does not read it yet.
+- `reader_split` (the user, 2026-11-26) lists cjk_rl's `split_1126_0910`: 2,002 kana render
+  crops that one reader (hayai v2.7 or the tuned reader) reads as the glyph the caption asked for
+  and the other does not. Only the crops where both readers' confidence is 0.9 or over (both
+  sure, one wrong) are listed: 303 of the 2,002 (`--reader_split_min_conf`). The main box holds the read that
+  matched. The default `ks` sort puts the hayai-only crops first, grouped by asked glyph, the
+  surer reader's confidence highest first. Apply writes these rows to
+  `assets/reader_split_mainsub.tsv`; training does not read that file yet. hayai is not trained on
+  this set.
 - Agent first pass (the user, 2026-11-24): three Sonnet agents per batch of ~32 rows run
   `labeling/label_agent.md`, each in its own `output/ocr/anima_lowconf/agents/b<NN>_a<k>/`
   folder (`batch.tsv` in, `out.tsv` out). The page puts the majority main in the box where two
@@ -189,7 +197,7 @@ so older commands still resolve.
        --k3_reads output/ocr/eval/k3_mainsub_1124_0151.jsonl \
        --ruby output/ocr/furigana/ruby_all_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent \
        --mainsub output/ocr/mainsub/m109_mainsub.jsonl --hayai output/ocr/hayai/hayai27_det.jsonl \
-       --hayai_kozh output/ocr/hayai/hayai27_kozh_hito.jsonl --anima_lowconf
+       --hayai_kozh output/ocr/hayai/hayai27_kozh_hito.jsonl --anima_lowconf --reader_split
    ```
 
    The `--flags`, `--doujin_reads` and `--k3_reads` files are v7's (`ko_read.py`, `eval_sfx.py`,

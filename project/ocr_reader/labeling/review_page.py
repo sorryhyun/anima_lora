@@ -104,6 +104,12 @@ rows the agents were not unanimous and sure on, Hangul first. The ``v7 score`` s
 lowest score first. ``apply_review.py`` writes them to ``assets/anima_mainsub.tsv`` (the
 ``m109_mainsub.tsv`` columns); a row applied there starts reviewed.
 
+``reader_split`` (``--reader_split``, cjk_rl's ``split_1126_0910``): kana render crops one
+reader (hayai v2.7 or the tuned reader) reads as the glyph the caption asked for and the other
+does not, the main box holding the read that matched, the meta line both reads. The ``ks``
+sort lists hayai-only crops first, grouped by asked glyph. ``apply_review.py`` writes them to
+``assets/reader_split_mainsub.tsv``; training does not read it yet.
+
     python project/ocr_reader/labeling/review_page.py --out ~/ko_label_review
 """
 
@@ -184,6 +190,7 @@ main { padding:12px 16px 80px; max-width:1200px; margin:0 auto; }
 .crop { display:flex; align-items:flex-start; justify-content:center; background:#fff; border-radius:4px;
         min-height:60px; }
 .crop img { max-width:100%; max-height:280px; object-fit:contain; }
+.crop img.up { min-height:140px; min-width:140px; }  /* small render crops (reader_split) */
 .twin { display:flex; gap:8px; align-items:flex-start; margin:2px 0 6px; }
 .twin img { max-width:140px; max-height:120px; object-fit:contain; background:#fff; border-radius:3px; }
 .meta { color:var(--mute); font-size:12px; margin-bottom:4px; word-break:break-all; }
@@ -220,6 +227,7 @@ header .pager { margin:0; }
     <option value="hyl">hayai: likely label errors first (added mark / reordered / missing text), then near misses</option>
     <option value="sc">v7 score, lowest first (anima_lowconf)</option>
     <option value="ag">agents unsure: Hangul first, then most disagreement (anima_lowconf)</option>
+    <option value="ks">hayai only first, by asked glyph, surest read first (reader_split)</option>
     <option value="id">id</option><option value="todo">unreviewed first</option></select></label>
   <label>has <select id="has"><option value="">all</option><option value="main">main only</option>
     <option value="sub">sub only</option><option value="both">main + sub</option>
@@ -236,7 +244,8 @@ const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
                       "doujin_sfx": "__DOUJIN_SORT__", "k3_ko": "__K3_SORT__", "k3_zh": "__K3_SORT__",
-                      "mainsub_det": "sus", "mainsub_speech": "sus", "mainsub_nolabel": "id", "anima_lowconf": "sc"};
+                      "mainsub_det": "sus", "mainsub_speech": "sus", "mainsub_nolabel": "id", "anima_lowconf": "sc",
+                      "reader_split": "ks"};
 // mainsub rows carry paths relative to the Manga109 folder
 const M109 = __M109__;
 const url = (p) => !p || p.includes(":") ? p : M109 + p;
@@ -377,6 +386,8 @@ function rows() {
     || (a.part > 0) - (b.part > 0) || a.hyd - b.hyd || a.id.localeCompare(b.id));
   else if (k === "ag") r = r.filter(x => x.unc > 0).sort((a, b) => (b.hg || 0) - (a.hg || 0)
     || b.unc - a.unc || (a.sc ?? 1) - (b.sc ?? 1) || a.id.localeCompare(b.id));
+  else if (k === "ks") r = r.filter(x => x.ks).sort((a, b) => a.ks[0] - b.ks[0]
+    || a.ks[1].localeCompare(b.ks[1]) || a.ks[2] - b.ks[2] || a.id.localeCompare(b.id));
   else if (k === "sc") r = r.slice().sort((a, b) => (a.sc ?? 1) - (b.sc ?? 1) || a.id.localeCompare(b.id));
   else if (k === "id") r = r.slice().sort((a, b) => a.id.localeCompare(b.id));
   else r = r.slice().sort((a, b) => !!store[s + ":" + a.id] - !!store[s + ":" + b.id]);
@@ -413,7 +424,7 @@ function render() {
       list.appendChild(d); continue;
     }
     d.className = "row" + (v ? " " + v.status : "");
-    d.innerHTML = `<div class="crop"><img loading="lazy" src="${url(x.img)}"></div>
+    d.innerHTML = `<div class="crop"><img loading="lazy" src="${url(x.img)}"${x.zoom ? ' class="up"' : ""}></div>
       <div><div class="meta">${esc(x.id)}${x.status ? " · " + x.status : ""} · run ${x.run}
         · sus ${x.sus.toFixed(1)}${x.why ? " (" + esc(x.why) + ")" : ""}${x.lp != null ? " · logprob " + x.lp.toFixed(3) : ""}
         ${x.page ? `· <a href="${url(x.page)}" target="_blank">page</a>` : ""} box ${x.box.join(",")}</div>
@@ -1147,6 +1158,68 @@ def anima_rows(
     return {"anima_lowconf": rows}
 
 
+def reader_split_rows(
+    path: Path | None, applied: dict, min_conf: float = 0.9
+) -> dict[str, list[dict]]:
+    """``reader_split``: cjk_rl's ``split_1126_0910`` crops (``reader_split.py``), kana renders
+    one reader reads as the asked glyph and the other does not, kept where both readers'
+    confidence is ``min_conf`` or over (the user, 11-26: both sure, one of them wrong). The main box holds the read
+    that matched (hayai's on a ``hayai_only`` crop, the tuned reader's on a ``tuned_only``
+    one); the meta line the asked glyph and both reads. ``key`` is what the caption asked
+    for, not a checked label. The applied main and sub of ``reader_split_mainsub.tsv`` over
+    both."""
+    if not path:
+        return {}
+    rows = []
+    for x in map(json.loads, open(path, encoding="utf-8")):
+        rid = Path(x["file"]).stem
+        confs = (float(x["hayai_conf"] or 0), float(x["tuned_conf"] or 0))
+        if min(confs) < min_conf:
+            continue
+        top = max(confs)
+        hy_won = x["case"] == "hayai_only"
+        main, sub, extra = (x["hayai"] if hy_won else x["tuned"]) or "", "", {}
+        note = (
+            f"asked {x['key']} · {x['case']}{' · look-alike' if x['near'] else ''}"
+            f" · tuned {x['tuned'] or '∅'!r} ({x['tuned_conf'] or 0:.2f})"
+            f" · hayai {x['hayai'] or '∅'!r} ({x['hayai_conf'] or 0:.2f})"
+            f" · {x['run']} / {x['arm']}"
+        )
+        if ap := applied["ms"].get(f"reader_split:{rid}"):
+            extra["ap"] = ap[0]
+            note = f"applied {ap[0]} · " + note
+            if ap[0] != "drop":
+                main, sub = ap[1], ap[2]
+        rows.append(
+            dict(
+                id=rid,
+                text=main,
+                run=0,
+                sus=0.0,
+                why="",
+                lf=int("\n" in main),
+                len=len(main),
+                status="",
+                note=note,
+                sub=sub,
+                part=0,
+                ms=1,
+                zoom=1,
+                # ks sort: hayai_only first, the asked glyph, the surer reader's confidence
+                ks=[int(not hy_won), x["key"], -top],
+                img=(path.parent / x["file"]).as_uri(),
+                page=Path(x["page"]).as_uri(),
+                box=x["box"],
+                **extra,
+            )
+        )
+    print(
+        f"[review] reader_split: {len(rows)} rows (both conf >= {min_conf})",
+        flush=True,
+    )
+    return {"reader_split": rows}
+
+
 def mainsub_rows(
     d: Path,
     path: Path | None,
@@ -1332,7 +1405,7 @@ def applied_state() -> dict:
         out["marks"] = sorted(set(m.source + ":" + m.id))
     if (s := rd("sub_labels.tsv")) is not None:
         out["subs"] = {f"{r.source}:{r.id}": un(r.sub) for r in s.itertuples()}
-    for name in ("m109_mainsub.tsv", "anima_mainsub.tsv"):
+    for name in ("m109_mainsub.tsv", "anima_mainsub.tsv", "reader_split_mainsub.tsv"):
         if (ms := rd(name)) is not None:
             out["ms"].update(
                 {
@@ -1442,6 +1515,20 @@ def main():
         default=REPO / "output/ocr/anima_lowconf/agents",
         help="folder of label_agent.md outputs (*/out.tsv) for the anima_lowconf rows",
     )
+    ap.add_argument(
+        "--reader_split",
+        type=Path,
+        nargs="?",
+        const=REPO / "output/cjk_rl/reader_split/split_1126_0910/manifest.jsonl",
+        help="cjk_rl reader_split.py's manifest.jsonl (bare flag: split_1126_0910's): the "
+        "kana crops the two readers split on",
+    )
+    ap.add_argument(
+        "--reader_split_min_conf",
+        type=float,
+        default=0.9,
+        help="list a reader_split crop only where both readers' confidence is this or over",
+    )
     a = ap.parse_args()
     d = m109.derived_root()
     kz = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
@@ -1513,6 +1600,7 @@ def main():
     data.update(mainsub_rows(d, a.mainsub, fur, hayai, applied))
     data.update(nolabel_rows(d, hayai))
     data.update(anima_rows(a.anima_lowconf, applied, a.anima_agents))
+    data.update(reader_split_rows(a.reader_split, applied, a.reader_split_min_conf))
     if a.ref_n:
         data.update(ref_rows(d, a.ref_n))
     mark_over_cap(data, applied)
