@@ -6,12 +6,14 @@ that and names the records it rests on. Where it stands in the line: [plan.md](p
 
 ## State (2026-11-26)
 
-The micro arm ran (`sentm_1126_1331`, 400 groups): the read of strings did not move and
-the kana alone held ([reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)). A row's
-successive mean gradients agree at 0.004, against 0.083 in g2b. The line is stopped on the
-user's word, and what comes next is the user's call. `sgrad_1126_1422`
-(`probes/sent_grad.py`, 7 min, stopped unfinished) would say whether the string or the
-two-step backward took a row's direction away.
+The micro arm on the string's cross-entropy ran (`sentm_1126_1331`, 400 groups): the read
+of strings did not move ([reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)). The
+user took the line up again the same day, and a second micro arm on the window loss
+(`sentw_1126_1528`, the same 400 strings) moved it: the val strings' positions hit
+0.345 → 0.422 where `sentm` went to 0.331, the kana alone 351 → 345 of 656
+([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), with the three probes that
+led to the loss). Its blind sheets are with the user and not read yet. What runs next is
+the user's call on that read; the report's sixth part holds what a longer run would spend.
 
 ## Decided (the user's calls, 2026-11-26)
 
@@ -78,6 +80,18 @@ two-step backward took a row's direction away.
   it); `「` `」` 0.9; `。` 0.48, `、` 0.35; `〜` and `~` one row, 0.42; `♥` 0.46, `♡` 0.48, a row
   each; a dot run inside a string one row, 0.38; `！` `？` fold to ASCII and are T5's own
   tokens, with no row to train.
+- `sgrad_1126_1436`, `aloc_1126_1501`, `sgrad_1126_1511`
+  ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md)): a row's renders agree on
+  a direction at 0.032 on its glyph alone and 0.003 on a string's cross-entropy, with the
+  one-step backward as with two; a quote token's cross-attention (blocks 13 – 15, σ 0.75
+  and 0.5) points at its glyph, the window about it read as that glyph on 0.767 of the
+  positions the page's read hit; the glyph's cross-entropy on that window gives its row
+  0.016 through two steps, and the windows of a whole string summed give it nothing.
+  Spread unknown.
+- `sentw_1126_1528` (the same report): positions hit on the val strings 0.345 → 0.361 →
+  0.422 at 200 and 400 groups, the whole string 10 → 14 of 288 pages, train labels not
+  trained on 0.402 → 0.496, the kana alone 351 → 345; a row's successive gradients at
+  0.041 against `sentm`'s 0.008; 12.9 s a group. Spread unknown.
 - The reader's main labels (`load_mainsub`, `OCR:` rows), distinct targets made of kana and
   those marks: train 28 975 (2 – 4 glyphs 9 552, 5 – 8 11 739, 9 – 12 4 570, 13 – 20 2 565,
   over 20 460), val 3 517, of them 2 396 in no train label. 12 547 of the train targets hold
@@ -110,6 +124,11 @@ What changes:
   from the page's own read, aligned to the string, so where a render wraps costs nothing.
 - A row's score for the guards: over the renders that hold it, the positions of its glyph
   that the aligned read hits; a look-alike counts 0.5.
+- The loss, from `sentw_1126_1528` on (`loss = "window"`, `window_rows = "each"`): on a
+  page with a box a row takes the gradient of its own glyph read alone on the window its
+  token's cross-attention gives (`src/loc.py`), a backward a row, in place of its part of
+  the string's cross-entropy on the box. The box, the row's score and the detector's term
+  stay.
 - The backward: the last two steps (σ 0.75 → 0.5 → 0), the user's call on
   `tswap_1126_1209`'s table. The image's cotangent goes back through the last step to its
   input, and from there through the step before; the two steps' cotangents of the embedding
@@ -181,8 +200,13 @@ row-renders, against 4 in the glyph stage.
   its box stands that way, `back_steps = 4`, scenes with tall bubbles. The tall pages'
   lower count is the model's lettering, not the reader's read (the user, 11-26: the reader
   is trained mostly on columns), so no reader-side fix comes before these.
-- A row's direction in the string loop: more renders a step, glyph groups mixed in, or
-  the backward back to one step. `sgrad_1126_1422` is the read that picks.
+- The longer run on the window loss, each the user's call
+  ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), sixth part): a seed a
+  string, a budget of renders a row (`max_steps`), a position left out when its window is
+  its neighbour's or already reads, glyph groups for the rows the draw cannot fill and for
+  the kana alone, the mix of lengths.
+- Half the backward by reading the loss off the σ 0.75 step's own x̂₀ (the same report,
+  last part). Not looked at.
 
 ## Order of work
 
@@ -193,4 +217,7 @@ row-renders, against 4 in the glyph stage.
    `vjp`.
 3. Done: `probes/sent_strings.py` → `output/cjk_rl/pool/sent_strings_s1126.json` (local),
    24 891 train strings and 1 844 val strings in no train label.
-4. Done to the micro arm: the smoke and `sentm_1126_1331`. The run waits on the user.
+4. Done to the micro arm: the smoke and `sentm_1126_1331`.
+5. Done: the gradient and attention probes, the window loss in `src/s1.py` with
+   `src/loc.py`, and its micro arm `sentw_1126_1528`. The run at scale waits on the
+   user's read of its sheets.

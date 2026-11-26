@@ -1,0 +1,54 @@
+# Sentence gradient with a row's own positions (probes/sent_grad.py, no training):
+#   sgrad_1126_1422 (stopped at group 32 of 96, no result) with `own` absent -> true,
+#   nothing else changed. A row's gradient a render on captions of its glyph alone and on
+#   strings that hold it, split by the step it came through; on a string also the
+#   gradient of the cross-entropy at the row's own glyph positions alone (the user,
+#   11-26: "위치별 ce는 괜찮아 보여").
+# Question: where a row's direction goes in the string loop, and whether a loss of its
+#   own positions brings it back.
+#   - `across` over 0 for string / own_last (or own_sum) and near 0 for string / last
+#     and sum -> the other positions' terms drown a row's own; the next micro arm sends
+#     a row its own positions' cross-entropy.
+#   - `across` over 0 for the `last` parts and near 0 for the `sum` parts -> the step
+#     before the last drowns it; the next micro arm is the strings with back_steps = 1.
+#   - both -> the micro arm takes both changes, named as bundled.
+#   - near 0 for every string part, over 0 for glyph / last -> a string's render does
+#     not give a row a direction at 24 renders either way; read `within`, the norms and
+#     the hit share before anything is proposed.
+#   - near 0 for glyph / last too -> the measure does not see what g2b's cosine saw.
+# Rows: the eight the micro arm stepped most among the kana (っ い ん う あ た な か) at the
+#   rows s1 starts from (kmix's). 6 groups a row and kind on the first 6 training scenes,
+#   seeds 3000 + 4 group; a string is the first of the draw past index 400 that holds
+#   the glyph.
+# Records it rests on:
+#   - sentm_1126_1331's log: a row's successive mean gradients, cosine 0.008 (264 pairs,
+#     returns left out), 0.013 on the rows of 10 steps or more; g2b_1126_0058 0.083
+#     (2 240); 3 924 of 6 416 row-renders over the clip.
+#   - reports/gd_g0d_2026_11_25.md: a step's share of the four-step ce gradient on a
+#     row, steps 0 - 3: 0.48 / 0.40 / 0.33 / 0.08 (single glyphs).
+#   - the micro arm's 400 strings: 5.7 glyphs and 4.55 trained rows a string.
+# Read: the probe's table (across, within, norms, an own part's cosine with the whole
+#   loss's). Claude's read; it sets the micro arm proposed to the user.
+# Bars: `across` is read against its spread over the 8 rows (printed); a pair of unit
+#   vectors of 1 024 dims has a cosine of sd 0.031.
+# Cost: 96 groups, the 48 string groups with a second two-step backward: about 10 min.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+keys = "っいんうあたなか"
+own = true  # a string render's second loss: the row's own positions
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local
+skip = 400
+groups_a_row = 6
+seed0 = 3000
+conf_min = 0.6
+clip = 0.12
+hayai_weight = 0.2
+reader_compile = true
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"

@@ -1,0 +1,48 @@
+# Sentence gradient with attention windows (probes/sent_grad.py, no training):
+#   sgrad_1126_1436 with `own` true -> absent, `win` and `wall` absent -> true, nothing
+#   else changed (the same rows, strings, scenes and seeds). On a string, the gradient of
+#   the row's glyph read alone on the window its cross-attention gives (`win`), and of
+#   every glyph of the string on its own window, summed (`wall`).
+# Question: does a loss cut to a glyph's own place on the page give its row a direction
+#   on a string.
+#   - `across` for string / win_last (or win_sum) at glyph / last's size -> a micro arm
+#     of s1 on the window loss (the user, 11-26: "그래디언트 프로브 괜찮으면 바로 소규모
+#     학습까지 해보자"). `wall` at `win`'s size -> one backward a render for every row;
+#     `wall` near 0 -> a backward a row. `last` against `sum` sets back_steps.
+#   - near 0 -> the place was not what took the direction away; read the norms, `within`
+#     and the first-glyph split before anything is proposed.
+# Records it rests on:
+#   - sgrad_1126_1436: across 0.032 ± 0.009 glyph / last, 0.003 ± 0.004 string / last,
+#     0.016 ± 0.014 string / own_last (0.002 without あ).
+#   - aloc_1126_1501 (kmix's rows, 275 pages with a box, 1 744 tokens; b13_15 / raw):
+#     a token's window read holds its glyph on 0.335 of tokens, another token's window
+#     0.073; 0.767 where the page's read hit the position and 0.118 where it missed;
+#     order ρ 0.83 on 59 one-line boxes.
+# Read: the probe's table. glyph / last and string / last are measured again and stand
+#   beside sgrad_1126_1436's as a repeat. Claude's read; it sets the micro arm proposed.
+# Bars: `across` against its spread over the 8 rows (printed); a pair of unit vectors
+#   of 1 024 dims has a cosine of sd 0.031.
+# Cost: 96 groups, the 48 string groups with two more two-step backwards and a reader
+#   forward a window: about 13 min.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+keys = "っいんうあたなか"
+win = true    # a string render's other loss: the row's glyph on its attention windows
+wall = true   # the same on every glyph of the string, summed
+window = 1.3  # glyph sides, as aloc_1126_1501
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local
+skip = 400
+groups_a_row = 6
+seed0 = 3000
+conf_min = 0.6
+clip = 0.12
+hayai_weight = 0.2
+reader_compile = true
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"

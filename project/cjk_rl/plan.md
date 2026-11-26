@@ -39,8 +39,12 @@ sent_rl.md.
 
 The sentence loop is built (`src/s1.py`) and its micro arm ran: `sentm_1126_1331`, 400
 groups, no movement in the read of strings
-([reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)). Stopped there on the user's
-word (11-26); the state and what is open are in sent_rl.md.
+([reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)). The user took the line up
+again the same day. Two gradient probes and an attention probe led to a loss a glyph on
+its own attention window, and its micro arm `sentw_1126_1528` moved the read on the same
+400 strings ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md)). Next: the user's
+read of its blind sheets (sent 11-26), then the run at scale on the user's word; the state
+and what is open are in sent_rl.md.
 
 Ship (the user, 11-26): the rows trained further on words or sentences from kmix, if that
 run reads well, go out as a v2 preview with the kana alone; kmix itself is not the release.
@@ -158,6 +162,10 @@ item 4's is of 2 624 (164 glyphs).
 | 7 | a clause of two or three short strings, on the read scenes and on the pool's two-string templates | `wmulti_1126_1252`, `enmulti_1126_1258`, `tread_1126_1306` | [multi_read](reports/multi_read_2026_11_26.md) | kana pairs with both strings read: 0 of 288 pages on the read scenes, 0 of 96 on the templates | – |
 | 7 | the sentence micro arm: 400 groups of kana strings from kmix's rows, the backward over two steps | `sentm_1126_1331` | [sentm](reports/sentm_2026_11_26.md) | val strings' positions hit 0.345 → 0.331 of 288 pages; kana alone 351 → 354 of 656 | – |
 | 7 | which way the micro arm's string pages are lettered | `probes/orient_read.py` on `sentm_1126_1331` | [sentm](reports/sentm_2026_11_26.md), second part | start rows: 73 tall, 250 wide of 384 | – |
+| 7 | a row's gradient a render: its glyph alone, a string, its own positions' tokens | `sgrad_1126_1436` | [sentw](reports/sentw_2026_11_26.md), second part | renders of a row agree at 0.032 / 0.003 / 0.016 (last step) | – |
+| 7 | a quote token's cross-attention as its glyph's place | `aloc_1126_1501` | [sentw](reports/sentw_2026_11_26.md), third part | a token's window read holds its glyph on 0.335 of 1 744 tokens, another token's 0.073 | – |
+| 7 | the gradient of a glyph read on its attention window | `sgrad_1126_1511` | [sentw](reports/sentw_2026_11_26.md), fourth part | 0.016 through two steps; every glyph's window summed −0.001 | – |
+| 7 | the sentence micro arm on the window loss, a backward a row | `sentw_1126_1528` | [sentw](reports/sentw_2026_11_26.md), fifth part | val strings' positions hit 0.345 → 0.422 of 288 pages (sentm 0.331); kana alone 351 → 345 of 656 | – |
 
 - The verdicts on items 2, 3 and 3c are the user's, in each report's Facts. Item 3c's is the
   call for item 4: the shared start at 6 steps.

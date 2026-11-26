@@ -1,0 +1,43 @@
+# Attention as a glyph locator (probes/attn_loc.py, forward only): on string pages
+#   rendered from kmix's rows as s1.py renders them, does a quote token's cross-attention
+#   say where its glyph was drawn. The user, 11-26, on masking a glyph at a time with the
+#   mask taken from the DiT's attention: "ㅇㅋ 해보자".
+# Question: can a token's attention cut the page down to its own glyph, so that the
+#   reader's cross-entropy of one glyph lands on that glyph's pixels.
+#   - `own` well over `null`, on the positions the page's read missed as well -> the
+#     masked cross-entropy goes into sgrad as an arm (a row's direction on a string).
+#   - `own` near `null` -> the attention is not a mask at this size; the place of a glyph
+#     is looked for elsewhere (a render with the glyph left out of the quote).
+#   - `own` over `null` on the hit positions only -> the map follows what is already
+#     read; read `order` and `apart` before anything is proposed.
+# Records it rests on:
+#   - sgrad_1126_1436: a row's renders on a string agree at 0.003 (last) and 0.016 with
+#     its own positions' cross-entropy, 0.032 on its glyph alone; the first glyph of a
+#     string 0.122 against 0.002 elsewhere (two rows, read after the run).
+#   - docs/anima/proposal/xattn_align_loss.md § 2 (the base DiT, 28 steps, cfg 4): the
+#     string's map on blocks 8 and 13 - 15; token order against the map's centre along a
+#     line 0.25 / 0.49 / 0.64 at σ 0.9 / 0.75 / 0.6 on training pages. Not measured on the
+#     4-step student or with kmix's rows.
+# Pages: 12 val strings a length bin (2 - 4, 5 - 8, 9 - 12) on the read scenes at seeds
+#   0 and 1, 288 pages. Maps: the mean over the steps σ 0.75 and 0.5 (the two the
+#   two-step backward covers); every step's maps are saved.
+# Read: the probe's table (own, null, by the page's read, order, apart) and the overlays.
+#   Claude's read; it sets what goes into sgrad.
+# Bars: `null` is the meter's floor; spread unknown.
+# Cost: 144 captions of 2 renders and about 6 000 window reads: about 8 min.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+scenes = [6, 12, 45, 15]  # s1's read scenes (ids in assets/glyph_scenes.json)
+seeds = [0, 1]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local
+per_bin = 12
+map_steps = [2, 3]  # σ 0.75 and 0.5
+window = 1.3        # glyph sides
+conf_min = 0.6
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"

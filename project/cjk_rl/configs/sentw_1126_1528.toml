@@ -1,0 +1,78 @@
+# Sentence micro arm on attention windows (src/s1.py): sentm_1126_1331 with `loss` absent
+#   -> "window" and `window_rows` "each", nothing else changed (the same 400 strings,
+#   scenes, seeds, start rows, step, guards and two-step backward). On a page with a box
+#   a row takes the gradient of its own glyph read alone on the window its
+#   cross-attention gives, a backward a row, in place of its part of the string's
+#   cross-entropy on the box. A save and a read at 200 groups are added. The user, 11-26:
+#   "그래디언트 프로브 괜찮으면 바로 소규모 학습까지 해보자".
+# Question: does the window loss move the read of strings the run did not train on,
+#   where the string's loss did not (sentm: positions hit 0.345 -> 0.331).
+#   - the val strings read more and the kana alone hold -> the run at scale, on the
+#     user's word.
+#   - no movement in the read, with the rows' successive gradients agreeing (the log's
+#     cos_prev over sentm's 0.008) -> more groups before the loss is judged.
+#   - no movement and cos_prev at sentm's -> the window loss does not give a row a
+#     direction in training either; the line's next step is the user's call.
+# Records it rests on:
+#   - sgrad_1126_1511 (8 rows, 24 renders a row and kind): a row's renders agree at
+#     0.032 ± 0.009 on its glyph alone (last step), 0.003 ± 0.004 on a string's loss,
+#     0.014 ± 0.010 / 0.016 ± 0.008 on its windows (last step / two steps; 0.000 / 0.011
+#     where the glyph is not the string's first), -0.001 ± 0.003 on every glyph's
+#     windows summed. The window parts are about 2 se from 0: the probe does not settle
+#     it, and this run is the test.
+#   - aloc_1126_1501: a token's window read holds its glyph on 0.767 of the positions the
+#     page's read hit, another token's window 0.151.
+#   - sentm_1126_1331: 4.26 s a group; 401 row steps on 103 rows; cos_prev 0.008 ± 0.011
+#     (264 pairs, returns left out); 3 924 of 6 416 row-renders over the clip.
+# Not separated by this run: the loss's scale changes with it (a window part's norm,
+#   median 0.244 against the string loss's 0.193, 0.65 against 0.63 over the clip), and
+#   the guards still score a row by the page's own read.
+# Read: the start rows against the saves at 200 and 400 groups, as sentm's read (12 val
+#   strings a length bin and 12 train strings not trained on, seeds 0 and 1; the 164 kana
+#   alone on scenes 6 and 45), beside sentm's table; the log's cos_prev and drift. Blind
+#   sheets, a val string a file; the user's read decides.
+# Bars: spread unknown (no twin). sentm's start read is this run's start read drawn
+#   again, which gives the read's repeat.
+# Cost: about 4.5 backwards a render in place of one: 400 groups at about 15 s, 100 min;
+#   three reads of 1 040 pages, 30 min. The smoke sets the seconds a group.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local (probes/sent_strings.py --seed 1126 --lengths 2-12)
+groups = 400
+save_groups = [200, 400]
+train_seed0 = 2000  # lap n of the scenes: train_seed0 + 4n … + 3
+shuffle_seed = 1126
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step, at full length
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2
+back_steps = 2       # the backward covers σ 0.75 → 0.5 → 0
+loss = "window"        # a glyph's cross-entropy on its own attention window (src/loc.py)
+window = 1.3           # glyph sides, as aloc_1126_1501
+window_rows = "each"   # a backward a row
+near_score = 0.5     # a look-alike position in a step's score
+taper = true         # step length eta × min(1, 2 (1 − score / renders))
+reader_compile = true
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"
+
+[back]
+drop = 4     # of the window's 32 renders
+window = 2   # steps
+over = 0.5
+
+[read]
+val_per_bin = 12
+seen = 12
+seeds = [0, 1]
+kana_scenes = [6, 45]
+kana_seeds = [0, 1]

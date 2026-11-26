@@ -489,6 +489,7 @@ class Reader:
         texts,
         check: dict | None = None,
         hit: list | None = None,
+        tokens: list | None = None,
     ):
         """The teacher-forced cross-entropy of ``texts[k]`` on crop ``boxes[k]`` of
         ``pages[k]`` → ``(n,)`` fp32, a mean over the text's tokens and the EOS.
@@ -497,7 +498,11 @@ class Reader:
         as the arrays the read saw; ``boxes``: :func:`crop_box` rectangles. ``check``
         takes the tensor path's distance from the processor's ``pixel_values``.
         ``hit`` takes a bool a crop: the forward's argmax is the text at each of its
-        tokens and the EOS, so a greedy decode of these pixel values gives the text."""
+        tokens and the EOS, so a greedy decode of these pixel values gives the text.
+        ``tokens`` takes ``(ce, spans)`` a crop: the cross-entropy of each token and
+        of the EOS, graph kept, and each one's character span in the text (the EOS
+        an empty span at its end); ``spans`` is ``None`` where the labels came from
+        the prompt's length."""
         import numpy as np
         import torch
         import torch.nn.functional as F
@@ -525,11 +530,19 @@ class Reader:
             },
         )
         labels = torch.full_like(enc["input_ids"], -100)
+        spans = []
         for r, t in enumerate(texts):
-            tid = tok(t + tok.eos_token, add_special_tokens=False).input_ids
+            te = tok(
+                t + tok.eos_token, add_special_tokens=False, return_offsets_mapping=True
+            )
+            tid = te.input_ids
             if enc["input_ids"][r, -len(tid) :].tolist() == tid:
                 labels[r, -len(tid) :] = torch.tensor(tid)
+                spans.append(
+                    [(min(a, len(t)), min(b, len(t))) for a, b in te["offset_mapping"]]
+                )
                 continue
+            spans.append(None)
             # the text's first token merged with the prompt's last: the labels from
             # the prompt's length, as the training collate takes them
             n_p = proc(
@@ -584,6 +597,8 @@ class Reader:
             logits.float().transpose(1, 2), tgt, ignore_index=-100, reduction="none"
         )
         loss = ce.sum(1) / (tgt != -100).sum(1)
+        if tokens is not None:
+            tokens.extend((ce[r][tgt[r] != -100], sp) for r, sp in enumerate(spans))
         if hit is not None:
             same = (logits.detach().argmax(-1) == tgt) | (tgt == -100)
             hit.extend(same.all(1).tolist())
@@ -700,13 +715,16 @@ class Hayai:
         p = lg[0].float().softmax(-1)
         return p[torch.arange(len(tgt)), tgt].tolist(), int(p[0].argmax())
 
-    def ce(self, pages, boxes, texts, check: dict | None = None):
+    def ce(
+        self, pages, boxes, texts, check: dict | None = None, tokens: list | None = None
+    ):
         """The teacher-forced cross-entropy of ``texts[k]`` on crop ``boxes[k]`` of
         ``pages[k]`` → ``(n,)`` fp32, a mean over the text's tokens and the EOS
         (:meth:`Reader.ce`'s shape). ``pages``: ``(3, H, W)`` RGB in [0, 1], graph
         kept. The processor's steps on the tensor: the NaFlex size of the crop's
         auto patch tier, a bilinear resize, 16-px patches in [-1, 1]. ``check`` takes
-        the tensor path's distance from the processor's ``pixel_values`` and loss."""
+        the tensor path's distance from the processor's ``pixel_values`` and loss;
+        ``tokens`` takes ``(ce, spans)`` a crop, as :meth:`Reader.ce` gives them."""
         import sys
 
         import torch
@@ -755,8 +773,14 @@ class Hayai:
             ss = torch.tensor([[nh, nw]], device=pv.device)
             inp, tgt = self._ids(text)
             lg = self.model(pv, pam, ss, text_token_ids=inp)
-            loss = F.cross_entropy(lg[0].float(), tgt)
+            each = F.cross_entropy(lg[0].float(), tgt, reduction="none")
+            loss = each.mean()
             out.append(loss)
+            if tokens is not None:
+                off = self.tok(
+                    text, add_special_tokens=False, return_offsets_mapping=True
+                )["offset_mapping"]
+                tokens.append((each, [*off, (len(text), len(text))]))
             if check is not None:
                 u8 = page[:, y0:y1, x0:x1].detach().clamp(0, 1).mul(255).round()
                 im = Image.fromarray(u8.byte().permute(1, 2, 0).cpu().numpy())

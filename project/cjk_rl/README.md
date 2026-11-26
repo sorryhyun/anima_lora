@@ -9,8 +9,9 @@ It has two stages. The first (2026-11-13) ran GRPO on sentence captions; its arm
 nothing on the ruler ([reports/p1_2026_11_13.md](reports/p1_2026_11_13.md)), and its other
 arms ([proposal.md](proposal.md)) wait. The second, the glyph stage (2026-11-25), is the one
 running: one glyph a caption, and the reader's loss carried back to that glyph's row by
-gradient (G-D). On the kana rows it trained, the sentence loop (`src/s1.py`) ran a micro
-arm that moved nothing, and the line is stopped there on the user's word (2026-11-26):
+gradient (G-D). On the kana rows it trained, the sentence loop (`src/s1.py`) ran two micro
+arms (2026-11-26): the string's cross-entropy moved nothing, and a glyph's cross-entropy
+on the window its token's attention points at moved the read of strings.
 [plan.md](plan.md), item 7, and [sent_rl.md](sent_rl.md).
 
 ## The glyph stage, as it runs
@@ -203,6 +204,14 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
     0.345 → 0.331 of positions and the kana alone 351 → 354 of 656, a row's successive
     gradients at a cosine of 0.004. Second part: the string pages are wide two times in
     three where the labels are vertical five in six.
+  - [sentw_2026_11_26.md](reports/sentw_2026_11_26.md) — the window loss: `sentm`'s log
+    read again (frequency and normalisation are not where the read is lost), a row's
+    gradient on its glyph, on a string and on its own positions (`sgrad_1126_1436`), a
+    quote token's attention as its glyph's place (`aloc_1126_1501`), the gradient of a
+    glyph read on that window (`sgrad_1126_1511`), and the micro arm on it
+    (`sentw_1126_1528`): the val strings' positions hit 0.345 → 0.422 where `sentm` fell
+    to 0.331, the kana alone 351 → 345 of 656. Last parts: what a longer run would spend,
+    and the backward's two steps apart.
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -210,13 +219,19 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   all of them.
 - `src/grpo.py` — the GRPO loop (arm R).
 - `src/gd.py` — G-D's path: the policy with a step-by-step backward to the rows, and the
-  reader's cross-entropy and the detector's score on a page tensor.
+  reader's cross-entropy (a crop's mean, or a token at a time with its character span) and
+  the detector's score on a page tensor.
 - `src/g1.py` — G1's loop on that path (a row steps along the momentum of its renders' mean
   gradient, from the start rows or from a shared start) and its read on held-out scenes, at
   each save, with blind sheets.
 - `src/s1.py` — the sentence loop on G-D's path: a string a caption, a render's gradient to
   every row in its quote, the backward over the last `back_steps` steps, a row's score by
-  position, and its read (val strings, train labels not trained on, the kana alone).
+  position, and its read (val strings, train labels not trained on, the kana alone). With
+  `loss = "window"` a row takes its own glyph's cross-entropy on its attention window, a
+  backward a row.
+- `src/loc.py` — a glyph's place on a generated page: the quote tokens' cross-attention at
+  blocks 8 and 13 – 15 read by a hook outside the compiled blocks, a token's centre inside
+  the picked box, its window.
 - `probes/` — `grpo_p0.py` (P0), `reader_batch.py` (the reward reader). Both run on the
   reseed line's package, ruler and readers (`../cjk_anima_reseed/{reseed,src}`).
   `position_read.py` (CPU) reads the ruler results' `renders.json`. `turbo_read.py` renders
@@ -243,7 +258,9 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   pair and each string alone. `sent_strings.py` (CPU) draws `s1.py`'s strings from the OCR
   reader's labels; `orient_read.py` counts which way an `s1.py` run's string pages are
   lettered; `sent_grad.py` keeps a row's gradient a render on glyph and string captions,
-  by the step it came through (not run to its end). `g2_rows.py` (CPU) reads a G1 run's
+  by the step it came through, and on a string also for the row's own positions' tokens
+  and for its glyph on its attention windows; `attn_loc.py` reads whether a quote token's
+  attention window holds its glyph. `g2_rows.py` (CPU) reads a G1 run's
   records and log per row and sorts the rows into the plan's groups (not learned, pushed
   past the glyph, a reader's problem), with labelled sheets of those rows.
 - `configs/` — one file a run, its question and gate in the header.

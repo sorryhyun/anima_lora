@@ -23,6 +23,15 @@ The sentence run of ``sent_rl.md``. Policy, path and readers are G1's (``gd.Poli
   to ``clip`` and added to the row's sum. A row steps when ``accum`` renders that hold
   it are in, whatever strings they were, as a row steps in G1 (momentum ``beta``, a
   step of ``eta`` row norms, ``max_steps``).
+- With ``loss = "window"`` a page with a box takes, in place of the string's
+  cross-entropy on the box, a glyph's own on its own window: for each glyph of the
+  quote that has a row, the two readers' cross-entropy of that glyph alone (its tokens,
+  the EOS left out) on the square its cross-attention points at (``loc.py``: blocks
+  13 – 15 at σ 0.75 and 0.5, the peak inside the picked box, ``window`` glyph sides).
+  ``window_rows = "sum"`` backs the windows' sum once and every row takes its part, as
+  the string's loss does; ``"each"`` backs a row's windows alone, a backward a row, and
+  the row takes that one. The box, the row's score and the detector's term are as
+  without it.
 - A row's score for the guards (``near_score``, ``taper``, ``[back]``, as in G1): over
   the step's renders, the positions of the row's glyph that the aligned read hits, a
   look-alike (``g1.shape``) counting ``near_score``, over the positions asked, times
@@ -79,6 +88,7 @@ import turbo_read as T  # noqa: E402
 
 import g1  # noqa: E402
 import gd  # noqa: E402
+import loc  # noqa: E402
 
 DOT_RUN = re.compile(r"[.．・…‥]{2,}|…")
 BINS = ((2, 4), (5, 8), (9, 12))
@@ -165,6 +175,32 @@ def score(au: list, read: str) -> tuple:
     return hit, near, target
 
 
+def glyph_spans(au: list, target: str) -> list:
+    """The character span of each glyph of ``au`` in ``target``, the string with or
+    without line breaks (:func:`score`'s third)."""
+    out, c = [], 0
+    for u in au:
+        assert target[c : c + len(u)] == u, (au, target)
+        out.append((c, c + len(u)))
+        c += len(u)
+        c += target[c : c + 1] == "\n"
+    return out
+
+
+def own_ce(tok: tuple, spans: list, pos: list):
+    """The part of a crop's cross-entropy that the glyphs at ``pos`` hold: the sum over
+    the tokens that overlap one of their spans, over the count of all the crop's tokens
+    (the scale of each token in ``ce``'s mean). ``tok``: a crop's ``(ce, spans)`` of
+    ``gd.Reader.ce``. A token that covers two glyphs counts for both; a line break and
+    the EOS for none. ``None`` where the tokens' spans are unknown."""
+    each, off = tok
+    if off is None:
+        return None
+    mine = [spans[p] for p in pos]
+    keep = [j for j, (a, b) in enumerate(off) if any(a < y and b > x for x, y in mine)]
+    return each[keep].sum() / len(each)
+
+
 def bin_of(n: int) -> str | None:
     return next((f"{lo}-{hi}" for lo, hi in BINS if lo <= n <= hi), None)
 
@@ -193,6 +229,10 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
     w_near = float(cfg.get("near_score") or 0.0)
     taper, back = bool(cfg.get("taper")), cfg.get("back")
     cap_steps = cfg.get("max_steps")
+    win = cfg.get("loss") == "window"
+    each = win and cfg["window_rows"] == "each"
+    assert not win or cfg["window_rows"] in ("sum", "each"), cfg["window_rows"]
+    rec = loc.Recorder(pol.anima) if win else None
     dim = pol.raw.shape[1]
     init = pol.raw.detach().clone()
     acc = {i: torch.zeros(dim, device=pol.dev) for i in name}
@@ -306,15 +346,26 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
         t = time.time()
         e_graph = pol.embed(caption, grad=True)
         e = e_graph.detach()
+        if win:  # the quote tokens' maps at the last two steps
+            cols, groups, upos = loc.token_cols(pol, caption, ak, at)
+            cols = torch.tensor(cols, device=pol.dev)
+            rec.cols = cols
         xs = pol.inputs(pol.noise(seeds, G.SHAPE), e, nback)
+        m_prev = rec.sets()[:, 0] if win else None  # (4, tokens, Nq), σ 0.75
         t = lap("head", t)
         pages = []
         for b in range(len(seeds)):
             xi = None
+            if win:
+                rec.cols = cols
             if nback > 1:
                 px, ei, xi = pol.last(xs[-1][b : b + 1], e, wrt_x=True)
             else:
                 px, ei = pol.last(xs[-1][b : b + 1], e)
+            if win:
+                m = (m_prev[b] + rec.sets()[0, 0]) / 2
+                m = torch.stack([m[g].mean(0) for g in groups])  # a glyph a map
+                rec.cols = None
             t = lap("last_fwd", t)
             img = px.detach()
             bgrs, reads = rdr.read(img)
@@ -327,7 +378,43 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
             if r is None:
                 top = rdr.det_scores(p01).max(1).values
                 loss = top.clamp_min(1e-6).log().neg().sum()
-                total = loss
+                cots = [(live, torch.autograd.grad(loss, leaf)[0])]
+            elif win:
+                got = r["sfx"] or ""
+                hit, near, _ = score(au, got)
+                rb = [int(v) for v in r["box"]]
+                side = loc.glyph_side(rb, len(au), cfg["window"])
+                cs = loc.centres(m, rb, H // loc.TOK_PX, W // loc.TOK_PX)["raw"]
+                g_by, loss, aux, n_win = {}, 0.0, 0.0, 0
+                for c, p in zip(cs, upos):
+                    i = at[ak[p]]
+                    if i not in live:
+                        continue
+                    # a graph a window, freed at once (a string's do not fit)
+                    leaf_w = img.clone().requires_grad_(True)
+                    w01 = (gd.ste_clamp(leaf_w, -1.0, 1.0) + 1) / 2
+                    wbox = loc.window(c, side, W, H)
+                    u, tk, htk = au[p], [], []
+                    rdr.ce([w01[0]], bgrs, [wbox], [u], tokens=tk)
+                    seen = own_ce(tk[0], [(0, len(u))], [0])
+                    if seen is None:  # the tokens' spans unknown: the glyph and EOS
+                        seen = tk[0][0].mean()
+                    loss += float(seen.detach())
+                    if hy is not None:
+                        hy.ce([w01[0]], [wbox], [u], tokens=htk)
+                        more = own_ce(htk[0], [(0, len(u))], [0])
+                        aux += float(more.detach())
+                        seen = seen + cfg["hayai_weight"] * more
+                    g = torch.autograd.grad(seen, leaf_w)[0]
+                    g_by[i] = g_by[i] + g if i in g_by else g
+                    n_win += 1
+                    del seen, tk, htk, w01, leaf_w
+                loss, aux = loss / n_win, aux / n_win if hy is not None else None
+                if each:
+                    cots = [([i], g) for i, g in g_by.items()]
+                else:
+                    cots = [(list(g_by), sum(g_by.values()))]
+                del g_by
             else:
                 got = r["sfx"] or ""
                 hit, near, target = score(au, got)
@@ -337,22 +424,30 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                 if hy is not None:
                     aux = hy.ce([p01[0]], [box], [s]).sum()
                     total = loss + cfg["hayai_weight"] * aux
-            g_px = torch.autograd.grad(total, leaf)[0]
+                cots = [(live, torch.autograd.grad(total, leaf)[0])]
             t = lap("loss", t)
-            if nback > 1:
-                g_e, g_x = torch.autograd.grad((px * g_px).sum(), (ei, xi))
-                del px, ei, xi
+            row_g = {}  # row -> its gradient of this render
+            for n_c, (mine, g_px) in enumerate(cots):
+                if n_c:  # the last step again, with a graph of its own
+                    g_e, g_x = pol.vjp(pol.steps - 1, xs[-1][b : b + 1], e, g_px)
+                elif nback > 1:
+                    g_e, g_x = torch.autograd.grad((px * g_px).sum(), (ei, xi))
+                else:
+                    g_e = torch.autograd.grad((px * g_px).sum(), ei)[0]
+                if not n_c:
+                    del px, ei, xi
                 for k in range(2, nback + 1):  # the steps before the last, backwards
                     ge, g_x = pol.vjp(pol.steps - k, xs[-k][b : b + 1], e, g_x)
                     g_e = g_e + ge
-            else:
-                g_e = torch.autograd.grad((px * g_px).sum(), ei)[0]
-                del px, ei
-            g_rows = pol.row_grads(e_graph, g_e)[0]
+                g_rows = pol.row_grads(e_graph, g_e)[0]
+                for i in mine:
+                    row_g[i] = g_rows[i].clone()
+                del g_rows
+            del cots
             t = lap("bwd", t)
             norms = []
             for i in live:
-                g = g_rows[i]
+                g = row_g[i]
                 gn = float(g.norm())
                 norms.append(gn)
                 acc[i] += g * min(1.0, cfg["clip"] / max(gn, 1e-30))
@@ -366,12 +461,12 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                         "norm": gn,
                     }
                 )
-            del g_rows
+            del row_g
             pages.append(
                 {
                     "case": case,
-                    "loss": float(loss.detach()),  # the tuned reader's term
-                    "hy": None if aux is None else float(aux.detach()),
+                    "loss": float(loss),  # the tuned reader's term (a window's mean)
+                    "hy": None if aux is None else float(aux),
                     "hit": sum(hit),
                     "exact": keys(got) == ak,
                     "norm": max(norms),
