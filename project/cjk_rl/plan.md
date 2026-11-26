@@ -6,7 +6,34 @@ step, what is parked and the runs done. A run's settings, question and gate go i
 header (`configs/<handle>_mmdd_hhmm.toml`) when it is submitted, and this file then names the
 run.
 
-## 6. Where the kanji run starts — to decide
+## 7. Kana words before the kanji (opened 2026-11-26)
+
+The user's calls (11-26), on item 6's points:
+
+- The kana rows are g2b's 16-step rows with ten of g2a's (っ え グ ざ ヂ の な ゥ や at 6
+  steps, ヒ at 4), read by the user on the ten blind sheets: `kmix_1126_1158`
+  (`configs/kmix_1126_1158.toml`, `probes/rows_mix.py`).
+- Default guards from here: `taper`, `near_score` 0.5, `[back]` with `over` 0.5.
+- Words and sentences of kana come before the kanji. The kanji then take 6 steps from a
+  start shifted by the mean displacement of kmix's rows (`[start_shift]`, `save = "mix"`).
+- The sentence run's backward covers the last two steps, σ 0.75 → 0.5 → 0, in place of
+  the last alone (the user, on `tswap_1126_1209`: with a second string's text on the last
+  step alone a page mostly keeps the first; on the last two it follows the second).
+- In the word or sentence run a small kana is trained as itself: its target and its read
+  are the small glyph, not its full-size one (`fold_small` off). kmix's 20 small rows were
+  trained with the full-size glyph as their target.
+
+The sentence run's rough plan is [sent_rl.md](sent_rl.md): strings from the OCR reader's
+labels with their punctuation, `♡` written as `♥`, the read on val-only strings, the
+backward over two steps. Forward probes for it: `wread_1126_1207` (48 pool strings on
+jp_v1's and kmix's rows; the whole string alone 23 → 86 of 384 pages, none at 5 – 8 glyphs)
+and `tswap_1126_1209` (a render's text swapped at a step). No report file yet for either.
+
+Ship (the user, 11-26): the rows trained further on words or sentences from kmix, if that
+run reads well, go out as a v2 preview with the kana alone; kmix itself is not the release.
+The kanji are taken as a matter of scale and do not hold it.
+
+## 6. Where the kanji run starts — decided 11-26, in item 7
 
 `g2b_1126_0058` is done ([reports/g2b_2026_11_26.md](reports/g2b_2026_11_26.md)): the kana
 from jp_v1's rows at 16 guarded steps read alone on 1 716 of 2 624 pages, against 1 686 and

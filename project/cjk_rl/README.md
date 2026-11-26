@@ -9,7 +9,7 @@ It has two stages. The first (2026-11-13) ran GRPO on sentence captions; its arm
 nothing on the ruler ([reports/p1_2026_11_13.md](reports/p1_2026_11_13.md)), and its other
 arms ([proposal.md](proposal.md)) wait. The second, the glyph stage (2026-11-25), is the one
 running: one glyph a caption, and the reader's loss carried back to that glyph's row by
-gradient (G-D). The next step is in [plan.md](plan.md), items 6 and 5.
+gradient (G-D). The next step is in [plan.md](plan.md), item 7, and [sent_rl.md](sent_rl.md).
 
 ## The glyph stage, as it runs
 
@@ -121,6 +121,9 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   seems to need, open points.
 - [proposal_glyph.md](proposal_glyph.md) — what follows the kana: the frequent kanji and
   words (G2), transfer and ship reads (G3).
+- [sent_rl.md](sent_rl.md) — the sentence run's rough plan (2026-11-26): kana strings from
+  the OCR reader's labels, trained from the kana rows `kmix_1126_1158`, a render teaching
+  every row in its quote; what is decided, the read, what is open.
 - [proposal.md](proposal.md) — the sentence stage: reward, arms R / A (GRPO), D (reader-NLL
   reward gradient) and R-credit, phases P1 – P3 / D0 – D1 and their gates, the SFX track.
 - [reports/](reports/) — finished probes:

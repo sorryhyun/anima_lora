@@ -1,0 +1,33 @@
+# Kana mix: g2b_1126_0058's 16-step rows with ten rows taken from g2a_1125_1642 (the user,
+#   11-26: "g2a는 잘했는데 g2b가 못했던거 몇개 갖고와서 g2b + alpha 로 초기 잡으면 좋을듯", then on
+#   the ten blind sheets "다 그대로 가져와도 되겠다", "히는 4스텝"). No arm, no gate: a data build
+#   (probes/rows_mix.py, CPU).
+# The ten are the rows where g2b's 16-step solo is under g2a's 6-step solo by 5 or more of
+#   16 under both readers (reports/g2b_2026_11_26.md; g2a → g2b under the tuned reader):
+#   っ 14 → 0, え 12 → 0, グ 13 → 2, ざ 12 → 3, ヂ 12 → 3, の 10 → 2, な 12 → 5, ゥ 11 → 4,
+#   や 11 → 5, ヒ 7 → 0. ヒ comes from g2a's 4-step save (10 at 4 steps, 7 at 6).
+# What it is for: the kanji run's [start_shift] (run = this handle, save = "mix": the mean
+#   displacement of these 164 rows from jp_v1's rows), and the kana rows to bake.
+# Output: output/cjk_rl/g1/kmix_1126_1158/rows_mix.pt, sources.json (local).
+
+[base]
+run = "g2b_1126_0058"
+save = "s16"
+
+[[take]]
+run = "g2a_1125_1642"
+save = "s06"
+glyphs = ["っ", "え", "グ", "ざ", "ヂ", "の", "な", "ゥ", "や"]
+
+[[take]]
+run = "g2a_1125_1642"
+save = "s04"
+glyphs = ["ヒ"]
+
+[[refs]]
+run = "g1long_1125_1335"
+save = "s24"
+
+[[refs]]
+run = "g2b_1126_0058"
+save = "s16"

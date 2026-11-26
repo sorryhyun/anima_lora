@@ -1,0 +1,44 @@
+# Word read (probes/row_line.py, forward only): 48 kana strings of the pool, read on jp_v1's
+#   rows and on kmix_1126_1158's rows (the kana trained one glyph a caption). No training.
+#   The user, 11-26: "Before proceeding, kanjis. Actually, I wanna try some sentence or small
+#   words first. ... Maybe we would need from moving on start point from 0.5 to 0.75"
+#   (the last, as the user put it the same day: the backward covers the step σ 0.5 -> 0
+#   now, and a sentence may need σ 0.75 -> 0.5 -> 0; this read does not test it).
+# Question: where kana words stand before any word training.
+#   - kmix reads the strings over jp_v1's rows, most of all at 2 - 4 glyphs -> rows trained
+#     alone carry into words, and a word run starts from them.
+#   - kmix at jp_v1's level, or the first glyph alone on most pages -> the rows do not
+#     compose as trained, and the word run is the test of whether the loss on a whole string
+#     teaches them to.
+# Strings: the pool's kana-only strings (output/cjk_rl/pool/pool.json, 355 distinct, every
+#   glyph a row of kmix), 12 drawn at each of 2, 3, 4 and 5 - 8 glyphs (random.Random(1126)
+#   over the sorted strings of a length). 34 of the 48 hold a small kana; the small rows
+#   were trained with their full-size glyph as the target (fold_small), and a word's solo
+#   here is the string as written.
+# Records it rests on:
+#   - reports/g2b_2026_11_26.md, reports/g2a_2026_11_25.md: the kana alone, solo of 2 624
+#     pages 743 at jp_v1's rows, 1 716 (g2b, 16 steps) and 1 785 (g2a, 6 steps).
+#   - proposal_glyph.md § 1: the finished CJK lines saw 2 - 3 glyph prompts draw the first
+#     glyph only.
+# Read: per arm and length, solo under the two readers, and from probes/word_read.py the
+#   picked box's read aligned to the string: hits per position, glyphs drawn against asked,
+#   pages with the first glyph alone, a row's hit count over its positions (with the small
+#   kana folded beside it). Blind sheets, a string a file. Claude's read, sent to the user.
+# Bars: spread unknown (no twin). 8 pages a string and arm; a length holds 96.
+# Cost: 768 renders and their reads at about 0.54 s, 7 min.
+
+# The strings were inline when the run was submitted; at commit they moved to the local file
+#   below, the same 48 in the same order (27 are Manga109-s texts, which are not
+#   redistributed).
+rows = "seed_1008"
+words_file = "output/cjk_rl/pool/words_wread_1126_1207.json"  # local
+frame = "bubble"
+read_scenes = [6, 12, 45, 15]
+read_seeds = [0, 1]
+conf_min = 0.6
+shuffle_seed = 1126
+pairs = [["jp_v1", "kmix"]]
+
+[arms]
+jp_v1 = {}
+kmix = { run = "kmix_1126_1158", save = "mix", saved = true }

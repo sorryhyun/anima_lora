@@ -1,0 +1,45 @@
+# Text swap (probes/text_swap.py, forward only): a render's first k steps on caption A and
+#   the rest on caption B, on kmix_1126_1158's rows; singles and wread_1126_1207's 48 strings.
+#   The user, 11-26: "현재는 turbo step에서 0.5->0 만을 bwd하는걸로 아는데, 문장에서는
+#   0.75->0.5->0 가 되어야 하는지 궁금해. 실험중에 이 가늠도 해보면 좋겠네".
+#   Steps run σ 1 -> 0.9 -> 0.75 -> 0.5 -> 0 (4 Euler steps, shift 3). k = 3: B's text on
+#   the last step alone, the step G1's backward covers. k = 2: on the last two.
+# Question: does the text of the last step alone decide what a page letters, for a glyph and
+#   for a string?
+#   - B's positions at k = 3 near B's own render (k = 0) at every length -> the last step's
+#     text holds the string, and the one-step backward reaches what a word run trains.
+#   - at k = 3 the page keeps A (its glyphs, or its count) and at k = 2 it follows B, more so
+#     for longer strings -> the string is set between σ 0.75 and 0.5, and the word run takes
+#     an arm with the backward over the last two steps.
+#   Either way the word run's own arms decide; this sets which arm is built first.
+#   What it does not measure: a swap replaces the whole text, a gradient moves a row a
+#   little; a page that follows B at k = 3 shows the step can change the lettering, not
+#   that its gradient points there.
+# Records it rests on:
+#   - reports/gd_g0d_2026_11_25.md (g0d_1125_1119): a step's share of the four-step ce
+#     gradient on a row, steps 0 - 3: 0.48 / 0.40 / 0.33 / 0.08; one step's backward 0.95 s
+#     for 4 renders (3.0 - 3.2 s a group with the last step's, 5.9 - 6.1 s with all four).
+#   - wread_1126_1207: the strings' own renders on kmix's rows (the words' k = 0 pages).
+# Read: per class (a glyph, 2, 3, 4, 5 - 8 glyphs) and k: B alone, A alone, the share of B's
+#   and of A's positions on the closest box, glyphs drawn over B's length; small kana
+#   folded. A sample of pages viewed. Claude's read, sent to the user.
+# Bars: spread unknown. 8 pages a pair and k.
+# Cost: 1 152 renders and reads (words at k 2, 3; singles at k 0, 2, 3), about 9 min.
+
+# The strings were inline when the run was submitted; at commit they moved to the local file
+#   below, the same 48 in the same order (27 are Manga109-s texts, which are not
+#   redistributed).
+rows = "seed_1008"
+singles = "あうさめひかしつアカサナマラヨネ"
+words_file = "output/cjk_rl/pool/words_wread_1126_1207.json"  # local
+bin = 12
+ks = [0, 2, 3]
+ref = "wread_1126_1207"
+ref_arm = "kmix"
+frame = "bubble"
+read_scenes = [6, 12, 45, 15]
+read_seeds = [0, 1]
+
+[table]
+run = "kmix_1126_1158"
+save = "mix"

@@ -20,6 +20,10 @@ and
 
 ``en`` in the config is a list of EN words read beside the glyphs (class ``en``, the
 null the next word). A word holds no trained row, so every arm reads it on the same rows.
+``words`` (or ``words_file``, a JSON list under the repo) is a list of strings of trained
+glyphs (class ``word``, the null the next string): an arm displaces the rows of every glyph in them as it does the config's glyphs,
+and ``probes/word_read.py`` counts their reads per position. An arm may name its own
+``run``; a config with no ``run`` of its own has no reference records.
 
 The run's own reads (``results/*-g1-<run>/records.json``: the start rows and each save,
 the same pages) are the references. Tables: ``pairs`` in the config, each a reference
@@ -57,17 +61,21 @@ def tables(cfg: dict, gl: list, start) -> tuple:
     import torch
 
     saves, out, moved = {}, {}, {}
+    names = list(  # the glyphs an arm displaces: the config's, and its words' glyphs
+        dict.fromkeys(g for cls, k, _ in gl for g in (k if cls == "word" else [k]))
+    )
     for arm, spec in cfg["arms"].items():
         if "save" not in spec:
-            out[arm], moved[arm] = start.clone(), {k: 0.0 for _, k, _ in gl}
+            out[arm], moved[arm] = start.clone(), dict.fromkeys(names, 0.0)
             continue
-        if spec["save"] not in saves:
-            saves[spec["save"]] = torch.load(
-                G1_OUT / cfg["run"] / f"rows_{spec['save']}.pt", weights_only=False
+        at = (spec.get("run") or cfg["run"], spec["save"])
+        if at not in saves:
+            saves[at] = torch.load(
+                G1_OUT / at[0] / f"rows_{at[1]}.pt", weights_only=False
             )
-        sv = saves[spec["save"]]
+        sv = saves[at]
         init = sv["init"].float()
-        row = {k: sv["rows"][k] for _, k, _ in gl if k in sv["rows"]}
+        row = {k: sv["rows"][k] for k in names if k in sv["rows"]}
         if spec.get("saved"):
             table = start.clone()
             for k, i in row.items():
@@ -117,13 +125,24 @@ def main() -> None:
     gl = g1.glyphs(cfg, a.smoke)
     en = list(cfg.get("en", []))[: 1 if a.smoke else None]
     gl += [("en", w, en[(n + 1) % len(en)]) for n, w in enumerate(en)]
+    words = list(cfg.get("words", []))
+    if cfg.get(
+        "words_file"
+    ):  # a local list (strings of a corpus that is not redistributed)
+        words = json.loads((T.REPO / cfg["words_file"]).read_text("utf-8"))
+    words = words[: 2 if a.smoke else None]
+    gl += [("word", w, words[(n + 1) % len(words)]) for n, w in enumerate(words)]
     keys = {k for _, k, _ in gl}
-    (ref_file,) = sorted((LINE / "results").glob(f"*-g1-{cfg['run']}/records.json"))
-    ref = [
-        r
-        for r in json.loads(ref_file.read_text("utf-8"))
-        if r["key"] in keys and r["scene"] in scenes and r["seed"] in cfg["read_seeds"]
-    ]
+    ref_file, ref = None, []
+    if cfg.get("run"):
+        (ref_file,) = sorted((LINE / "results").glob(f"*-g1-{cfg['run']}/records.json"))
+        ref = [
+            r
+            for r in json.loads(ref_file.read_text("utf-8"))
+            if r["key"] in keys
+            and r["scene"] in scenes
+            and r["seed"] in cfg["read_seeds"]
+        ]
     ref_arms = list(dict.fromkeys(r["arm"] for r in ref))
     out = ROOT / name
     out.mkdir(parents=True, exist_ok=True)
@@ -135,7 +154,7 @@ def main() -> None:
     arms, moved = tables(cfg, gl, start)
     print(
         f"{name}: {len(gl)} glyphs × scenes {scenes} × seeds {cfg['read_seeds']}; arms "
-        f"{list(arms)}; references {ref_arms} of {cfg['run']} ({len(ref)} pages)",
+        f"{list(arms)}; references {ref_arms} of {cfg.get('run')} ({len(ref)} pages)",
         flush=True,
     )
     for arm, m in moved.items():
@@ -199,7 +218,7 @@ def main() -> None:
             "total": total,
             "per_glyph": per,
             "paired": paired,
-            "references": str(ref_file),
+            "references": str(ref_file) if ref_file else None,
         },
     )
     print(f"→ {run_dir / 'result.json'}", flush=True)
