@@ -135,6 +135,7 @@ SMALL = dict(
     )
 )
 FULL = {v: k for k, v in SMALL.items()}
+SEP = '", "'  # between the strings of a quote that holds several (class ``multi``)
 
 
 def same(key: str, fold: bool) -> list:
@@ -658,7 +659,10 @@ def read(
                 picks = [gd.pick(ok[0], rs, cfg["conf_min"]) for rs in reads]
                 tag = f"_{frame}" if len(frames) > 1 else ""
                 files = [
-                    out / "read" / arm / f"{key}_sc{si:02d}{tag}_s{seed}.webp"
+                    out
+                    / "read"
+                    / arm
+                    / f"{key.replace(SEP, '+')}_sc{si:02d}{tag}_s{seed}.webp"
                     for seed in seeds
                 ]
                 files[0].parent.mkdir(parents=True, exist_ok=True)
@@ -693,6 +697,20 @@ def read(
                         | {"null": G.page_terms(alt, reads[b])["solo"]}
                         | {"boxes": G.boxes(reads[b])}
                     )
+                    if cfg.get(
+                        "raw_reads"
+                    ):  # the boxes' reads as the readers wrote them
+                        recs[-1]["raw"] = [
+                            x["sfx"]
+                            for x in reads[b]
+                            if not x.get("whole") and x.get("sfx")
+                        ]
+                        if hy is not None:
+                            recs[-1]["hy_raw"] = [
+                                x["hy"]
+                                for x in reads[b]
+                                if not x.get("whole") and x.get("hy")
+                            ]
                     if hy is not None:
                         as_hy = [x | {"sfx": x.get("hy")} for x in reads[b]]
                         recs[-1] |= {

@@ -1,0 +1,72 @@
+# Sentence micro arm (src/s1.py): the kana rows of kmix_1126_1158 and the marks' rows of
+#   jp_v1 trained on 400 kana strings of the OCR reader's train labels, a string a group,
+#   the backward over the last two steps. sent_rl.md's order of work, step 4. The user,
+#   11-26: "open에 남겨두고 sent rl 은 계획대로 진행해보자".
+# Parent: g2b_1126_0058's loop (src/g1.py). Changed together, and not separated by this
+#   run: the quote holds a string and a render's gradient goes to every row in it; the
+#   backward covers two steps (back_steps 1 -> 2); the tuned reader's target carries the
+#   read's line breaks; a row's score for the guards is by position; fold_small on -> off;
+#   the marks' rows (ー 。 、 ~ a dot run ♥ 「 」) train; the tuned reader runs on
+#   FlashAttention 2 with reader_compile. The step (eta, beta, accum, clip), hayai's
+#   weight, the scenes and the guards' values are g2b's, with [back] over 0.5.
+# Question: do 400 groups of strings from kmix's rows move the read of strings the run
+#   did not train on, and what do they cost the kana alone.
+#   - the val strings read more (positions hit, the whole string) and the kana alone
+#     hold -> the run of sent_rl.md at scale, on the user's word.
+#   - no movement, or the kana alone fall -> the steps a row took (no cap here: in 400
+#     strings the dot row is held by 596 renders, ー 480, っ 464, the median row 24), the
+#     clip share and the returns are read before any longer run.
+# Strings: output/cjk_rl/pool/sent_strings_s1126.json (probes/sent_strings.py, seed 1126,
+#   2 - 12 glyphs): 24 891 train strings (2 - 4: 10 303, 5 - 8: 10 409, 9 - 12: 4 179), 1 844
+#   val strings in no train label. The first 400 train strings hold 154 of the 172 rows.
+# Records it rests on:
+#   - wread_1126_1207: kmix's rows on 48 pool strings, the whole string alone on 52, 21,
+#     13 and 0 of 96 pages at 2, 3, 4 and 5 - 8 glyphs.
+#   - tswap_1126_1209: a page's text is mostly set in the step σ 0.75 -> 0.5.
+#   - smoke (smoke_sentm_draft, 6 groups): 4.2 s a group past the first, peak 13.99 GiB;
+#     74 of 100 row-renders over the clip (g2b: 36 % with the one-step backward).
+# Read: the start rows (kmix's kana, jp_v1's marks) against the save at 400 groups, on the
+#   read scenes: 12 val strings a length bin and 12 train strings the run does not train
+#   on, at seeds 0 and 1; the 164 kana alone on scenes 6 and 45 at seeds 0 and 1. Per
+#   class and length: the whole string in a box with and without its marks under both
+#   readers, positions hit, glyphs drawn over asked. Blind sheets, a val string a file;
+#   the user's read decides.
+# Bars: spread unknown (no twin).
+# Cost: 400 groups at 4.2 s, 28 min; two reads of 1 040 pages at about 0.55 s, 19 min.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local (probes/sent_strings.py --seed 1126 --lengths 2-12)
+groups = 400
+train_seed0 = 2000  # lap n of the scenes: train_seed0 + 4n … + 3
+shuffle_seed = 1126
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step, at full length
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2
+back_steps = 2       # the backward covers σ 0.75 → 0.5 → 0
+near_score = 0.5     # a look-alike position in a step's score
+taper = true         # step length eta × min(1, 2 (1 − score / renders))
+reader_compile = true
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"
+
+[back]
+drop = 4     # of the window's 32 renders
+window = 2   # steps
+over = 0.5
+
+[read]
+val_per_bin = 12
+seen = 12
+seeds = [0, 1]
+kana_scenes = [6, 45]
+kana_seeds = [0, 1]

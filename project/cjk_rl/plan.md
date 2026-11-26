@@ -28,6 +28,19 @@ labels with their punctuation, `♡` written as `♥`, the read on val-only stri
 backward over two steps. Forward probes for it: `wread_1126_1207` (48 pool strings on
 jp_v1's and kmix's rows; the whole string alone 23 → 86 of 384 pages, none at 5 – 8 glyphs)
 and `tswap_1126_1209` (a render's text swapped at a step). No report file yet for either.
+`wmulti_1126_1252` and `enmulti_1126_1258` read a clause of two or three short strings, on
+the user's suggestion to have such captions in the run
+([reports/multi_read_2026_11_26.md](reports/multi_read_2026_11_26.md)): one bubble a page on
+the read scenes for kana and EN alike, no page of 288 and 128 with both strings read.
+`tread_1126_1306` read the pool's two-string templates on the user's call (the report's
+second part): two boxes a page whatever the clause asks, the asked kana string read on 8 of
+96 pages alone. Whether and on what scenes such captions go into the run is open in
+sent_rl.md.
+
+The sentence loop is built (`src/s1.py`) and its micro arm ran: `sentm_1126_1331`, 400
+groups, no movement in the read of strings
+([reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)). Stopped there on the user's
+word (11-26); the state and what is open are in sent_rl.md.
 
 Ship (the user, 11-26): the rows trained further on words or sentences from kmix, if that
 run reads well, go out as a v2 preview with the kana alone; kmix itself is not the release.
@@ -142,6 +155,9 @@ item 4's is of 2 624 (164 glyphs).
 | – | 16 rows in the plain and bubble frames on 12 of the plain screen's scenes, 6 steps | `mix_1125_2338` | [mix](reports/mix_2026_11_26.md) | solo of 512 a frame, this run against g2a's rows: plain 202 against 238, bubble 297 against 329 | – |
 | 6 | G2b: the kana from jp_v1's rows, 16 steps, with `taper`, `[back]`, `near_score` | `g2b_1126_0058` | [g2b](reports/g2b_2026_11_26.md) | solo of 2 624: 743 → 1 118 → 1 393 → 1 566 → 1 716 at 4, 8, 12, 16 steps (g2a 1 686 and 1 785 at 4 and 6); rows against g2a's 6-step rows 64 up, 76 down | – |
 | – | the crops the two readers split on | `split_1126_0910` | [g2b](reports/g2b_2026_11_26.md), second part | 2 002 crops: hayai only 1 308, tuned only 694 | – |
+| 7 | a clause of two or three short strings, on the read scenes and on the pool's two-string templates | `wmulti_1126_1252`, `enmulti_1126_1258`, `tread_1126_1306` | [multi_read](reports/multi_read_2026_11_26.md) | kana pairs with both strings read: 0 of 288 pages on the read scenes, 0 of 96 on the templates | – |
+| 7 | the sentence micro arm: 400 groups of kana strings from kmix's rows, the backward over two steps | `sentm_1126_1331` | [sentm](reports/sentm_2026_11_26.md) | val strings' positions hit 0.345 → 0.331 of 288 pages; kana alone 351 → 354 of 656 | – |
+| 7 | which way the micro arm's string pages are lettered | `probes/orient_read.py` on `sentm_1126_1331` | [sentm](reports/sentm_2026_11_26.md), second part | start rows: 73 tall, 250 wide of 384 | – |
 
 - The verdicts on items 2, 3 and 3c are the user's, in each report's Facts. Item 3c's is the
   call for item 4: the shared start at 6 steps.

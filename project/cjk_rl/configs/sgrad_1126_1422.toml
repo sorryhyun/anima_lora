@@ -1,0 +1,48 @@
+# Sentence gradient (probes/sent_grad.py, no training): a row's gradient a render, on
+#   captions of its glyph alone and on strings that hold it, split by the step it came
+#   through. Opened on sentm_1126_1331's result (400 groups: the val strings' positions
+#   hit 0.345 -> 0.331, the kana alone 351 -> 354 of 656): its rows' successive mean
+#   gradients have a cosine of 0.004 (282 pairs), against 0.083 in g2b_1126_0058 and 0.059
+#   in g1long_1125_1335. sentm changed the caption (a glyph -> a string) and the backward
+#   (one step -> two) together; this run separates them.
+# Question: which of the two took the agreement of a row's renders away.
+#   - `across` over 0 for glyph / last and near 0 for string / last -> a string's loss
+#     does not give a row a direction at 16 renders; the next arm changes what a row
+#     averages over (more renders a step, or glyph groups mixed in), not the backward.
+#   - `across` over 0 for the `last` part and near 0 for `sum` on both kinds -> the step
+#     before the last drowns it; the next arm is the strings with back_steps = 1, or the
+#     two parts scaled apart.
+#   - near 0 everywhere -> the measure does not see what g2b's cosine saw; read
+#     `within` and the norms before anything else.
+# Rows: the eight the micro arm stepped most among the kana (っ い ん う あ た な か) at the
+#   rows s1 starts from (kmix's). 6 groups a row and kind on the first 6 training scenes,
+#   seeds 3000 + 4 group; a string is the first of the draw past index 400 that holds
+#   the glyph.
+# Records it rests on:
+#   - reports/gd_g0d_2026_11_25.md: a step's share of the four-step ce gradient on a
+#     row, steps 0 - 3: 0.48 / 0.40 / 0.33 / 0.08 (single glyphs).
+#   - sentm_1126_1331's log: 3 924 of 6 416 row-renders over the clip.
+# Read: the table of the probe (across, within, norms, the cosine of the two parts).
+#   Claude's read; it sets the next arm proposed to the user.
+# Bars: `across` is read against its spread over the 8 rows (printed); a pair of unit
+#   vectors of 1 024 dims has a cosine of sd 0.031.
+# Cost: 96 groups at about 4.5 s, 7 min.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+keys = "っいんうあたなか"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local
+skip = 400
+groups_a_row = 6
+seed0 = 3000
+conf_min = 0.6
+clip = 0.12
+hayai_weight = 0.2
+reader_compile = true
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"

@@ -1,0 +1,42 @@
+# Multi read (probes/row_line.py, forward only): captions that ask for two or three short
+#   kana strings in one clause (`Text reads as "A", "B".`, the training captions' form for
+#   several bubbles), read on kmix_1126_1158's rows. No training. wread_1126_1207 with the
+#   quote holding several strings; the rows, frame, scenes, seeds and readers are its.
+#   The user, 11-26, on the sentence run: "짧은 단어 여러개 들어가는 케이스도 있으면 어떨까 해.
+#   예를 들어 \"ああっ\" \"こんいちは\" 식으로?"
+# Question: where captions of several short strings stand on kmix's rows before any
+#   training on them.
+#   - each string in a box of its own about as often as it is alone -> such captions can
+#     go into the sentence run's draw as they are, each string scored on its own box.
+#   - strings joined in one box, one of them dropped, or one written twice -> that is a
+#     failure the single-string draw never shows the rows, and the run's loss needs the
+#     assignment of strings to boxes before such captions go in.
+# Strings: wread_1126_1207's 36 strings of 2 - 4 glyphs (the pool's kana-only strings).
+#   18 pairs (random.Random(1126), each string once) in both orders, and 12 triples (the
+#   same generator's next shuffle, each string once): 48 captions. Pairs hold 4 - 8 glyphs,
+#   triples 6 - 12.
+# Records it rests on:
+#   - wread_1126_1207 (results/20261126-1215-row_line-wread_1126_1207/, local): the same
+#     strings one a caption on the same rows, scenes and seeds; the whole string alone in
+#     a box on 52, 21 and 13 of 96 pages at 2, 3 and 4 glyphs.
+# Read: probes/multi_read.py --alone <wread's result> --sheets. Per page: every string
+#   read exactly by a box, the same with as many boxes as strings, a box holding two of
+#   the strings, a string in two boxes, no box. Per string, by its place in the clause and
+#   its length: read exactly by a box, positions hit in its assigned box, beside the same
+#   strings alone. The record's own solo and ce are against the strings run together.
+#   Labelled sheets, a caption a file (one arm). Claude's read, sent to the user.
+# Bars: spread unknown (no twin). 8 pages a caption; a string is on 16 pages of a pair
+#   (8 in each place) and 8 of a triple, against 8 alone.
+# Cost: 384 renders and their reads at about 0.54 s, 4 min.
+
+rows = "seed_1008"
+multi_file = "output/cjk_rl/pool/multi_wmulti_1126_1252.json"  # local
+frame = "bubble"
+read_scenes = [6, 12, 45, 15]
+read_seeds = [0, 1]
+conf_min = 0.6
+shuffle_seed = 1126
+pairs = []
+
+[arms]
+kmix = { run = "kmix_1126_1158", save = "mix", saved = true }

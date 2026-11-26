@@ -22,7 +22,11 @@ and
 null the next word). A word holds no trained row, so every arm reads it on the same rows.
 ``words`` (or ``words_file``, a JSON list under the repo) is a list of strings of trained
 glyphs (class ``word``, the null the next string): an arm displaces the rows of every glyph in them as it does the config's glyphs,
-and ``probes/word_read.py`` counts their reads per position. An arm may name its own
+and ``probes/word_read.py`` counts their reads per position. ``multi_file`` is a JSON list
+of lists of such strings (class ``multi``): a caption asks for a list's strings in one clause
+(``Text reads as "A", "B".``), its key is the strings joined by ``", "``, and
+``probes/multi_read.py`` counts each string against a box of its own; the record's own
+``solo`` and ``ce`` are against the strings run together. An arm may name its own
 ``run``; a config with no ``run`` of its own has no reference records.
 
 The run's own reads (``results/*-g1-<run>/records.json``: the start rows and each save,
@@ -62,7 +66,13 @@ def tables(cfg: dict, gl: list, start) -> tuple:
 
     saves, out, moved = {}, {}, {}
     names = list(  # the glyphs an arm displaces: the config's, and its words' glyphs
-        dict.fromkeys(g for cls, k, _ in gl for g in (k if cls == "word" else [k]))
+        dict.fromkeys(
+            g
+            for cls, k, _ in gl
+            for g in (
+                k if cls == "word" else k.replace(g1.SEP, "") if cls == "multi" else [k]
+            )
+        )
     )
     for arm, spec in cfg["arms"].items():
         if "save" not in spec:
@@ -132,6 +142,11 @@ def main() -> None:
         words = json.loads((T.REPO / cfg["words_file"]).read_text("utf-8"))
     words = words[: 2 if a.smoke else None]
     gl += [("word", w, words[(n + 1) % len(words)]) for n, w in enumerate(words)]
+    multi = []  # a quote of several strings, a local list of lists
+    if cfg.get("multi_file"):
+        multi = json.loads((T.REPO / cfg["multi_file"]).read_text("utf-8"))
+    multi = [g1.SEP.join(m) for m in multi][: 2 if a.smoke else None]
+    gl += [("multi", m, multi[(n + 1) % len(multi)]) for n, m in enumerate(multi)]
     keys = {k for _, k, _ in gl}
     ref_file, ref = None, []
     if cfg.get("run"):
@@ -158,7 +173,7 @@ def main() -> None:
         flush=True,
     )
     for arm, m in moved.items():
-        v = sorted(m.values())
+        v = sorted(m.values()) or [0.0]  # an arm of EN words alone moves no row
         print(f"  {arm}: rows moved {v[0]} … {v[-1]} row norms", flush=True)
     recs = ref + g1.read(pol, rdr, cfg, gl, sc, scenes, arms, out, hy)
 

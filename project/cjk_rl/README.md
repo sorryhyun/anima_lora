@@ -9,7 +9,9 @@ It has two stages. The first (2026-11-13) ran GRPO on sentence captions; its arm
 nothing on the ruler ([reports/p1_2026_11_13.md](reports/p1_2026_11_13.md)), and its other
 arms ([proposal.md](proposal.md)) wait. The second, the glyph stage (2026-11-25), is the one
 running: one glyph a caption, and the reader's loss carried back to that glyph's row by
-gradient (G-D). The next step is in [plan.md](plan.md), item 7, and [sent_rl.md](sent_rl.md).
+gradient (G-D). On the kana rows it trained, the sentence loop (`src/s1.py`) ran a micro
+arm that moved nothing, and the line is stopped there on the user's word (2026-11-26):
+[plan.md](plan.md), item 7, and [sent_rl.md](sent_rl.md).
 
 ## The glyph stage, as it runs
 
@@ -190,6 +192,17 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
     at 16 steps with the step taper, the return and the half score; solo 743 → 1 716 of
     2 624 (g2a's 6-step rows 1 785), the rows that do not start without the shared start,
     the returns counted. Second part: 2 002 crops the tuned reader and hayai split on.
+  - [multi_read_2026_11_26.md](reports/multi_read_2026_11_26.md) — a clause of two or three
+    short strings on kmix's rows and in EN, forward only: one bubble a page on the read
+    scenes, no page of 288 kana pairs or 128 EN pairs with both strings read; the kana in
+    the one bubble mix the two strings. Second part: the pool's two-string templates
+    (`tread_1126_1306`), two boxes a page whether one string or two are asked, the asked
+    kana string read on 8 of 96 pages alone.
+  - [sentm_2026_11_26.md](reports/sentm_2026_11_26.md) — the sentence micro arm
+    (`sentm_1126_1331`): 400 groups of kana strings from kmix's rows, the read of strings
+    0.345 → 0.331 of positions and the kana alone 351 → 354 of 656, a row's successive
+    gradients at a cosine of 0.004. Second part: the string pages are wide two times in
+    three where the labels are vertical five in six.
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -201,6 +214,9 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
 - `src/g1.py` — G1's loop on that path (a row steps along the momentum of its renders' mean
   gradient, from the start rows or from a shared start) and its read on held-out scenes, at
   each save, with blind sheets.
+- `src/s1.py` — the sentence loop on G-D's path: a string a caption, a render's gradient to
+  every row in its quote, the backward over the last `back_steps` steps, a row's score by
+  position, and its read (val strings, train labels not trained on, the kana alone).
 - `probes/` — `grpo_p0.py` (P0), `reader_batch.py` (the reward reader). Both run on the
   reseed line's package, ruler and readers (`../cjk_anima_reseed/{reseed,src}`).
   `position_read.py` (CPU) reads the ruler results' `renders.json`. `turbo_read.py` renders
@@ -220,7 +236,14 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   in a prompt of its config and reads them beside the start rows. `row_walk.py` (CPU) counts
   how far a G1 run's rows moved and how much of it is one direction, `row_geom.py` (CPU) where
   the trained rows sit in the table before and after; `row_line.py` reads a run's saved rows
-  displaced along what they learned, with no training. `g2_rows.py` (CPU) reads a G1 run's
+  displaced along what they learned, with no training; `word_read.py` (CPU) counts its
+  string pages per position, and `multi_read.py` (CPU) its pages that ask for several strings
+  in one clause, each string against a box of its own. `templ_read.py` renders and reads
+  pool templates of several dialogue strings with their strings swapped for short ones, a
+  pair and each string alone. `sent_strings.py` (CPU) draws `s1.py`'s strings from the OCR
+  reader's labels; `orient_read.py` counts which way an `s1.py` run's string pages are
+  lettered; `sent_grad.py` keeps a row's gradient a render on glyph and string captions,
+  by the step it came through (not run to its end). `g2_rows.py` (CPU) reads a G1 run's
   records and log per row and sorts the rows into the plan's groups (not learned, pushed
   past the glyph, a reader's problem), with labelled sheets of those rows.
 - `configs/` — one file a run, its question and gate in the header.

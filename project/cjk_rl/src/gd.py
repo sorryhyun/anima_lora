@@ -218,6 +218,25 @@ class Policy:
         assert len(ext) == 1, (caption[-24:], ext)
         return self.r.delta.index[ext[0]]
 
+    def rows_in(self, caption: str) -> list:
+        """The index in ``raw`` of each ext row of the caption's quote, in order
+        (the tokenizer alone; a row the table does not hold is left out)."""
+        from library.anima.ext_vocab import T5_TABLE_SIZE
+        from library.anima.vocab_pack import resolve_active_pack
+        from library.inference.text import ensure_text_strategies, process_escape
+
+        tok, _ = ensure_text_strategies(
+            self.r.args.text_encoder, vocab_pack=resolve_active_pack(self.r.args) or ""
+        )
+        out = tok.tokenize([process_escape(caption)])
+        ids = [int(v) for v, m in zip(out[2][0].tolist(), out[3][0].tolist()) if m]
+        index = self.r.delta.index
+        return [
+            index[i - T5_TABLE_SIZE]
+            for i in ids
+            if i >= T5_TABLE_SIZE and i - T5_TABLE_SIZE in index
+        ]
+
     def row_grads(self, e_graph, G):
         """``G`` ``(B, 512, D)``, a cotangent of the embedding per render →
         ``(B, rows, dim)`` on ``raw`` (``e_graph``: :meth:`embed` with ``grad``)."""
@@ -320,19 +339,34 @@ class Policy:
                 x = self.euler(i, x, self.forward(i, x, e))
             return x
 
-    def last(self, x, e):
+    def inputs(self, x0, e, n: int) -> list:
+        """No graph: the inputs of the last ``n`` steps, in step order."""
+        torch = self.torch
+        with torch.no_grad():
+            xs, x = [], x0
+            for i in range(self.steps - 1):
+                xs.append(x)
+                x = self.euler(i, x, self.forward(i, x, e))
+            xs.append(x)
+        return xs[-n:]
+
+    def last(self, x, e, wrt_x: bool = False):
         """The last step with a graph: ``(px, e_leaf)``, the pixel head's image (not
         clamped) and the embedding leaf ``(B, 512, D)`` its graph ends in. The step
         runs once: this forward is the render's own last step. ``x`` carries no
-        gradient (a one-step backward treats the last step's input as given)."""
+        gradient (a one-step backward treats the last step's input as given); with
+        ``wrt_x`` it is a leaf of the graph too and comes back third, for a backward
+        that goes on to the step before (:meth:`vjp`)."""
         torch = self.torch
         x = x.detach()
+        if wrt_x:
+            x = x.clone().requires_grad_(True)
         ei = e.detach().float().expand(x.shape[0], -1, -1).clone().requires_grad_(True)
         with torch.enable_grad():
             self.forward(self.steps - 1, x, ei)
             px = self.decode(x)
         self.feat = None
-        return px, ei
+        return (px, ei, x) if wrt_x else (px, ei)
 
     def vjp(self, i: int, x, e, cot):
         """Step ``i`` again with a graph, ``grad_bs`` renders a forward. ``cot``: the
@@ -382,6 +416,7 @@ class Reader:
         self.ocr.model.requires_grad_(False)
         self.det.model.requires_grad_(False)
         self.device = device
+        self.boundary = 0  # ce targets whose labels came from the prompt's length
         self.set_attn(attn)
 
     def compile(self) -> None:
@@ -492,8 +527,22 @@ class Reader:
         labels = torch.full_like(enc["input_ids"], -100)
         for r, t in enumerate(texts):
             tid = tok(t + tok.eos_token, add_special_tokens=False).input_ids
-            assert enc["input_ids"][r, -len(tid) :].tolist() == tid, (t, "boundary")
-            labels[r, -len(tid) :] = torch.tensor(tid)
+            if enc["input_ids"][r, -len(tid) :].tolist() == tid:
+                labels[r, -len(tid) :] = torch.tensor(tid)
+                continue
+            # the text's first token merged with the prompt's last: the labels from
+            # the prompt's length, as the training collate takes them
+            n_p = proc(
+                text=[ocr.prompt],
+                images=[images[r]],
+                return_tensors="pt",
+                images_kwargs={
+                    "size": {"shortest_edge": ocr.min_edge, "longest_edge": MAX_PIXELS}
+                },
+            )["input_ids"].shape[-1]
+            n = int(enc["attention_mask"][r].sum()) - n_p
+            labels[r, -n:] = enc["input_ids"][r, -n:]
+            self.boundary += 1
         dev = pages[0].device
         mean = torch.tensor(ip.image_mean, device=dev).view(1, 3, 1, 1)
         std = torch.tensor(ip.image_std, device=dev).view(1, 3, 1, 1)

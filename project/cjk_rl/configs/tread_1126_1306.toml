@@ -1,0 +1,41 @@
+# Template read (probes/templ_read.py, forward only): the pool's templates of two dialogue
+#   strings, the two strings swapped for a pair of short kana strings or of EN words, on
+#   kmix_1126_1158's rows. No training. The user, 11-26, on reports/multi_read_2026_11_26.md
+#   (one bubble a page on the glyph stage's scenes) and the two sources of scenes it left
+#   open: "다중 문자열 템플릿이 모델도 텍스트를 잘 쓸수 있지 않을까 싶긴 해. 1번 ㄱㄱ"
+# Question: does the model draw a box a string on captions whose image held two bubbles.
+#   - pair pages mostly hold two boxes and both EN words read -> the templates are the
+#     scenes for captions of several strings in the sentence run, and the kana pairs' count
+#     beside the same strings alone says what the run has to mend there.
+#   - one box a page here as well -> the 4-step student draws one bubble for a clause of
+#     two strings whatever the scene, and the case waits or needs another way in.
+# Templates: pool items (output/cjk_rl/pool/pool.json, local) of track dialogue with two
+#   strings and no SFX clause, a stem once, at the two commonest shapes; 24 drawn
+#   (random.Random(1126)). The caption is the template's with nothing changed but the two
+#   quoted strings, so the clause is "Japanese text reads as" for the EN words too (the
+#   training captions hold no other text clause) and the tags and artist stay.
+# Strings: kana, wmulti_1126_1252's 18 pairs (2 - 4 glyphs a string); EN,
+#   enmulti_1126_1258's 8 pairs. Template t takes pair t mod 18 and t mod 8. Four captions
+#   a template and kind: "A", "B" / "B", "A" / "A" alone / "B" alone, at seeds 0 and 1.
+# What it cannot separate: these captions differ from the glyph stage's scenes in the
+#   clause's wording, the text tags a template holds, the shape and the artist, all at once.
+# Records it rests on:
+#   - reports/multi_read_2026_11_26.md: on the read scenes no page of 288 kana pairs or
+#     128 EN pairs with both strings each read by a box; 1.24 and 1.02 boxes a page.
+# Read: probes/multi_read.py <result> --alone <result>: pages with every string read by a
+#   box, boxes a page, a string's own count in a pair beside the same string alone on the
+#   same template; the same per template in result.json. Labelled sheets, a template a
+#   file. Claude's read, sent to the user.
+# Bars: spread unknown (no twin). 4 pair pages and 4 alone pages a template and kind.
+# Cost: 384 renders and their reads at about 0.6 s, 4 min, and two shapes' compile.
+
+rows = "seed_1008"
+arm = { run = "kmix_1126_1158", save = "mix", saved = true }
+strings = 2
+shapes = 2
+templates = 24
+kana_file = "output/cjk_rl/pool/multi_wmulti_1126_1252.json"  # local
+kana_pairs = 18
+en = ["book", "home", "snow", "sun", "rain", "yes", "open", "moon", "exit", "cafe", "star", "help", "love", "no", "stop", "sale"]
+read_seeds = [0, 1]
+shuffle_seed = 1126

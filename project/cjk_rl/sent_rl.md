@@ -4,6 +4,15 @@ What the sentence run trains, on what strings, and how it is read. The run's set
 question and gate go in its config header when it is submitted; this file is the plan before
 that and names the records it rests on. Where it stands in the line: [plan.md](plan.md) item 7.
 
+## State (2026-11-26)
+
+The micro arm ran (`sentm_1126_1331`, 400 groups): the read of strings did not move and
+the kana alone held ([reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)). A row's
+successive mean gradients agree at 0.004, against 0.083 in g2b. The line is stopped on the
+user's word, and what comes next is the user's call. `sgrad_1126_1422`
+(`probes/sent_grad.py`, 7 min, stopped unfinished) would say whether the string or the
+two-step backward took a row's direction away.
+
 ## Decided (the user's calls, 2026-11-26)
 
 - Start: the kana rows `kmix_1126_1158` (g2b's 16-step rows with ten of g2a's).
@@ -11,6 +20,11 @@ that and names the records it rests on. Where it stands in the line: [plan.md](p
   (`project/ocr_reader/core/crop_dataset.py::normalize_target`, `TARGET_NORM = 10`).
   Punctuation stays in. A blank heart is written as the filled one (`♡` → `♥`) in the quote
   and in the loss's target: the reader in use does not read `♡` yet.
+- From the draw after `sent_strings_s1126` (the micro arm's), a run of two or more `・` is
+  written as one `…`, in the quote and in the loss's target (`probes/sent_strings.py`). The
+  labels hold such a run in 2 343 of 115 529 train mains and 294 of 11 634 val mains
+  (`load_mainsub`, counted 11-26); `sent_strings_s1126` holds it in 1 494 of its 24 891
+  train strings and 131 of its 1 844 val strings.
 - The read's strings come from the reader's val split and are in no train label.
 - A small kana is trained as itself, its target and its read the small glyph (`fold_small`
   off). kmix's 20 small rows were trained with the full-size glyph as their target.
@@ -42,6 +56,23 @@ that and names the records it rests on. Where it stands in the line: [plan.md](p
   | 3 | 22 / 20 / 5 | 0 / 0 / 4 | 0.64 / 0.57 / 0.28 | 0.12 / 0.12 / 0.31 |
   | 4 | 13 / 7 / 1 | 0 / 0 / 1 | 0.55 / 0.50 / 0.27 | 0.04 / 0.05 / 0.20 |
   | 5 – 8 | 0 / 0 / 0 | 0 / 0 / 0 | 0.36 / 0.35 / 0.22 | 0.12 / 0.11 / 0.18 |
+- `wmulti_1126_1252`, `enmulti_1126_1258` (forward only; a clause of two or three short
+  strings, `Text reads as "A", "B".`, on kmix's rows and with EN words;
+  [reports/multi_read_2026_11_26.md](reports/multi_read_2026_11_26.md)): no page of 288 kana
+  pairs or 128 EN pairs with both strings each read by a box; 1.24 and 1.02 boxes a page; a
+  kana string read exactly by a box on 86 of 288 pages alone, 25 and 15 of 288 as a pair's
+  first and second. Spread unknown.
+- `tread_1126_1306` (forward only; 24 pool templates of two dialogue strings, their strings
+  swapped for the same pairs; the same report, second part): 2.27 boxes a kana pair page and
+  2.05 with one string asked; a kana string read exactly by a box on 8 of 96 pages alone, 1
+  and 1 of 96 in a pair. Spread unknown.
+- `sentm_1126_1331` (the micro arm; [reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)):
+  the val strings' positions hit 0.345 → 0.331 over 288 pages, the whole string 10 → 6 of
+  96 at 2 – 4 glyphs and 0 at 5 – 12, the kana alone 351 → 354 of 656; 401 row steps on
+  103 rows; 4.26 s a group, peak 14.12 GiB. Spread unknown.
+- Which way a page is lettered (the same report): the draw's source crops are vertical
+  on 0.83 – 0.90 of them; of the micro arm's 384 string pages at the start rows 73 are
+  tall and 250 wide, and the tall ones are hit at 0.23 of their positions against 0.40.
 - Where a quote's characters go on the T5 side (the active pack with `glyph_route`, jp_v1's
   delta in row norms): a kana its own row (1.2 – 1.5); `ー` its own row (1.52; `―` folds to
   it); `「` `」` 0.9; `。` 0.48, `、` 0.35; `〜` and `~` one row, 0.42; `♥` 0.46, `♡` 0.48, a row
@@ -129,11 +160,36 @@ row-renders, against 4 in the glyph stage.
 - The kana that few label strings hold (ヂ, ヅ, ゔ, ヲ): whether single-glyph groups are mixed
   in for them.
 
+- Captions of several short strings in one clause (the user's suggestion, 11-26: "짧은 단어
+  여러개 들어가는 케이스도 있으면 어떨까 해"). Not in the run as planned above. On the read
+  scenes the model draws one bubble for two strings, in EN as well, and the kana in it are a
+  mix of the two strings
+  ([reports/multi_read_2026_11_26.md](reports/multi_read_2026_11_26.md)). What it needs
+  before it can go into the draw, each the user's call:
+  - scenes that draw a bubble a string. The pool's templates that held two dialogue strings
+    were read on the user's call (`tread_1126_1306`): they draw two boxes whether one string
+    or two are asked, and the asked string is read on 8 of 96 pages alone. Left: new
+    text-free scenes screened by EN pairs under `Text reads as`, as `pscreen_1125_2306`
+    screened the plain frame;
+  - the loss on such a page: each string on a box of its own (`reward.match` assigns them),
+    and what a string with no box left takes;
+  - its share of the groups.
+
+- Vertical lettering (the user, 11-26): strings of three glyphs or more that are not
+  SFX-like should come out in columns, with the prompt as it is. A string's label gives
+  the way it stood (`orient`). Levers named and not tried: a render weighted by whether
+  its box stands that way, `back_steps = 4`, scenes with tall bubbles. The reader's lower
+  count on tall pages comes first: whether it is the lettering or the read.
+- A row's direction in the string loop: more renders a step, glyph groups mixed in, or
+  the backward back to one step. `sgrad_1126_1422` is the read that picks.
+
 ## Order of work
 
 1. `tswap_1126_1209`'s read.
-2. `src/g1.py`: a quote of several rows, a row's renders counted over strings, the score per
-   position, the target's breaks from the read, the backward over two steps (a key, 1 as
-   the runs so far).
-3. The draw of strings as a local file, counted once when built (lengths, rows covered).
-4. A smoke, then a micro arm (about 30 min) with its read, then the run on the user's word.
+2. Done: the loop is `src/s1.py` beside `src/g1.py` (a quote of several rows, a row's
+   renders counted over strings, the score per position, the target's breaks from the
+   read), the two-step backward `back_steps` with `gd.Policy.inputs`, `last(wrt_x)` and
+   `vjp`.
+3. Done: `probes/sent_strings.py` → `output/cjk_rl/pool/sent_strings_s1126.json` (local),
+   24 891 train strings and 1 844 val strings in no train label.
+4. Done to the micro arm: the smoke and `sentm_1126_1331`. The run waits on the user.

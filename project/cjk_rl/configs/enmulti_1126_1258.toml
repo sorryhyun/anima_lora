@@ -1,0 +1,36 @@
+# EN multi read (probes/row_line.py, forward only): wmulti_1126_1252 with EN words in
+#   place of the kana strings, nothing else changed (the frame, scenes, seeds, readers and
+#   rows are its; an EN word holds no trained row).
+# Question: does the model draw a box a string when the clause asks for two or three EN
+#   words on these scenes.
+#   - each word in a box of its own about as often as it is alone -> wmulti's pages (one
+#     box on 273 of 384, its read a blend of the strings) are the kana rows', and
+#     captions of several strings are something the sentence run can train.
+#   - one box a page for EN as well -> the scenes or the 4-step student draw one bubble
+#     whatever is asked, and several strings need other scenes before they are a rows'
+#     question.
+# Strings: enbubble_1125_2258's 16 words; 8 pairs (random.Random(1126), each word once)
+#   in both orders and 5 triples (the generator's next shuffle): 21 captions.
+# Records it rests on:
+#   - wmulti_1126_1252 (results/20261126-1256-row_line-wmulti_1126_1252/, local): kana
+#     pairs and triples on kmix's rows, no page with every string in a box of its own of
+#     384; 1.24 and 1.6 boxes a page.
+#   - enbubble_1125_2258 (results/20261125-2304-row_line-enbubble_1125_2258/): the same
+#     words one a caption, solo 104 of 256 on scenes 6, 45, 15, 35 at seeds 0 - 3.
+# Read: probes/multi_read.py --alone <enbubble's result> --alone_arm en_bubble --sheets;
+#   the words alone are counted on the scenes and seeds the two runs share (6, 45, 15 at
+#   seeds 0, 1). Labelled sheets, a caption a file. Claude's read, sent to the user.
+# Bars: spread unknown (no twin).
+# Cost: 168 renders and their reads at about 0.54 s, 2 min.
+
+rows = "seed_1008"
+multi_file = "project/cjk_rl/assets/multi_enmulti_1126_1258.json"  # local (gitignored); the header rebuilds it
+frame = "bubble"
+read_scenes = [6, 12, 45, 15]
+read_seeds = [0, 1]
+conf_min = 0.6
+shuffle_seed = 1126
+pairs = []
+
+[arms]
+kmix = { run = "kmix_1126_1158", save = "mix", saved = true }
