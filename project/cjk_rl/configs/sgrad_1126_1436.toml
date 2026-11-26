@@ -24,7 +24,7 @@
 #   - sentm_1126_1331's log: a row's successive mean gradients, cosine 0.008 (264 pairs,
 #     returns left out), 0.013 on the rows of 10 steps or more; g2b_1126_0058 0.083
 #     (2 240); 3 924 of 6 416 row-renders over the clip.
-#   - reports/gd_g0d_2026_11_25.md: a step's share of the four-step ce gradient on a
+#   - archive/reports/gd_g0d_2026_11_25.md: a step's share of the four-step ce gradient on a
 #     row, steps 0 - 3: 0.48 / 0.40 / 0.33 / 0.08 (single glyphs).
 #   - the micro arm's 400 strings: 5.7 glyphs and 4.55 trained rows a string.
 # Read: the probe's table (across, within, norms, an own part's cosine with the whole

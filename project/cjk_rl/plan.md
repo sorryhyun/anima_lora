@@ -1,7 +1,7 @@
 # Plan
 
 The current run, what is open, what is parked, and the runs done. How a run goes is in
-[README.md](README.md), what the runs measured in [reports/](reports/). A run's settings,
+[README.md](README.md), what the runs measured in [reports/](reports). A run's settings,
 question and gate go in its config header (`configs/<handle>_mmdd_hhmm.toml`) when it is
 submitted, and this file then names the run.
 
@@ -137,32 +137,33 @@ The glyph stage's leftovers:
 
 ## Done
 
-Solo is of 256 held-out pages (16 glyphs, 4 read scenes, 4 seeds), the start rows first;
+Items 1 – 6 and their reports and configs are in `archive/`. Solo is of 256 held-out pages
+(16 glyphs, 4 read scenes, 4 seeds), the start rows first;
 items 4 and 6 are of 2 624 (164 glyphs). The GRPO stage's runs (11-13) are in the README's
 report table.
 
 | item | what | run | report | number | verdict |
 |---|---|---|---|---|---|
-| – | G0a – c: the tagless frame, the terms' spread, the pixel head against the VAE | `probes/glyph_g0.py` | [glyph_g0](reports/glyph_g0_2026_11_25.md) | pixel head against VAE: sign test p ≥ 0.19 on every term | – |
-| – | the scene pool and the crossed grid | `probes/glyph_scenes.py` | [glyph_scenes](reports/glyph_scenes_2026_11_25.md) | 25 of 128 candidates selected; solo EN 0.57, hiragana 0.27, kanji 0.05 | – |
-| 1 | G-D's path, and G0d | `g0d_1125_1119` | [gd_g0d](reports/gd_g0d_2026_11_25.md) | the last step's ce gradient five decades over Adam's ε (bar: two) | passed |
-| 2 | G1's micro arm: 16 rows, 8 steps | `g1micro_1125_1148` | [g1micro](reports/g1micro_2026_11_25.md) | solo 59 → 132 | adopted on the user's read |
-| – | hayai v2.7 beside the tuned reader | `hayai_1125_1234`, `g0h_1125_1243` | [reader_pair](reports/reader_pair_2026_11_25.md), [hayai_g0](reports/hayai_g0_2026_11_25.md) | hayai counts the micro arm 60 → 125; the two row gradients' cosine 0.21 | – |
-| – | the reader side of a group, timed | `room_1125_1324` | [reader_room](reports/reader_room_2026_11_25.md) | 0.75 s a group | – |
-| – | `reader_compile` + `skip_lone_read` in the loop, the read's ce a group and its saves on threads | `timea_1126_1240`, `timeb_1126_1238`, `timec_1126_1247` | [reader_room](reports/reader_room_2026_11_25.md), third part | a training group 3.25 → 2.90 s, a read group 2.20 → 1.99 s | – |
-| – | a one-box training page left unread (`skip_lone_read`) | `room_1125_2155`, `lone_1125_2200` (smoke) | [reader_room](reports/reader_room_2026_11_25.md), second part | read 0.317 → 0.148 s a group; same box and image gradient on 256 of 256 pages | – |
-| 3 | G1 long: 16 rows, 24 steps, hayai's term | `g1long_1125_1335` | [g1long](reports/g1long_2026_11_25.md) | solo 59 → 136 → 175 → 199 at 8, 16, 24 steps | adopted on the user's read |
-| – | the 24-step rows on the base model, sign prompt | `sign_1125_1504` | [g1long](reports/g1long_2026_11_25.md), second part | 4 glyphs, 2 seeds | – |
-| 3b | the row line: the rows' walk, their place in the table, forward reads | `line_1125_1517`, `line_1125_1527` | [row_line](reports/row_line_2026_11_25.md) | solo at twice the 8-step displacement 122, at the other rows' mean displacement 112, at a drawn direction 59 | – |
-| 3c | G1 from the shared start: 16 rows, 8 steps | `g1shared_1125_1538` | [g1shared](reports/g1shared_2026_11_25.md) | solo 112 → 148 → 156 at 0, 4, 8 steps (hayai 104 → 147 → 167) | adopted on the user's read |
-| 4 | G2a: the 81 hiragana and the 83 katakana, 6 steps from the shared start, small kana folded | `g2a_1125_1642` | [g2a](reports/g2a_2026_11_25.md) | solo 743 → 1 322 → 1 686 → 1 785 at the start, the shifted start, 4, 6 steps (hayai 835 → 1 420 → 1 762 → 1 840) | – |
-| – | g2a's rows read with no bubble tag | `plain_1125_2249` | [plain](reports/plain_2026_11_25.md) | 16 rows, solo of 256 plain pages 22 → 93; on scene 35 0 → 4 of 64 | – |
-| – | EN words on the same scenes, both frames | `enplain_1125_2258`, `enbubble_1125_2258` | [plain](reports/plain_2026_11_25.md) | 16 words, solo of 256: plain 71, bubble 104 | – |
-| – | the plain screen: new scenes by their EN count with no bubble tag | `pscreen_1125_2306` | [pscreen](reports/pscreen_2026_11_25.md) | 160 scenes, EN solo 0.205; 24 at 8 of 16 or more | – |
-| – | 16 rows in the plain and bubble frames on 12 of the plain screen's scenes, 6 steps | `mix_1125_2338` | [mix](reports/mix_2026_11_26.md) | solo of 512 a frame, this run against g2a's rows: plain 202 against 238, bubble 297 against 329 | – |
-| 6 | G2b: the kana from jp_v1's rows, 16 steps, with `taper`, `[back]`, `near_score` | `g2b_1126_0058` | [g2b](reports/g2b_2026_11_26.md) | solo 743 → 1 118 → 1 393 → 1 566 → 1 716 at 4, 8, 12, 16 steps (g2a 1 686 and 1 785 at 4 and 6); rows against g2a's 6-step rows 64 up, 76 down | – |
-| – | the crops the two readers split on | `split_1126_0910` | [g2b](reports/g2b_2026_11_26.md), second part | 2 002 crops: hayai only 1 308, tuned only 694 | – |
-| 7 | the kana rows: g2b's 16-step rows with ten of g2a's (っ え グ ざ ヂ の な ゥ や at 6 steps, ヒ at 4) | `kmix_1126_1158` (`probes/rows_mix.py`) | – | ten rows where g2b reads 5 or more of 16 under g2a | adopted on the user's read |
+| – | G0a – c: the tagless frame, the terms' spread, the pixel head against the VAE | `probes/glyph_g0.py` | [glyph_g0](archive/reports/glyph_g0_2026_11_25.md) | pixel head against VAE: sign test p ≥ 0.19 on every term | – |
+| – | the scene pool and the crossed grid | `probes/glyph_scenes.py` | [glyph_scenes](archive/reports/glyph_scenes_2026_11_25.md) | 25 of 128 candidates selected; solo EN 0.57, hiragana 0.27, kanji 0.05 | – |
+| 1 | G-D's path, and G0d | `g0d_1125_1119` | [gd_g0d](archive/reports/gd_g0d_2026_11_25.md) | the last step's ce gradient five decades over Adam's ε (bar: two) | passed |
+| 2 | G1's micro arm: 16 rows, 8 steps | `g1micro_1125_1148` | [g1micro](archive/reports/g1micro_2026_11_25.md) | solo 59 → 132 | adopted on the user's read |
+| – | hayai v2.7 beside the tuned reader | `hayai_1125_1234`, `g0h_1125_1243` | [reader_pair](archive/reports/reader_pair_2026_11_25.md), [hayai_g0](archive/reports/hayai_g0_2026_11_25.md) | hayai counts the micro arm 60 → 125; the two row gradients' cosine 0.21 | – |
+| – | the reader side of a group, timed | `room_1125_1324` | [reader_room](archive/reports/reader_room_2026_11_25.md) | 0.75 s a group | – |
+| – | `reader_compile` + `skip_lone_read` in the loop, the read's ce a group and its saves on threads | `timea_1126_1240`, `timeb_1126_1238`, `timec_1126_1247` | [reader_room](archive/reports/reader_room_2026_11_25.md), third part | a training group 3.25 → 2.90 s, a read group 2.20 → 1.99 s | – |
+| – | a one-box training page left unread (`skip_lone_read`) | `room_1125_2155`, `lone_1125_2200` (smoke) | [reader_room](archive/reports/reader_room_2026_11_25.md), second part | read 0.317 → 0.148 s a group; same box and image gradient on 256 of 256 pages | – |
+| 3 | G1 long: 16 rows, 24 steps, hayai's term | `g1long_1125_1335` | [g1long](archive/reports/g1long_2026_11_25.md) | solo 59 → 136 → 175 → 199 at 8, 16, 24 steps | adopted on the user's read |
+| – | the 24-step rows on the base model, sign prompt | `sign_1125_1504` | [g1long](archive/reports/g1long_2026_11_25.md), second part | 4 glyphs, 2 seeds | – |
+| 3b | the row line: the rows' walk, their place in the table, forward reads | `line_1125_1517`, `line_1125_1527` | [row_line](archive/reports/row_line_2026_11_25.md) | solo at twice the 8-step displacement 122, at the other rows' mean displacement 112, at a drawn direction 59 | – |
+| 3c | G1 from the shared start: 16 rows, 8 steps | `g1shared_1125_1538` | [g1shared](archive/reports/g1shared_2026_11_25.md) | solo 112 → 148 → 156 at 0, 4, 8 steps (hayai 104 → 147 → 167) | adopted on the user's read |
+| 4 | G2a: the 81 hiragana and the 83 katakana, 6 steps from the shared start, small kana folded | `g2a_1125_1642` | [g2a](archive/reports/g2a_2026_11_25.md) | solo 743 → 1 322 → 1 686 → 1 785 at the start, the shifted start, 4, 6 steps (hayai 835 → 1 420 → 1 762 → 1 840) | – |
+| – | g2a's rows read with no bubble tag | `plain_1125_2249` | [plain](archive/reports/plain_2026_11_25.md) | 16 rows, solo of 256 plain pages 22 → 93; on scene 35 0 → 4 of 64 | – |
+| – | EN words on the same scenes, both frames | `enplain_1125_2258`, `enbubble_1125_2258` | [plain](archive/reports/plain_2026_11_25.md) | 16 words, solo of 256: plain 71, bubble 104 | – |
+| – | the plain screen: new scenes by their EN count with no bubble tag | `pscreen_1125_2306` | [pscreen](archive/reports/pscreen_2026_11_25.md) | 160 scenes, EN solo 0.205; 24 at 8 of 16 or more | – |
+| – | 16 rows in the plain and bubble frames on 12 of the plain screen's scenes, 6 steps | `mix_1125_2338` | [mix](archive/reports/mix_2026_11_26.md) | solo of 512 a frame, this run against g2a's rows: plain 202 against 238, bubble 297 against 329 | – |
+| 6 | G2b: the kana from jp_v1's rows, 16 steps, with `taper`, `[back]`, `near_score` | `g2b_1126_0058` | [g2b](archive/reports/g2b_2026_11_26.md) | solo 743 → 1 118 → 1 393 → 1 566 → 1 716 at 4, 8, 12, 16 steps (g2a 1 686 and 1 785 at 4 and 6); rows against g2a's 6-step rows 64 up, 76 down | – |
+| – | the crops the two readers split on | `split_1126_0910` | [g2b](archive/reports/g2b_2026_11_26.md), second part | 2 002 crops: hayai only 1 308, tuned only 694 | – |
+| 7 | the kana rows: g2b's 16-step rows with ten of g2a's (っ え グ ざ ヂ の な ゥ や at 6 steps, ヒ at 4) | `kmix_1126_1158` (`archive/probes/rows_mix.py`) | – | ten rows where g2b reads 5 or more of 16 under g2a | adopted on the user's read |
 | 7 | kana strings on jp_v1's and kmix's rows, forward only | `wread_1126_1207` | [sent_prep](reports/sent_prep_2026_11_26.md) | the whole string alone 23 → 86 of 384 pages, none at 5 – 8 glyphs | – |
 | 7 | a render's text swapped at a step | `tswap_1126_1209` | [sent_prep](reports/sent_prep_2026_11_26.md) | B alone at k 0 / 2 / 3: a glyph 80 / 71 / 14, 2 glyphs 63 / 46 / 10 | – |
 | 7 | a clause of two or three short strings, on the read scenes and on the pool's two-string templates | `wmulti_1126_1252`, `enmulti_1126_1258`, `tread_1126_1306` | [multi_read](reports/multi_read_2026_11_26.md) | kana pairs with both strings read: 0 of 288 pages on the read scenes, 0 of 96 on the templates | – |

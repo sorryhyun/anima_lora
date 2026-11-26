@@ -13,7 +13,7 @@ and the runs done are in [plan.md](plan.md).
 
 | stage | dates | what trains | where it stands |
 |---|---|---|---|
-| GRPO (arm R) | 11-13 | jp_v1's rows by GRPO on sentence captions | failed: 300 groups change nothing on the ruler ([p1](reports/p1_2026_11_13.md)) |
+| GRPO (arm R) | 11-13 | jp_v1's rows by GRPO on sentence captions | failed: 300 groups change nothing on the ruler ([p1](archive/reports/p1_2026_11_13.md)) |
 | glyph | 11-25 – 26 | one glyph a caption, the 164 kana | done: solo of 2 624 held-out pages 743 → 1 716 (g2b) / 1 785 (g2a); the kana rows `kmix_1126_1158` |
 | sentence | 11-26 – | kana strings from the reader's labels, from kmix's rows | the window loss's micro arm passed; the run at scale `sents_1126_1856` submitted 11-26 |
 
@@ -128,21 +128,21 @@ sentence loop and its read), `src/loc.py` (a glyph's place from attention).
 The glyph stage:
 
 - 16 rows read alone on 59 of 256 held-out pages before and on 136, 175 and 199 after 8, 16
-  and 24 steps ([g1long](reports/g1long_2026_11_25.md)). On the base model in a sign prompt
+  and 24 steps ([g1long](archive/reports/g1long_2026_11_25.md)). On the base model in a sign prompt
   (8 renders) the trained rows letter one clean glyph.
 - A step's direction is mostly noise, and the noise costs little; twice the step loses. A
   trained row keeps its length and its neighbours and turns about 15°; part of the turn is
   common to all rows, and that part alone lifts a row that spent no render
-  ([row_line](reports/row_line_2026_11_25.md)).
+  ([row_line](archive/reports/row_line_2026_11_25.md)).
 - From the shared start a row needs 4 – 6 steps fewer, and a row that already reads can be
-  pushed past its glyph by the fixed step ([g1shared](reports/g1shared_2026_11_25.md)).
+  pushed past its glyph by the fixed step ([g1shared](archive/reports/g1shared_2026_11_25.md)).
 - The 164 kana rows read alone on 0.28 of held-out pages before, 0.50 at the shared start and
-  0.68 after 6 steps ([g2a](reports/g2a_2026_11_25.md)); from jp_v1's rows with no shared
+  0.68 after 6 steps ([g2a](archive/reports/g2a_2026_11_25.md)); from jp_v1's rows with no shared
   start, 0.65 after 16 guarded steps, and a few (え, っ, の) do not start
-  ([g2b](reports/g2b_2026_11_26.md)).
+  ([g2b](archive/reports/g2b_2026_11_26.md)).
 - Without the `speech bubble` tag the rows read at about EN's level, and the model letters
-  EN on a fifth of plain pages ([plain](reports/plain_2026_11_25.md),
-  [pscreen](reports/pscreen_2026_11_25.md), [mix](reports/mix_2026_11_26.md)).
+  EN on a fifth of plain pages ([plain](archive/reports/plain_2026_11_25.md),
+  [pscreen](archive/reports/pscreen_2026_11_25.md), [mix](archive/reports/mix_2026_11_26.md)).
 
 The sentence stage:
 
@@ -178,7 +178,7 @@ The glyph stage (the user's calls, 2026-11-25 – 26):
 - G-D is the arm; GRPO on the glyph reward is out.
 - Scenes come from artists whose captions hold little text, or from captions that had no OCR
   clause, picked by the relaxed rule of
-  [glyph_scenes](reports/glyph_scenes_2026_11_25.md). Training and read scenes are split by
+  [glyph_scenes](archive/reports/glyph_scenes_2026_11_25.md). Training and read scenes are split by
   artist folder.
 - A box read under a confidence of about 0.6 counts as nothing drawn. A page with no box
   takes the detector's own score as its signal to draw.
@@ -201,42 +201,53 @@ The sentence stage (the user's calls, 2026-11-26):
 - [plan.md](plan.md) — the current run, what is open, what is parked, the runs done.
 - [turbo_refl.md](turbo_refl.md) — the method as a note: what it is, what has been measured,
   the conditions it seems to need, open points.
-- `archive/` — the superseded proposals and the sentence stage's planning file.
-- `configs/` — one file a run, its question and gate in the header.
+- `src/` — the loops and the path (below).
+- `probes/`, `configs/`, `reports/` — the sentence stage's (from `kmix_1126_1158` on), and the
+  probes the live code imports or the open items use.
+- `archive/` — the GRPO and glyph stages' records: the superseded proposals and the sentence
+  stage's planning file, `archive/reports/`, `archive/configs/` (every config before
+  `kmix_1126_1158`, and the `time*` timings) and `archive/probes/` (probes no live code
+  imports). Archived probes are not kept runnable where they sit; `git mv` one back to run it.
+  `src/g1.py`'s `start_from` looks in `archive/configs/` when `configs/` has no such run.
 - `assets/` — scene prompts (`glyph_scenes.json`, `plain_scenes.json`, gitignored) and small
   run inputs.
 - `results/` (gitignored) — one directory a probe run; renders under `output/cjk_rl/`.
 
-### reports/
+### reports/ (the sentence stage)
 
 | report | runs | what |
 |---|---|---|
-| [ruler_turbo](reports/ruler_turbo_2026_11_13.md) | – | the 64-string ruler on base / merged14 / merged14 + v3: the soup loses the string, the turbo is a fair proxy |
-| [p0](reports/p0_2026_11_13.md) | – | GRPO's P0: sampler (SDE a = 0.7), group spread, cost of one update |
-| [p1](reports/p1_2026_11_13.md) | – | P1: 300 GRPO groups on the rows change nothing on the ruler |
-| [reward_reader](reports/reward_reader_2026_11_13.md) | – | the reader beside the update: int8 / fp8 dropped, group-batched read, tuned reader only |
-| [position_read](reports/position_read_2026_11_25.md) | – | the ruler's reads aligned per bubble: hits by position, substitutions, the EN references |
-| [turbo_read](reports/turbo_read_2026_11_25.md) | – | fresh renders on `m15v11`: the ruler at four seeds, a kanji grid |
-| [glyph_g0](reports/glyph_g0_2026_11_25.md) | – | the tagless frame with and without `speech bubble`, the terms' spread, the pixel head against the VAE |
-| [glyph_scenes](reports/glyph_scenes_2026_11_25.md) | – | the scene pool picked by render (25 of 128), every glyph on four scenes |
-| [gd_g0d](reports/gd_g0d_2026_11_25.md) | `g0d_1125_1119` | G-D's path built and checked: memory, seconds, the row gradient's size and direction |
-| [g1micro](reports/g1micro_2026_11_25.md) | `g1micro_1125_1148` | 16 rows, 8 steps: solo 59 → 132 of 256 |
-| [reader_pair](reports/reader_pair_2026_11_25.md) | `hayai_1125_1234` | hayai v2.7 beside the tuned reader on g1micro's pages: solo 60 → 125 |
-| [hayai_g0](reports/hayai_g0_2026_11_25.md) | `g0h_1125_1243` | hayai's cross-entropy on G1's path: the two row gradients' sizes and cosine |
-| [g1long](reports/g1long_2026_11_25.md) | `g1long_1125_1335`, `sign_1125_1504` | 16 rows, 24 steps: solo 59 → 136 → 175 → 199; the rows on the base model in a sign prompt |
-| [reader_room](reports/reader_room_2026_11_25.md) | `room_*`, `lone_1125_2200`, `time{a,b,c}_*` | the reader side of a group timed; `skip_lone_read`; `reader_compile`: a group 3.25 → 2.90 s |
-| [row_line](reports/row_line_2026_11_25.md) | `line_1125_1517`, `line_1125_1527` | a step against a walk on noise; the rows at twice their displacement (122) and at the others' mean displacement (112) |
-| [g1shared](reports/g1shared_2026_11_25.md) | `g1shared_1125_1538` | from the shared start: solo 112 → 148 → 156 at 0, 4, 8 steps |
-| [g2a](reports/g2a_2026_11_25.md) | `g2a_1125_1642` | the 164 kana, 6 steps from the shared start: solo 743 → 1 322 → 1 686 → 1 785 of 2 624 |
-| [plain](reports/plain_2026_11_25.md) | `plain_1125_2249`, `en{plain,bubble}_1125_2258` | g2a's rows with no bubble tag: 22 → 93 of 256; EN words 71 (bubble 104) |
-| [pscreen](reports/pscreen_2026_11_25.md) | `pscreen_1125_2306` | 160 scenes by their EN count with no bubble tag: 0.205 of renders |
-| [mix](reports/mix_2026_11_26.md) | `mix_1125_2338` | 16 rows trained in both frames: under g2a's in both (plain 202 / 238, bubble 297 / 329 of 512) |
-| [g2b](reports/g2b_2026_11_26.md) | `g2b_1126_0058`, `split_1126_0910` | the kana from jp_v1's rows, 16 guarded steps: solo 743 → 1 716; 2 002 crops the two readers split on |
 | [sent_prep](reports/sent_prep_2026_11_26.md) | `wread_1126_1207`, `tswap_1126_1209` | kana strings on kmix's rows; a render's text swapped at a step; the quote's characters and the labels |
 | [multi_read](reports/multi_read_2026_11_26.md) | `wmulti_1126_1252`, `enmulti_1126_1258`, `tread_1126_1306` | a clause of two or three short strings: no kana pair page of 288 with both read |
 | [sentm](reports/sentm_2026_11_26.md) | `sentm_1126_1331` | the sentence micro arm on the string's cross-entropy: val positions hit 0.345 → 0.331; pages wide where labels stand in columns |
 | [sentw](reports/sentw_2026_11_26.md) | `sgrad_*`, `aloc_1126_1501`, `sentw_1126_1528` | the window loss and its micro arm: val positions hit 0.345 → 0.422; passed |
 | [sent_scale](reports/sent_scale_2026_11_26.md) | `qbreak_1126_1751`, `bgrad*_1126_18*`, `bplace_1126_1840` | before the run at scale: line breaks in the quote, a break row's gradient, a page's own wrap as label (17 pages of 480) |
+
+### archive/reports/ (the GRPO and glyph stages)
+
+| report | runs | what |
+|---|---|---|
+| [ruler_turbo](archive/reports/ruler_turbo_2026_11_13.md) | – | the 64-string ruler on base / merged14 / merged14 + v3: the soup loses the string, the turbo is a fair proxy |
+| [p0](archive/reports/p0_2026_11_13.md) | – | GRPO's P0: sampler (SDE a = 0.7), group spread, cost of one update |
+| [p1](archive/reports/p1_2026_11_13.md) | – | P1: 300 GRPO groups on the rows change nothing on the ruler |
+| [reward_reader](archive/reports/reward_reader_2026_11_13.md) | – | the reader beside the update: int8 / fp8 dropped, group-batched read, tuned reader only |
+| [position_read](archive/reports/position_read_2026_11_25.md) | – | the ruler's reads aligned per bubble: hits by position, substitutions, the EN references |
+| [turbo_read](archive/reports/turbo_read_2026_11_25.md) | – | fresh renders on `m15v11`: the ruler at four seeds, a kanji grid |
+| [glyph_g0](archive/reports/glyph_g0_2026_11_25.md) | – | the tagless frame with and without `speech bubble`, the terms' spread, the pixel head against the VAE |
+| [glyph_scenes](archive/reports/glyph_scenes_2026_11_25.md) | – | the scene pool picked by render (25 of 128), every glyph on four scenes |
+| [gd_g0d](archive/reports/gd_g0d_2026_11_25.md) | `g0d_1125_1119` | G-D's path built and checked: memory, seconds, the row gradient's size and direction |
+| [g1micro](archive/reports/g1micro_2026_11_25.md) | `g1micro_1125_1148` | 16 rows, 8 steps: solo 59 → 132 of 256 |
+| [reader_pair](archive/reports/reader_pair_2026_11_25.md) | `hayai_1125_1234` | hayai v2.7 beside the tuned reader on g1micro's pages: solo 60 → 125 |
+| [hayai_g0](archive/reports/hayai_g0_2026_11_25.md) | `g0h_1125_1243` | hayai's cross-entropy on G1's path: the two row gradients' sizes and cosine |
+| [g1long](archive/reports/g1long_2026_11_25.md) | `g1long_1125_1335`, `sign_1125_1504` | 16 rows, 24 steps: solo 59 → 136 → 175 → 199; the rows on the base model in a sign prompt |
+| [reader_room](archive/reports/reader_room_2026_11_25.md) | `room_*`, `lone_1125_2200`, `time{a,b,c}_*` | the reader side of a group timed; `skip_lone_read`; `reader_compile`: a group 3.25 → 2.90 s |
+| [row_line](archive/reports/row_line_2026_11_25.md) | `line_1125_1517`, `line_1125_1527` | a step against a walk on noise; the rows at twice their displacement (122) and at the others' mean displacement (112) |
+| [g1shared](archive/reports/g1shared_2026_11_25.md) | `g1shared_1125_1538` | from the shared start: solo 112 → 148 → 156 at 0, 4, 8 steps |
+| [g2a](archive/reports/g2a_2026_11_25.md) | `g2a_1125_1642` | the 164 kana, 6 steps from the shared start: solo 743 → 1 322 → 1 686 → 1 785 of 2 624 |
+| [plain](archive/reports/plain_2026_11_25.md) | `plain_1125_2249`, `en{plain,bubble}_1125_2258` | g2a's rows with no bubble tag: 22 → 93 of 256; EN words 71 (bubble 104) |
+| [pscreen](archive/reports/pscreen_2026_11_25.md) | `pscreen_1125_2306` | 160 scenes by their EN count with no bubble tag: 0.205 of renders |
+| [mix](archive/reports/mix_2026_11_26.md) | `mix_1125_2338` | 16 rows trained in both frames: under g2a's in both (plain 202 / 238, bubble 297 / 329 of 512) |
+| [g2b](archive/reports/g2b_2026_11_26.md) | `g2b_1126_0058`, `split_1126_0910` | the kana from jp_v1's rows, 16 guarded steps: solo 743 → 1 716; 2 002 crops the two readers split on |
 
 ### src/ and probes/
 
@@ -249,15 +260,14 @@ The sentence stage (the user's calls, 2026-11-26):
 | `src/g1.py` | the glyph loop and its read |
 | `src/s1.py` | the sentence loop and its read |
 | `src/loc.py` | a glyph's place on a generated page from the quote tokens' cross-attention |
-| `probes/grpo_p0.py`, `reader_batch.py` | P0 and the reward reader; run on the reseed line's package, ruler and readers |
-| `probes/position_read.py` (CPU), `turbo_read.py` | the ruler's reads per position; the ruler and a kanji grid rendered on `m15v11` |
-| `probes/glyph_g0.py`, `glyph_scenes.py`, `plain_scenes.py` | the glyph stage's forward probes; scene screens in the bubble and plain frames |
-| `probes/gd_g0d.py`, `hayai_g0.py` | the row gradient of `src/gd.py`; hayai's loss beside the tuned reader's |
-| `probes/reader_pair.py`, `reader_split.py`, `reader_room.py` | both readers on the same crops; the crops they split on (for the reader's training); the reader side of a group timed |
-| `probes/base_sign.py` | a save's rows on another model of the ruler's table, in a prompt of its config |
-| `probes/row_walk.py`, `row_geom.py` (CPU), `row_line.py` | how far a run's rows moved and in what direction; where they sit in the table; rows displaced along what they learned, read with no training |
-| `probes/g2_rows.py` (CPU), `rows_mix.py` | a run's rows sorted into the plan's groups with labelled sheets; a row set mixed from two runs (kmix) |
+| `probes/turbo_read.py`, `position_read.py` (CPU) | the render and read every loop and probe imports; the ruler and a kanji grid on `m15v11` (the transfer read before the v2 preview); the ruler's reads per position |
+| `probes/glyph_g0.py`, `glyph_scenes.py` | the frame, captions and scenes the loops import |
+| `probes/grpo_p0.py` | GRPO's P0; `turbo_read.py` takes its SDE sampler |
+| `probes/plain_scenes.py` | scenes screened by their EN count (the screen a multi-string scene pool would reuse) |
+| `probes/base_sign.py` | a save's rows on another model of the ruler's table, in a prompt of its config (the transfer read) |
+| `probes/row_line.py`, `g2_rows.py` (CPU) | a run's saved rows read with no training (`wread_1126_1207` ran on it); a run's rows sorted into the plan's groups with labelled sheets |
 | `probes/word_read.py`, `multi_read.py` (CPU), `templ_read.py` | string pages per position; clauses of several strings; pool templates of two dialogue strings |
 | `probes/sent_strings.py` (CPU), `orient_read.py`, `text_swap.py` | the sentence loop's strings from the reader's labels; which way string pages are lettered; a render's text swapped at a step |
 | `probes/sent_grad.py`, `attn_loc.py` | a row's gradient a render by step and by loss; whether a quote token's attention window holds its glyph |
 | `probes/quote_break.py`, `break_grad.py`, `break_place.py` | whether a page wraps where the quote breaks; a break row's gradient from the reader's line break; the denoising error at a page's own wrap |
+| `archive/probes/` | `gd_g0d.py` (G-D's row gradient), `hayai_g0.py` (hayai's loss on G1's path), `reader_pair.py` / `reader_split.py` (both readers on the same crops; the crops they split on), `reader_room.py` (the reader side of a group timed), `reader_batch.py` (GRPO's reward reader), `row_walk.py` / `row_geom.py` (CPU; how far rows moved, where they sit in the table), `rows_mix.py` (CPU; kmix's row mix) |

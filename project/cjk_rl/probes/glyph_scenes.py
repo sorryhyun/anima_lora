@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """glyph_scenes — the scene pool of the glyph stage, picked by render (after
-``reports/glyph_g0_2026_11_25.md``; the user's call, 11-25: scenes of artists whose
+``archive/reports/glyph_g0_2026_11_25.md``; the user's call, 11-25: scenes of artists whose
 captions hold little text, or captions that never had an OCR clause).
 
 A candidate is a training caption with no text clause and no lettering tag (so nothing

@@ -1,19 +1,19 @@
 # Sentence RL — kana sentences from kmix (rough plan, opened 2026-11-26)
 
-> Archived 2026-11-26: superseded; the line's live state is in `../README.md` and `../plan.md`. Links below are relative to the line's root.
+> Archived 2026-11-26: superseded; the line's live state is in `../README.md` and `../plan.md`.
 
 What the sentence run trains, on what strings, and how it is read. The run's settings,
 question and gate go in its config header when it is submitted; this file is the plan before
-that and names the records it rests on. Where it stands in the line: [plan.md](plan.md) item 7.
+that and names the records it rests on. Where it stands in the line: [plan.md](../plan.md) item 7.
 
 ## State (2026-11-26)
 
 The micro arm on the string's cross-entropy ran (`sentm_1126_1331`, 400 groups): the read
-of strings did not move ([reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)). The
+of strings did not move ([reports/sentm_2026_11_26.md](../reports/sentm_2026_11_26.md)). The
 user took the line up again the same day, and a second micro arm on the window loss
 (`sentw_1126_1528`, the same 400 strings) moved it: the val strings' positions hit
 0.345 → 0.422 where `sentm` went to 0.331, the kana alone 351 → 345 of 656
-([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), with the three probes that
+([reports/sentw_2026_11_26.md](../reports/sentw_2026_11_26.md), with the three probes that
 led to the loss). The user passed it (11-26: "블라인드 결과는 그냥 안봐도 합격이라 괜찮을듯",
 one of the 36 sheets read). What runs next is the run at scale; its settings are under
 "The run at scale" below.
@@ -67,7 +67,7 @@ is read again on this run's rows.
   | 5 – 8 | 0 / 0 / 0 | 0 / 0 / 0 | 0.36 / 0.35 / 0.22 | 0.12 / 0.11 / 0.18 |
 - `wmulti_1126_1252`, `enmulti_1126_1258` (forward only; a clause of two or three short
   strings, `Text reads as "A", "B".`, on kmix's rows and with EN words;
-  [reports/multi_read_2026_11_26.md](reports/multi_read_2026_11_26.md)): no page of 288 kana
+  [reports/multi_read_2026_11_26.md](../reports/multi_read_2026_11_26.md)): no page of 288 kana
   pairs or 128 EN pairs with both strings each read by a box; 1.24 and 1.02 boxes a page; a
   kana string read exactly by a box on 86 of 288 pages alone, 25 and 15 of 288 as a pair's
   first and second. Spread unknown.
@@ -75,7 +75,7 @@ is read again on this run's rows.
   swapped for the same pairs; the same report, second part): 2.27 boxes a kana pair page and
   2.05 with one string asked; a kana string read exactly by a box on 8 of 96 pages alone, 1
   and 1 of 96 in a pair. Spread unknown.
-- `sentm_1126_1331` (the micro arm; [reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)):
+- `sentm_1126_1331` (the micro arm; [reports/sentm_2026_11_26.md](../reports/sentm_2026_11_26.md)):
   the val strings' positions hit 0.345 → 0.331 over 288 pages, the whole string 10 → 6 of
   96 at 2 – 4 glyphs and 0 at 5 – 12, the kana alone 351 → 354 of 656; 401 row steps on
   103 rows; 4.26 s a group, peak 14.12 GiB. Spread unknown.
@@ -88,7 +88,7 @@ is read again on this run's rows.
   each; a dot run inside a string one row, 0.38; `！` `？` fold to ASCII and are T5's own
   tokens, with no row to train.
 - `sgrad_1126_1436`, `aloc_1126_1501`, `sgrad_1126_1511`
-  ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md)): a row's renders agree on
+  ([reports/sentw_2026_11_26.md](../reports/sentw_2026_11_26.md)): a row's renders agree on
   a direction at 0.032 on its glyph alone and 0.003 on a string's cross-entropy, with the
   one-step backward as with two; a quote token's cross-attention (blocks 13 – 15, σ 0.75
   and 0.5) points at its glyph, the window about it read as that glyph on 0.767 of the
@@ -160,8 +160,8 @@ row-renders, against 4 in the glyph stage.
 ## The run at scale — settings (2026-11-26, submitted as `sents_1126_1856`)
 
 `sentw_1126_1528`'s settings with the lines below changed. Records:
-[reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md) (sixth part) and
-[reports/sent_scale_2026_11_26.md](reports/sent_scale_2026_11_26.md).
+[reports/sentw_2026_11_26.md](../reports/sentw_2026_11_26.md) (sixth part) and
+[reports/sent_scale_2026_11_26.md](../reports/sent_scale_2026_11_26.md).
 
 ### Facts
 
@@ -191,7 +191,7 @@ row-renders, against 4 in the glyph stage.
   `bgrad_1126_1806`, `bgradw_1126_1815`, `bgradt_1126_1815`: a break row's gradient from
   the reader's line-break token, from three starts. `bplace_1126_1840`: a page's own
   wrap as the label of a break's place, 17 pages kept of 480
-  ([reports/sent_scale_2026_11_26.md](reports/sent_scale_2026_11_26.md), last parts).
+  ([reports/sent_scale_2026_11_26.md](../reports/sent_scale_2026_11_26.md), last parts).
 
 ### Interpretation
 
@@ -234,7 +234,7 @@ row-renders, against 4 in the glyph stage.
   여러개 들어가는 케이스도 있으면 어떨까 해"). Not in the run as planned above. On the read
   scenes the model draws one bubble for two strings, in EN as well, and the kana in it are a
   mix of the two strings
-  ([reports/multi_read_2026_11_26.md](reports/multi_read_2026_11_26.md)). What it needs
+  ([reports/multi_read_2026_11_26.md](../reports/multi_read_2026_11_26.md)). What it needs
   before it can go into the draw, each the user's call:
   - scenes that draw a bubble a string. The pool's templates that held two dialogue strings
     were read on the user's call (`tread_1126_1306`): they draw two boxes whether one string
@@ -257,7 +257,7 @@ row-renders, against 4 in the glyph stage.
   rows held is proposed, and how the break's caption is encoded after the read (the
   text encoder kept on the GPU, or no line feed on the Qwen side) is settled there.
 - Half the backward by reading the loss off the σ 0.75 step's own x̂₀
-  ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), last part). Not looked at.
+  ([reports/sentw_2026_11_26.md](../reports/sentw_2026_11_26.md), last part). Not looked at.
 
 ## Order of work
 

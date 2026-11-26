@@ -3,7 +3,7 @@
 A note on the method the line runs on (written 2026-11-25, brought up to the sentence stage
 2026-11-26): what it is, what has been measured, the conditions it seems to need, and what is
 still open. How a run goes in detail is in [README.md](README.md); the runs are in
-[plan.md](plan.md) and [reports/](reports/). The name is the user's.
+[plan.md](plan.md) and [reports/](reports). The name is the user's.
 
 ## The method
 
@@ -36,20 +36,20 @@ OCR loss as the reward.
 Facts, each from the named report:
 
 - 16 rows trained this way read alone on 59 of 256 held-out pages before, and on 136, 175
-  and 199 after 8, 16 and 24 steps a row ([g1long](reports/g1long_2026_11_25.md)).
+  and 199 after 8, 16 and 24 steps a row ([g1long](archive/reports/g1long_2026_11_25.md)).
 - The same reader used as a scalar reward under GRPO, on sentence captions with every row
-  trainable, changed nothing on the ruler in 300 groups ([p1](reports/p1_2026_11_13.md)).
+  trainable, changed nothing on the ruler in 300 groups ([p1](archive/reports/p1_2026_11_13.md)).
   The two setups differ in more than the gradient.
 - A trained row keeps its length and its neighbours in the table and turns about 15°. Part of
   the turn is common to all rows: the other rows' mean displacement alone takes a row that
   spent no render from 59 to 112, where a drawn direction of the same length stays at 59
-  ([row_line](reports/row_line_2026_11_25.md)). That displacement, measured on 8 hiragana
+  ([row_line](archive/reports/row_line_2026_11_25.md)). That displacement, measured on 8 hiragana
   and 8 kanji, takes the 164 kana rows from 743 to 1 322 of 2 624 pages before any of them is
-  trained, and 6 steps a row take them to 1 785 ([g2a](reports/g2a_2026_11_25.md)); from
+  trained, and 6 steps a row take them to 1 785 ([g2a](archive/reports/g2a_2026_11_25.md)); from
   jp_v1's rows with no shared start, 16 guarded steps take them to 1 716
-  ([g2b](reports/g2b_2026_11_26.md)).
+  ([g2b](archive/reports/g2b_2026_11_26.md)).
 - A row that already reads can be pushed past its glyph by further steps (あ to あら,
-  [g1shared](reports/g1shared_2026_11_25.md)).
+  [g1shared](archive/reports/g1shared_2026_11_25.md)).
 - Rows trained one glyph a caption carry into short kana strings: the whole string alone
   19 → 52 of 96 pages at 2 glyphs, 0 → 0 at 5 – 8
   ([sent_prep](reports/sent_prep_2026_11_26.md)).
@@ -64,7 +64,7 @@ Facts, each from the named report:
 - On the base model (anima-base-v1.0, 28 steps, cfg 4, VAE decode, a sign prompt the rows
   never saw) the 24-step rows of 4 glyphs letter one clean glyph on all 8 renders, by
   Claude's labelled read, where the start rows repeat the glyph or add others
-  ([g1long](reports/g1long_2026_11_25.md), second part). Eight renders; model, sampler,
+  ([g1long](archive/reports/g1long_2026_11_25.md), second part). Eight renders; model, sampler,
   decoder, frame and size all differ from training at once.
 - Cost on a 16 GB card: about 3 s for a group of 4 renders with their backward passes.
 
@@ -129,7 +129,7 @@ Opinions and open points, none of them measured unless a report is named.
   decidable alone (small kana, the shapes the two scripts share, katakana against kanji).
   Those need a word around them, so some of the table can only be taught at the word stage.
 - Two readers at once (the row gradients' cosine is 0.21,
-  [hayai_g0](reports/hayai_g0_2026_11_25.md)) is cheap insurance against one reader's
+  [hayai_g0](archive/reports/hayai_g0_2026_11_25.md)) is cheap insurance against one reader's
   quirks. It does not help where both share a blind spot.
 - A row trained to letter itself in a tagless caption may letter less inside dialogue, with
   `speech bubble, japanese text` back around a sentence. The ruler-frame read planned for it

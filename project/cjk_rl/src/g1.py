@@ -214,7 +214,10 @@ def start_records(cfg: dict, gl: list, scenes: list, hayai: bool) -> list | None
     """The ``start`` arm of run ``cfg["start_from"]`` as this run's records, or ``None``
     with the reason printed when a page is missing or the read's settings differ."""
     src = cfg["start_from"]
-    old = tomllib.loads((LINE / "configs" / f"{src}.toml").read_text("utf-8"))
+    cfg_file = LINE / "configs" / f"{src}.toml"
+    if not cfg_file.exists():  # the glyph stage's configs are in archive/
+        cfg_file = LINE / "archive" / "configs" / f"{src}.toml"
+    old = tomllib.loads(cfg_file.read_text("utf-8"))
     for k, default in (
         ("rows", None),
         ("conf_min", None),

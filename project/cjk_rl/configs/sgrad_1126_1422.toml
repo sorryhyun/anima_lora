@@ -19,7 +19,7 @@
 #   seeds 3000 + 4 group; a string is the first of the draw past index 400 that holds
 #   the glyph.
 # Records it rests on:
-#   - reports/gd_g0d_2026_11_25.md: a step's share of the four-step ce gradient on a
+#   - archive/reports/gd_g0d_2026_11_25.md: a step's share of the four-step ce gradient on a
 #     row, steps 0 - 3: 0.48 / 0.40 / 0.33 / 0.08 (single glyphs).
 #   - sentm_1126_1331's log: 3 924 of 6 416 row-renders over the clip.
 # Read: the table of the probe (across, within, norms, the cosine of the two parts).

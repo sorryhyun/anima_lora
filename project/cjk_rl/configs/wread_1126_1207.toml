@@ -16,7 +16,7 @@
 #   were trained with their full-size glyph as the target (fold_small), and a word's solo
 #   here is the string as written.
 # Records it rests on:
-#   - reports/g2b_2026_11_26.md, reports/g2a_2026_11_25.md: the kana alone, solo of 2 624
+#   - archive/reports/g2b_2026_11_26.md, archive/reports/g2a_2026_11_25.md: the kana alone, solo of 2 624
 #     pages 743 at jp_v1's rows, 1 716 (g2b, 16 steps) and 1 785 (g2a, 6 steps).
 #   - proposal_glyph.md § 1: the finished CJK lines saw 2 - 3 glyph prompts draw the first
 #     glyph only.

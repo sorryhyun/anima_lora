@@ -34,7 +34,7 @@ clamp as identity (:func:`ste_clamp`), since a white bubble sits on the clamp's 
 loss on a crop of the page tensor (:meth:`Hayai.ce`); the crop is the one picked from
 the tuned reader's read.
 
-Probes: ``probes/gd_g0d.py``, ``probes/hayai_g0.py``.
+Probes: ``archive/probes/gd_g0d.py``, ``archive/probes/hayai_g0.py``.
 """
 
 from __future__ import annotations

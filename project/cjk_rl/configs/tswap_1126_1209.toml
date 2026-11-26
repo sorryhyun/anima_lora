@@ -16,7 +16,7 @@
 #   little; a page that follows B at k = 3 shows the step can change the lettering, not
 #   that its gradient points there.
 # Records it rests on:
-#   - reports/gd_g0d_2026_11_25.md (g0d_1125_1119): a step's share of the four-step ce
+#   - archive/reports/gd_g0d_2026_11_25.md (g0d_1125_1119): a step's share of the four-step ce
 #     gradient on a row, steps 0 - 3: 0.48 / 0.40 / 0.33 / 0.08; one step's backward 0.95 s
 #     for 4 renders (3.0 - 3.2 s a group with the last step's, 5.9 - 6.1 s with all four).
 #   - wread_1126_1207: the strings' own renders on kmix's rows (the words' k = 0 pages).

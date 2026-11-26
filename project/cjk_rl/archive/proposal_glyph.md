@@ -1,10 +1,10 @@
 # Glyph-first OCR reward — after the sixteen rows
 
-> Archived 2026-11-26: superseded; the line's live state is in `../README.md` and `../plan.md`. Links below are relative to the line's root.
+> Archived 2026-11-26: superseded; the line's live state is in `../README.md` and `../plan.md`.
 
 Status (2026-11-25): G-D's path, G0d and G1's micro arm ran (`reports/gd_g0d_2026_11_25.md`,
 `reports/g1micro_2026_11_25.md`; the user read the micro arm as a success). The next runs, the
-sixteen rows to their ceiling and the hiragana, are in [`plan.md`](plan.md). This file
+sixteen rows to their ceiling and the hiragana, are in [`plan.md`](../plan.md). This file
 proposes what follows them and nothing before. The
 first draft's G-R arm (GRPO on the glyph reward) is out on the user's call of 11-25; that text
 is in the git history.

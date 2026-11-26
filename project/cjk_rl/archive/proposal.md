@@ -1,6 +1,6 @@
 # CJK OCR-reward RL — teach the vocab pack to write the intended sentence
 
-> Archived 2026-11-26: superseded; the line's live state is in `../README.md` and `../plan.md`. Links below are relative to the line's root.
+> Archived 2026-11-26: superseded; the line's live state is in `../README.md` and `../plan.md`.
 
 Status (2026-11-13): **P1 (arm R) failed on the ruler**
 ([`reports/p1_2026_11_13.md`](reports/p1_2026_11_13.md)); next are P2 (arm A) and the D0

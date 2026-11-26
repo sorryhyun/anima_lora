@@ -1,7 +1,7 @@
 # Ruler on the turbo policy (2026-11-13)
 
 The evidence the line opened on: does the soup stack keep the asked string, and is the
-4-step turbo a fair proxy of its 28-step teacher? Proposal: [`../archive/proposal.md`](../archive/proposal.md).
+4-step turbo a fair proxy of its 28-step teacher? Proposal: [`../archive/proposal.md`](../proposal.md).
 
 Dialogue ruler (`../../cjk_anima_reseed/criteria.md`), 64 of its 96 strings
 (21 / 21 / 22 by bin), seed 0, jp_v1 rows (`seed_1008`, punct pack, routed) on all
