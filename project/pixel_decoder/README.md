@@ -1,8 +1,8 @@
 # pixel_decoder — a light pixel head on the frozen Anima DiT's last features
 
-The algorithm and what was found. What is ahead: `rgba_plan.md` and `x2_plan.md`; the weight-space
-and LoRA proposal for ×2: `x2_idea.md`. Runs: `reports/`, and
-`archive/` (local).
+The algorithm and what was found. The two open tracks: `rgba_plan.md` (the RGBA head) and
+`x1_plan.md` (the ×1 head over σ 0.75 – 0). ×2 is parked since 2026-11-26: `x2_plan.md`. Runs:
+`reports/` and `archive/` (local); run configs: `configs/`.
 
 ## Algorithm
 
@@ -125,6 +125,10 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   user's read: "gan ft가 날카롭게 만드는건 확인했다".
 - That finish has no term on the turbo point. Its amplitude there is 0.933 / 0.944, against
   0.920 / 0.931 for the head without a finish at 3,000 rollouts.
+- The weight change of the GAN finish on the Hub pair (base → sharp; read inline, no script
+  kept): 6 – 14 % of each matrix, at a cosine of −0.05 … +0.15 to the weight; stable rank 18 – 83
+  against 230 – 456 for a random matrix of the same shape; 0.4 – 3 % of it inside the weight's
+  own top-64 × top-64 singular subspace ([record](archive/x2_idea_2026_11_24.md), local).
 
 ### ×2 training
 
@@ -135,10 +139,10 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   ([record](archive/x2_critic_2026_11_20.md), local).
 - The real 2× image as the target, 4,000 rollouts: 30.45 / 25.92 dB, LPIPS 0.141 / 0.137. The ×1
   head followed by the upscaler: 30.06 / 25.98, 0.171 / 0.114. With no ×1 loss the file's ×1
-  output falls to 24.76 dB on test ([record](reports/x2_b4k_2026_11_21.md)).
+  output falls to 24.76 dB on test ([record](archive/x2_b4k_2026_11_21.md), local).
 - GAN from rollout 1000 of 4,000, on a head not yet converged: 29.82 / 25.52, 0.158 / 0.145. The
   user reported pinwheel tiles on fine texture
-  ([record](reports/x2_tile_gft_2026_11_22.md)).
+  ([record](archive/x2_tile_gft_2026_11_22.md), local).
 - GAN finetune on the converged head, 1,000 rollouts: 29.74 / 25.40, 0.161 / 0.149; twin gap
   0.08 / 0.07 dB, 0.002 / 0.001. Claude's read, labelled: no pinwheel on either seed, a diagonal
   weave on screentone (same record).
@@ -148,25 +152,25 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   0.134): at 1024 px 29.63 / 25.42, 0.178 / 0.181, 3.73 s per rollout; at 512 px 30.00 / 25.78,
   0.155 / 0.145, 1.54 s. Stamp rise over the parent on three images: 1024 +0.14 / +0.23 / +0.52,
   512 +0.02 / +0.05 / +0.21; on the two grainy originals the stamp is 1.59 / 1.89 at 1024 and
-  1.59 / 1.75 at 512. The user: "512가 훨씬 낫다" ([record](reports/x2_stamp_crop_2026_11_22.md)).
+  1.59 / 1.75 at 512. The user: "512가 훨씬 낫다" ([record](archive/x2_stamp_crop_2026_11_22.md), local).
 - Noise inputs on the GAN finish (64 Gaussian channels per position before each second-stage
   block, zero-init): two decodes of one input differ by 0.08 – 0.09 levels at the end, after 0.14 –
   0.16 at rollout 500; tile numbers and dB level with the finish without them
-  ([record](reports/x2_noise_2026_11_23.md)).
+  ([record](archive/x2_noise_2026_11_23.md), local).
 - On halftone the heads write one or two fixed token tiles in place of the dots: 16 centroids hold
   0.28 of those tiles' energy with the LPIPS head, 0.76 with the DINO head, 0.73 after the GAN
   finish; the chain's tiles at the same places 0.06
-  ([record](reports/x2_dll_dgf_2026_11_23.md)).
+  ([record](archive/x2_dll_dgf_2026_11_23.md), local).
 - On flat regions every ×2 head with the 8 × 8 output steps at the patch borders (× 1.23 – 1.37
   of the inner first difference) and at the token borders (× 1.33 – 1.37); the chain reads × 1.0
-  ([record](reports/x2_noise_2026_11_23.md)). With 16 × 16 patches at stride 8 summed under a
+  ([record](archive/x2_noise_2026_11_23.md), local). With 16 × 16 patches at stride 8 summed under a
   window: × 0.99 / × 0.98, at 30.42 / 26.04 dB against its init's 30.48 / 26.13 and a high-pass
   ratio of 1.000 / 0.987 (σ 3 / 1 px); the decode takes 18.0 ms against 12.4
   ([record](reports/x2_overlap_2026_11_23.md)).
 - The GAN finish on the overlapping head (`x2ovgf_1124_0920`, 4,000 rollouts at LR 2e-5), 32
   renders: amp 0.771 / 0.698 of the chain's against 0.770 / 0.692 for the finish on the 8 × 8
   output, token border × 1.08 against × 1.37, departed tiles' share on 16 centroids 0.718 against
-  0.731; held out 29.69 / 25.62 dB ([record](reports/x2_ovgf_mix_2026_11_24.md)).
+  0.731; held out 29.69 / 25.62 dB ([record](archive/x2_ovgf_mix_2026_11_24.md), local).
 - A GAN finish and its parent mix linearly in weight space: at α 0.5 / 1 / 1.5 of the finish's
   change, amp 0.667 / 0.771 / 1.005, stamp32 0.517 / 0.657 / 1.115, dB against the chain 27.19 /
   26.86 / 25.38 (the parent 0.603, 0.414, 27.07). One stage's change alone: the second ×2 stage
@@ -177,18 +181,20 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   rest 0.632, 1.695 and 1.94; the whole finish 0.771, 0.657 and 0.39 (same record).
 - The discriminator's real crop taken from another replay window (unpaired), 1,000 rollouts:
   the margin ends at 7.08 as in the paired control, amp 0.675 / 0.672 against 0.723 / 0.688,
-  the same grid on flat colour ([record](reports/x2_unpaired_2026_11_24.md)).
+  the same grid on flat colour ([record](archive/x2_unpaired_2026_11_24.md), local).
 - No GAN gradient into the crop's flat-target cells (28 % of it): flat-token grain 0.37 against
   the control's 0.41 and the parent's 0.23. The pattern on flat colour arrives through the
   shared weights (same record).
 - The finish as a rank-8 LoRA on the frozen parent: amp 0.709 / 0.664 with stamp32 0.688 / 2.100
   at LR 2e-4, 0.702 / 0.685 with 0.631 / 2.766 at 1e-4 (the full finetune at 1,000 rollouts
-  0.723 / 0.688 with 0.607 / 2.800) ([record](reports/x2_ovgf_mix_2026_11_24.md)).
+  0.723 / 0.688 with 0.607 / 2.800) ([record](archive/x2_ovgf_mix_2026_11_24.md), local).
 - The ratio is the finish's strength setting; LR and length are not. At ratio 0.5 against 2.0,
   4,000 rollouts: amp 0.710 / 0.646 against 0.771 / 0.698, flat-token grain 0.29 against 0.39,
   the sky patch's 8-px fold 0.11 against 0.32, the tile share on castle s0 0.003 against 0.054,
   held out 30.20 / 25.94 dB against 29.69 / 25.62. The margin ends at 7.0 – 7.5 in every arm
   without a slope term ([record](reports/x2_ratio_2026_11_24.md)).
+- Ratio 1.0 (`x2r10gf_1125_0104`) reads between the two: amp 0.739 / 0.673, flat-token grain
+  0.33, the sky patch's 8-px fold 0.16, castle s0 0.013, held out 29.95 / 25.77 dB (same record).
 - The reference code's GAN term differs from this one in the slope term (2,500 · Δ² against
   0.1 · Δ²), the cap on the adversarial gradient (per sample at the RGB output, 0.2 of the
   reconstruction's), the tower and crops (DINOv3 ViT-S/16, 16 crops of 224 px) and the real
@@ -205,11 +211,22 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   castle s0) are the GAN finish's. The whole-image stamp32 does not follow the halftone tile;
   the fold of a halftone box and the departed share do
   ([records](reports/x2_ratio_2026_11_24.md)).
+- At `norm2`'s output the hidden values repeat per phase of the token: the held-out phase ratio
+  at the token's period is 151,336 – 233,328 times the floor on three heads (167 – 193 and 69 –
+  77 at the null periods 3 and 5). Removing those directions from `x2ovgf_1124_0920` raises
+  stamp32 0.655 → 1.411 – 17.867 and the flat-token grain 0.39 → 1.59 – 33.52
+  ([record](reports/x2_lens_2026_11_26.md)).
+- The edit `f8_k4` (the non-DC 8 × 8 tile of a constant field removed from `out2` on the flat
+  tokens' top 4 hidden directions, no training) on `x2ovgf_1124_0920`: the sky patch's 8-px
+  fold 0.37 → 0.12 at amp 0.772 / 0.698 against 0.771 / 0.698, castle s0 0.054 → 0.054. On
+  `x2r10gf_1125_0104`: fold 0.10, amp 0.739 / 0.673, castle s0 0.014; the user took that file
+  over `x2r05gf_1124_1941` on manga s0 (Hub `x2/anima_pixel_head_x2_v3.safetensors`; same
+  record).
 - The discriminator's margin on held-out heads is 6.33 against a null of 0.05
   ([record](archive/x2_disc_probes_2026_11_21.md), local). In training it stays at 5.9 – 7.3 after
   its rise ([record](reports/x2_full_run_deploy_2026_11_21.md)).
 - A regular pattern is read on crops: whole-image lag-16 autocorrelation is +0.0043 on the tiled
-  head and +0.0051 on a tile-free one ([record](reports/x2_tile_gft_2026_11_22.md)).
+  head and +0.0051 on a tile-free one ([record](archive/x2_tile_gft_2026_11_22.md), local).
 
 ### What the head loses
 
@@ -229,7 +246,7 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
 
 - The head's LPIPS gradient as v receives it has cosine 0.115 / 0.154 / 0.166 to the fp32 VAE's at
   σ 0.0577 / 0.1 / 0.1364. The floor (another noise draw) is 0.060 / 0.078 / 0.081, the bf16 VAE
-  0.511 / 0.495 / 0.434 ([record](reports/lpips_grad_2026_11_21.md)).
+  0.511 / 0.495 / 0.434 ([record](archive/lpips_grad_2026_11_21.md), local).
 - 0.032 – 0.038 of that gradient lies in the 64 directions that set v; 64 / 2048 = 0.031 (same
   record).
 - One 512² window backward: head 0.019 s / 0.70 GB, bf16 VAE 0.087 s / 2.46 GB (same record).
@@ -237,7 +254,7 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   and 1.0 each moved their own distance on the training draws by at most 3 %, and the user's blind
   reads stayed inside the spread (DINO 15 – 15 over two seeds at 0.3, 8 – 8 on one set at 1.0).
   Closed and out of the code since 2026-11-23
-  ([LPIPS](reports/lpips_lora_2026_11_21.md), [DINO](reports/dino_lora_2026_11_23.md)).
+  ([LPIPS](archive/lpips_lora_2026_11_21.md), [DINO](archive/dino_lora_2026_11_23.md); local).
 
 ### Alpha
 
@@ -246,7 +263,10 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
 - A whole head fits alpha on 16 images to L1 0.0047, 0.0065 on new backgrounds, 0.0387 on 16
   images not fitted. Training the output layer alone: 0.2485 (same record).
 - The user's read of generated renders after 1,000 rollouts: "아예 블록처럼 쪼개지는게 문제"
-  ([record](rgba_plan.md)).
+  ([record](reports/rgba_r2_r6_2026_11_24.md)).
+- The four-channel preview (`rgbar6_1124_0034`), alpha L1 on train cutouts over new backgrounds /
+  on unseen cutouts: transition band 0.197 / 0.218, holes 0.068 / 0.115; an alpha-only head
+  fitted on the same 16 train images reads 0.099 and 0.025 (same record).
 
 ### Traps
 
@@ -266,11 +286,12 @@ The user's calls on how this line is run and recorded.
 
 ### Records
 
-- `README.md` is the algorithm and the facts found, with no history. `x2_plan.md` and
-  `rgba_plan.md` hold what is waiting or ahead; a finished item leaves the plan, and an Open item
-  names a concrete step.
+- `README.md` is the algorithm and the facts found, with no history. `rgba_plan.md` and
+  `x1_plan.md` hold what is waiting or ahead, `x2_plan.md` where the parked ×2 head stands; a
+  finished item leaves the plan, and an Open item names a concrete step.
 - One report per phase or arm. `reports/` keeps the records still in use; a finished one moves to
-  `archive/` (gitignored, cited with "(local)").
+  `archive/` (gitignored, cited with "(local)"). `configs/` keeps the configs of the files on
+  the Hub and of the runs the open plans read; the others move to `archive/configs/`.
 - The region where dense thin lines merge is called "fine strokes", not named by body part or
   prompt.
 

@@ -15,7 +15,7 @@
 #     33.19 dB / DINO 0.117e-3 (x1dll 34.00 / 0.109e-3).
 #   - x1fgan_1122_1247 (whole image, LPIPS base; tex_x1fgan_1123): stamp16 mono 0.972 -> 1.633,
 #     manga_page s0 1.71 -> 5.45.
-#   - x2 (reports/x2_stamp_crop_2026_11_22.md, "The crop, 1024 against 512"): stamp rise 1024 +0.14 / +0.23 / +0.52,
+#   - x2 (archive/x2_stamp_crop_2026_11_22.md (local), "The crop, 1024 against 512"): stamp rise 1024 +0.14 / +0.23 / +0.52,
 #     512 +0.02 / +0.05 / +0.21.
 # Read: evals beside x1dll's and x1dgan's; p3_generated.py with x1dll and this head,
 #   sheet_texture.py (amplitude, stamps), pair sheets; the user's read decides.

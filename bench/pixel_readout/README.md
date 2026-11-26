@@ -33,13 +33,13 @@ that led to the recipes are in `experiments/`; the two harnesses with LPIPS buil
 | `build_pages.py` | precaches manga page latents into `post_image_dataset/pixel_pages/{train,eval}/` | `archive/pagemix_2026_11_19.md` (local) |
 | `e2e_speed.py` | decode cost on the `make test SPECTRUM=1` sampler, or turbo with `--adapter --no_spectrum` (head vs VAE resident / swap / disk) | `archive/replay_recipe_2026_11_19.md` (local), `archive/release_2026_11_19.md` (local) |
 | `tone_probe.py` | tone of a head against the VAE on sheets (CPU): block mean shift in code values and in linear light, by texture | `archive/p4_mix_2026_11_19.md` (local) |
-| `lora_ab.py` | a LoRA A/B's renders at the `make test` recipe (first run on the pixel-LPIPS LoRA arms, a term since removed): labelled pair sheets, blind sets in the `anima-blind-pairs` layout, median ‖dW‖ per file | `reports/lpips_lora_2026_11_21.md` |
+| `lora_ab.py` | a LoRA A/B's renders at the `make test` recipe (first run on the pixel-LPIPS LoRA arms, a term since removed): labelled pair sheets, blind sets in the `anima-blind-pairs` layout, median ‖dW‖ per file | `archive/lpips_lora_2026_11_21.md` (local) |
 | `experiments/x2_overfit.py` | can the ×2 stage fit N train windows, per arm (depth, width, frozen base) | `archive/x2_arm_a_2026_11_19.md` (local) |
 | `experiments/x1_overfit.py` | can the ×1 form fit the 16 held-out windows where the init head is furthest under VAE(x̂0) on the high-pass, per arm (the released form, + blocks at 8 px, + a 4-px stage); takes `--config` | `reports/x1_fit_2026_11_24.md` |
 | `experiments/decode_point.py` | named cached images over a σ sweep: VAE(x̂0) and ×1 heads against the original and VAE(z0), on the windows where VAE(z0) loses the most high-pass; takes `--config` | `reports/x1_fit_2026_11_24.md` |
-| `experiments/head_merge.py` | weight-space mixes of two ×2 heads that share a parent (CPU): every stage at α, or one stage only; a folder per mix under `output/pixel_head/<run>/` | `reports/x2_ovgf_mix_2026_11_24.md` |
+| `experiments/head_merge.py` | weight-space mixes of two ×2 heads that share a parent (CPU): every stage at α, or one stage only; a folder per mix under `output/pixel_head/<run>/` | `archive/x2_ovgf_mix_2026_11_24.md` (local) |
 | `sheet_texture.py` | on a `p3_generated.py` run's sheets (CPU): each head's high-pass amplitude as a share of the VAE column's and its 16-px / 8-px stamp, colour / mono medians; `--pairs A B` writes head-only pair sheets; `--x2` reads a `p3_generated.py --x2` run (32-px / 16-px stamp, against the ResShift column) | `reports/x1_dino_2026_11_22.md`, `reports/x2_dino_2026_11_23.md` |
-| `experiments/tile_dict.py` | on a `p3_generated.py --x2` run's sheets (CPU): the fixed token tile (tiles classed by agreement with the bicubic VAE column, 16-centroid dictionary share of the departed ones), the mean token tile's peak, token edge ratio per class, patch / token border ratios on flat tokens; `--zoom` writes 1:1 windows | `reports/x2_dll_dgf_2026_11_23.md`, `reports/x2_noise_2026_11_23.md` |
+| `experiments/tile_dict.py` | on a `p3_generated.py --x2` run's sheets (CPU): the fixed token tile (tiles classed by agreement with the bicubic VAE column, 16-centroid dictionary share of the departed ones), the mean token tile's peak, token edge ratio per class, patch / token border ratios on flat tokens; `--zoom` writes 1:1 windows | `archive/x2_dll_dgf_2026_11_23.md` (local), `archive/x2_noise_2026_11_23.md` (local) |
 | `x2_pair.py` | one column of two runs' sheets as an `A \| B` sheet per image (CPU) | `archive/x2_critic_2026_11_20.md` (local) |
 | `x2_flex.py` | builds the ×2 set `post_image_dataset/x2flex/` and its manifest (CPU) | `archive/x2_arm_b_2026_11_20.md` (local) |
 | `x2_masters.py` | real 2× targets from the masters: supply manifest and the alignment check (`_masters.target_2x`; CPU) | `archive/x2_arm_b_2026_11_20.md` (local) |
@@ -72,7 +72,7 @@ git up to `f839c1b0`). The recipes they ran live on in `scripts/pixel_head/`.
 |---|---|---|
 | `experiments/convnext_head.py` | ×1 head training (rollout → DiT forward → VAE target → replay updates), `--points` per rollout, evals on test / text / manga; ran `x1ll_1122_1000` | `p2_skip`, `upsample`, `replay_recipe`, `pagemix`, `p4_t2`, `p4_mix` |
 | `experiments/x2_head.py` | ×2 head on windows against ResShift ×2 of VAE(x̂0) or the real 2× image (arm B), `--chain` teacher reads, `--pegan*` | `archive/x2_arm_a_2026_11_19.md` (local), `archive/x2_lpips_dc_2026_11_19.md` (local), `archive/x2_critic_2026_11_20.md` (local) |
-| `experiments/lpips_grad_probe.py` | ∂LPIPS/∂v through a head against the VAE decode of a token window | `reports/lpips_grad_2026_11_21.md` |
+| `experiments/lpips_grad_probe.py` | ∂LPIPS/∂v through a head against the VAE decode of a token window | `archive/lpips_grad_2026_11_21.md` (local) |
 
 Every script compiles through `scripts/pixel_head/train/_common.py::compile_dit` (a compile cache per seq-band
 signature; a shared cache replayed head training's 4032–4200 guard into the 3952–4096 P3 renders).

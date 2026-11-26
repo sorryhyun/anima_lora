@@ -1,17 +1,24 @@
-# ×2 output — plan
+# ×2 output — plan (parked 2026-11-26)
 
-What is waiting or ahead on the ×2 head. What was found: `README.md`, Findings, "×2 training".
-The records: `reports/README.md`. Tidied on 2026-11-24 (the user: "x2 plan이 좀 너저분하니까
-한번 쭉 정리하면서 돌아보자"); the 2026-11-22 sections went to
-[reports/x2_stamp_crop_2026_11_22.md](reports/x2_stamp_crop_2026_11_22.md), the comparison
-with the reference code to [reports/x2_slope_2026_11_24.md](reports/x2_slope_2026_11_24.md).
+Parked on the user's word (2026-11-26: "당분간은 rgba가 crisp하게 혹은 x1이 좀 더 넓은 0.75 - 0
+범위를 커버하도록 학습하는 데 집중하려고 해"). Nothing here is queued or proposed; this file is
+where the head stands and what a return would start from. What was found: `README.md`, Findings,
+"×2 training". Records: `reports/README.md`; the finished ones, the finished runs' configs and the
+weight-space / LoRA / lens proposal (`x2_idea_2026_11_24.md`) are in `archive/` (local).
 
 ## Where the head stands
 
 - The form is the overlapping output (16 × 16 patches at stride 8 under a window), the B head
   trained with it and the GAN finish on top (the user, 2026-11-23: "그럴거면 x2 자체를 stride
   버전으로 하고, 거기에 gan을 얹는게 맞나?"). B head: `x2ovll_1124_0139`, 12,000 rollouts.
-- The GAN finishes of that head, on the 32 renders (amp = high-pass share of the chain's; the
+- On the Hub: `x2/anima_pixel_head_x2.safetensors` (`x2bgan2_1121_1340`, the catalog's ×2 row,
+  the node README's and the card's samples) and, since 2026-11-26,
+  `x2/anima_pixel_head_x2_v3.safetensors`: `x2r10gf_1125_0104` with the edit `f8_k4` (the 8-px
+  grid on flat colour folded out of `out2`, no training;
+  [record](reports/x2_lens_2026_11_26.md)): amp 0.739 / 0.673, flat-token grain 0.31, the sky
+  patch's 8-px fold 0.10, castle s0 0.014. Whether v3 becomes the catalog's default is the
+  user's call, not asked yet.
+- The GAN finishes of the B head, on the 32 renders (amp = high-pass share of the chain's; the
   tile column is `tile_dict.py`'s departed share on castle s0; held out against the real 2×
   image, test / text):
 
@@ -27,12 +34,9 @@ with the reference code to [reports/x2_slope_2026_11_24.md](reports/x2_slope_202
   | `x2r200_1125_0036` | the same, slope term at 200 | 0.702 / 0.680 | 0.31 | 0.14 | 0.028 | 30.01 / 25.69 |
   | `x2r05_1124_1908` | ratio 0.5, no slope term, 1,000 | 0.687 / 0.659 | 0.29 | 0.15 | 0.003 | 30.20 / 25.89 |
 
-- Shipped 2026-11-26 as Hub `x2/anima_pixel_head_x2_v3.safetensors`: `x2r10gf_1125_0104` with
-  the edit `f8_k4` (the 8-px grid on flat colour folded out of `out2`, no training;
-  [record](reports/x2_lens_2026_11_26.md)): amp 0.739 / 0.673, flat-token grain 0.31, the sky
-  patch's 8-px fold 0.10, castle s0 0.014. The catalog's ×2 row still names the first Hub file.
-- The user's reads so far:
-  - of `x2ovgf_1124_0920`, two regions ([record](reports/x2_ovgf_mix_2026_11_24.md)): the
+  Records: [ratio](reports/x2_ratio_2026_11_24.md), [slope term](reports/x2_slope_2026_11_24.md).
+- The user's reads:
+  - of `x2ovgf_1124_0920`, two regions (`archive/x2_ovgf_mix_2026_11_24.md`, local): the
     sharp line is the identity of the upscale; the lines are distorted (in `x2ovll` too,
     sharper here) and the flat blue carries a slight pattern.
   - of the PE-GAN term (2026-11-24): "선명함을 확실히 주는게 꾸준히 보였으니 ㅇㅋ". It stays.
@@ -42,68 +46,64 @@ with the reference code to [reports/x2_slope_2026_11_24.md](reports/x2_slope_202
   - of `x2r05gf_1124_1941` (2026-11-26): "선명도가 약간 더 아쉽긴 했어".
   - of `x2r05gf_1124_1941` | `x2r10gf_1125_0104` + `f8_k4` and | `x2ovgf_1124_0920` + `f8_k4`
     (2026-11-26): "ㅇㅋ 그래도 ratio 1.0 + 편집이 manga s0을 볼때 더 낫다 이걸로 v3 업로드하자".
-- Three patterns are open, each with its own source (README, "×2 training", the last items):
+  - of the DINOv3 discriminator (2026-11-25): "아냐 dino는 그냥 취소하자 그냥 안좋아". Closed.
+- Three patterns are open, each with its own source (`README.md`, "×2 training"):
   1. The token tile on halftone and the breaks in lines: the B head's. No GAN setting removed
-     them.
+     them; the B head's held-out numbers are flat from rollout 11,000.
   2. The 8-px grid on flat colour: the GAN finish's. Lower at ratio 0.5 and with the slope
-     term.
+     term; `f8_k4` folds its 8-px part out.
   3. The token tile on fine colour texture (castle, neon_rain): the GAN finish's. Near zero at
-     ratio 0.5, higher with the slope term at either ratio.
+     ratio 0.5, higher with the ratio and with the slope term; no `out2` edit reaches it.
+- The settings of this GAN term are read through: ratio (0.5, 1.0, 2.0), slope weight (0.1, 200,
+  2500), the weight's cap, the pairing and the tower each move along one line where more amp
+  comes with more of a token-locked pattern ([record](reports/x2_slope_2026_11_24.md), the last
+  section).
 
-## Waiting on the user's read
+## Pair sheets the user has not read
 
-Labelled pair sheets of the 32 renders, local, under `bench/pixel_readout/results/`:
+Labelled, of the 32 renders, local, under `bench/pixel_readout/results/`:
 
-| pair | folder | what it decides |
+| pair | folder | what it compares |
 |---|---|---|
 | `x2slcap` \| `x2r200` | `20261125-0056-tex_x2r200_1125_0036/pairs_x2slcap_1125_0011_x2r200_1125_0036/` | slope weight 2500 against 200 at ratio 0.5 |
 | `x2slope` \| `x2slr05` | `20261124-2336-tex_x2slr05_1124_2316/pairs_x2slope_1124_2055_x2slr05_1124_2316/` | ratio 2.0 against 0.5 under the slope term |
 
-The pair sheets of the 1,000-rollout ratio and slope arms are named in their records. The renders
-and sheets of the runs from `x2gen_1123_1720` to `x2flat_1124_1341` (the mixes, the LoRA finishes,
-unpaired, the flat-cell cut, the ×1 fit reads) were deleted on the user's word (2026-11-25); their
-`result.json` are under `bench/pixel_readout/results/archive/`, local.
+## Local files
 
-## Next
+Tidied on the user's word (2026-11-26: "output/pixel_head 랑 bench/pixel_readout/results/ 도
+정리하자"). All local.
 
-1. Nothing queued; the next step is the user's call. v3 is on the Hub (above); the catalog's
-   ×2 row, the node's README and the card's ×2 samples still show the first file, and whether
-   v3 becomes the default is the user's call. `x2r10gf_1125_0104` (`x2r05gf_1124_1941`
-   at ratio 1.0, the user's pick; [record](reports/x2_ratio_2026_11_24.md)) read half of the
-   amp between ratio 0.5 and 2.0 (0.739 / 0.673) with a fifth to a quarter of the castle tile
-   and the flat-colour fold; the user's read of the pair: "사실상 둘이 동률이다".
-2. The settings of this GAN term are read through: ratio (2.0, 0.5), slope
-   weight (0.1, 200, 2500), the weight's cap, the pairing and the tower each move along one
-   line where more amp comes with more of a token-locked pattern
-   ([record](reports/x2_slope_2026_11_24.md), the last section). `x2r200_1125_0036` (the
-   user's value, "ㅇㅋ 200으로 가자") read between the two ends: castle s0 0.028, amp 0.702 /
-   0.680, the sky patch's fold 0.14, margin 1.28. The next step is the user's call; what
-   Claude would propose is in the chat record of 2026-11-25 and is not a plan item until
-   the user takes one.
+- Heads kept under `output/pixel_head/`: `x2ovll_1124_0139` (B head), `x2r10gf_1125_0104` and
+  `x2f8_1126_2227/` (the v3 file and `x2ovgf` + `f8_k4`), `x2r05gf_1124_1941`, `x2ovgf_1124_0920`,
+  and the 1,000-rollout arms of the unread pair sheets with their control (`x2slope_1124_2055`,
+  `x2slr05_1124_2316`, `x2slcap_1125_0011`, `x2r200_1125_0036`, `x2gf1k_1124_1256`). The 32
+  cached renders are under `output/pixel_head/render_cache/`: a kept head is read on them again
+  with no DiT run.
+- Deleted there: `x2dll_1123_1537`, `x2ov_1123_2012`, `x2nz_1123_1920`, `x2unp_1124_1256`,
+  `x2flat_1124_1341`, `x2r05_1124_1908`, `x2lora_1124_1113`, `x2lora_1124_1151`,
+  `x2dino_1124_2348`, and the mixes `x2mg_1124_1025` / `x2rk_1124_1100` (`head_merge.py` writes
+  them again from `x2ovll` and `x2ovgf`).
+- Under `bench/pixel_readout/results/`: the renders, sheets and reads of v3 (`*x2f8*`,
+  `20261126-2217-x2lens_1126_2225/`) and the two unread pair-sheet folders above are kept. The
+  render, texture and tile folders of `x2ovll`, `x2r05`, `x2r05gf`, `x2r10gf`, `x2slope`,
+  `x2slr05`, `x2slcap`, `x2r200` and `x2dino` were deleted; a path to one in a report now holds
+  only its `result.json`, under `bench/pixel_readout/results/archive/<the same folder name>/`.
+  The deleted heads' `result.json` / `merge.json`: `…/archive/output-<run>/`.
 
-## Parked, no step proposed
+## Levers not taken
 
-- The DINOv3 discriminator (`DinoDisc`, `pegan_tower = "dino"`): closed by the user
-  (2026-11-25: "아냐 dino는 그냥 취소하자 그냥 안좋아") after `x2dino_1124_2348` (margin 0.012,
-  the weight cut at a twentieth of the ratio, the head where its parent is) and 102 rollouts
-  of `x2dinocap_1125_0007` ([record](reports/x2_slope_2026_11_24.md)).
+A return to ×2 starts from the user's pick among these or a new one; none is proposed.
 
-- The reference's cap on the adversarial gradient, per sample at the RGB output: the other
-  difference from the reference not tried. After Next 1.
+- The reference code's cap on the adversarial gradient, per sample at the RGB output: the one
+  difference from the reference not tried ([record](reports/x2_slope_2026_11_24.md)).
 - An α under 1 of a finish as a sharpness setting: `head_merge.py --alphas <α>` writes the file
-  in seconds ([record](reports/x2_ovgf_mix_2026_11_24.md)). A strength setting only; no α
-  separates sharpness from the pattern.
-- The noise inputs with a nonzero init and their own LR: they were waiting on an arm that moves
-  the discriminator's margin. The slope term does (0.17 – 0.19 against 7); not proposed while
-  the tile on fine texture is open.
-- The GAN finish as a LoRA (`x2_idea.md`): rank 8 at two LRs ran; rank 64 and the factor reads
-  of its steps 2 – 4 are not proposed. The finish stays a full finetune.
-- Pattern directions folded out of `out2` without training (`x2_idea.md`, the last section):
-  read as `x2lens_1126_2225` ([record](reports/x2_lens_2026_11_26.md)). Removing the hidden
-  layer's phase directions raises every pattern meter; `f8_k4` is the edit that shipped. The
-  same edit on another finish is one `lens_read.py --heads <run> --p32_sets --f8_k 4 --sheets
-  --write_heads f8_k4 --write_only` (CPU, 2 min). The token tile on fine colour texture and the
-  token-periodic part of the flat-colour pattern are not reached by it.
-- A convolution tail at pixel resolution: the reference decoder has none; not proposed.
+  in seconds. A strength setting only; no α separates sharpness from the pattern.
+- `f8_k4` on another finish: `lens_read.py --heads <run> --p32_sets --f8_k 4 --sheets
+  --write_heads f8_k4 --write_only` (CPU, 2 min).
+- The noise inputs with a nonzero init and their own LR: they waited on an arm that moves the
+  discriminator's margin; the slope term does (0.17 – 0.19 against 7).
+- The GAN finish as a LoRA: rank 8 at two LRs ran; rank 64 and the factor reads (steps 2 – 7 of
+  the proposal) did not. The finish stays a full finetune.
+- A convolution tail at pixel resolution: the reference decoder has none.
 - A high-pass penalty on the pixels whose target is flat: the user read that direction as
   "애매"; dropped.

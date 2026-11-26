@@ -5,7 +5,7 @@ and "Deployment plan: the file decides the scale" of `x2_plan.md`, moved on 2026
 written there: the user's decisions, the design and outcome of `x2bgan2_1121_1340` (the Hub ×2
 file), the library entry `scripts/pixel_head/train_x2.py` and its check `x2move_1121_1350`, the
 deployment plan and the "Deployed" record. "Next" and "Deployment plan" in the text name these
-two sections. What came after (the tiled pattern on this file): `x2_tile_gft_2026_11_22.md`.
+two sections. What came after (the tiled pattern on this file): `../archive/x2_tile_gft_2026_11_22.md` (local).
 
 ## Next: the settled recipe as a full run, and the training code into the library
 
@@ -140,7 +140,7 @@ Decided by the user (2026-11-21): "다음 x2 plan에는 확정된 레시피로 x
   weight 0, so the ×1 output layer takes no weight decay), no gradient log (the bench's
   draws from the replay stream every 50 rollouts), no teacher / chain columns, one eval set
   of numbers (×2 against the real 2× image).
-- `x2move_1121_1350` (config `configs/x2move_1121_1350.toml`): `x2bo_1120_1815`'s recipe
+- `x2move_1121_1350` (config `../archive/configs/x2move_1121_1350.toml` (local)): `x2bo_1120_1815`'s recipe
   through the new entry. At rollout 125, test 12 / text 5: 29.55 / 25.29 dB, LPIPS 0.271 /
   0.258, dark +5.75 / +13.21; `x2bo_1120_1815` at 125: 29.54 / 25.28, 0.270 / 0.251,
   +5.29 / +12.35. 1.02 s per rollout at rollout 150.

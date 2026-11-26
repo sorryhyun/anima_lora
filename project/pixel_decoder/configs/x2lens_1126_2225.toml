@@ -1,7 +1,7 @@
 # x2 pattern directions at norm2's output and their fold into out2, no training (CPU):
 #   bench/pixel_readout/experiments/lens_read.py on the 32 cached renders of
 #   output/pixel_head/render_cache/ (local), seed 0 the fit and seed 1 held out. The form of
-#   x2_idea.md's last section changed before the run: norm2's output reaches the image through
+#   archive/x2_idea_2026_11_24.md's (local) last section changed before the run: norm2's output reaches the image through
 #   out2 and the overlap-add, both linear, so nothing is fitted by probes; and a single
 #   position's 16-px patch has no 32-px-periodic part of its own, so the directions are ranked by
 #   how the hidden values repeat per phase of the token (between-phase second moment against the
@@ -26,7 +26,7 @@
 #   - x2_plan.md's table: x2ovll 0.603 / 0.620, 0.09, 0.002; x2r05gf 0.710 / 0.646, 0.11, 0.003;
 #     x2r10gf 0.739 / 0.673, 0.16, 0.013; x2ovgf 0.771 / 0.698, 0.32, 0.054 (amp colour / mono,
 #     sky fold, castle s0 departed).
-#   - reports/x2_ovgf_mix_2026_11_24.md: out2.bias's own 8 × 8 tile reads 2.07 / 2.04 levels
+#   - archive/x2_ovgf_mix_2026_11_24.md (local): out2.bias's own 8 × 8 tile reads 2.07 / 2.04 levels
 #     (x2ovll / x2ovgf) against a measured 0.09 / 0.32, so the grid on flat colour is what is left
 #     of a cancellation between the bias and the hidden values.
 # Not known before the run: whether the meters recomputed here in fp32 from the cache match the
