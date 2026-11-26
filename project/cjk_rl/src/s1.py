@@ -72,6 +72,9 @@ The run's settings, question and gate are its config's header. Writes
 ``results/<ts>-s1-<config stem>/``.
 
     make daemon-run ARGS="--queue --stall-timeout 900 project/cjk_rl/src/s1.py --config project/cjk_rl/configs/<name>.toml"
+
+``--read_end`` trains nothing: it reads the run's ``rows.pt`` as the save after its last
+group, beside the reads ``records.json`` already holds.
 """
 
 from __future__ import annotations
@@ -242,7 +245,9 @@ def row_map(pol, scene: str, kana: list) -> tuple:
 
 
 def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dict:
-    """``on_save(groups, rows)`` runs after each group count in ``cfg["save_groups"]``,
+    """``on_save(groups, rows)`` runs after each group count in ``cfg["save_groups"]``
+    and after the last string when the count ends at another number (a string whose
+    rows are all at ``max_steps`` is passed over and is no group),
     once the rows are on disk; its seconds are left out of the run's clock."""
     import torch
 
@@ -290,6 +295,15 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
             },
             path,
         )
+
+    def save(n: int) -> float:
+        """The rows after group ``n`` on disk and through ``on_save``; its seconds."""
+        t_save = time.time()
+        table = pol.raw.detach().clone()
+        dump(out / f"rows_g{n:04d}.pt", table)
+        if on_save is not None:
+            on_save(n, table)
+        return time.time() - t_save
 
     def step(i: int, n: int) -> None:
         rs = since[i]
@@ -551,12 +565,9 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                 flush=True,
             )
         if n_groups in cfg["save_groups"]:
-            t_save = time.time()
-            table = pol.raw.detach().clone()
-            dump(out / f"rows_g{n_groups:04d}.pt", table)
-            if on_save is not None:
-                on_save(n_groups, table)
-            t_run += time.time() - t_save
+            t_run += save(n_groups)
+    if n_groups not in cfg["save_groups"]:  # skipped strings: the count ends short
+        t_run += save(n_groups)
     log.close()
     glog.close()
     trained = pol.raw.detach().clone()
@@ -633,6 +644,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", required=True, help="its stem names the run")
     ap.add_argument("--smoke", action="store_true", help="24 renders and a small read")
+    ap.add_argument(
+        "--read_end",
+        action="store_true",
+        help="no training: read the run's rows.pt beside the reads in its records.json",
+    )
     a = ap.parse_args()
 
     cfg = tomllib.loads(Path(a.config).read_text("utf-8"))
@@ -676,12 +692,16 @@ def main() -> None:
     ]
     out = g1.ROOT / name
     out.mkdir(parents=True, exist_ok=True)
-    for f in ("log.jsonl", "groups.jsonl"):
-        (out / f).unlink(missing_ok=True)
+    if not a.read_end:
+        for f in ("log.jsonl", "groups.jsonl"):
+            (out / f).unlink(missing_ok=True)
 
     pol = gd.Policy([G.SHAPE], rows=cfg["rows"], grad_bs=1)
     pol.encode(
-        [G.framed(sc[tr[n % len(tr)]][frame], s) for n, s in enumerate(strings)]
+        [
+            G.framed(sc[tr[n % len(tr)]][frame], s)
+            for n, s in enumerate([] if a.read_end else strings)
+        ]
         + [
             G.framed(sc[i][frame], k)
             for gl, ss, _ in sets
@@ -726,6 +746,9 @@ def main() -> None:
         (out / "records.json").write_text(
             json.dumps(recs, ensure_ascii=False, indent=1), "utf-8"
         )
+        table_of(arm)
+
+    def table_of(arm: str) -> None:
         mine = [r for r in recs if r["arm"] == arm]
         kn = [r for r in mine if r["cls"] in g1.CLASSES]
         tables[arm] = {
@@ -741,22 +764,38 @@ def main() -> None:
             print(f"  {arm} {k}: {v}", flush=True)
         print(f"  {arm} kana alone: {tables[arm]['kana']}", flush=True)
 
-    read_arm("start", start)
-    pol.raw.data.copy_(start)
-    res = train(
-        pol,
-        rdr,
-        cfg,
-        strings,
-        sc,
-        tr,
-        out,
-        hy,
-        at,
-        row_name,
-        lambda n, rows: read_arm(f"g{n:04d}", rows),
-    )
-    print(f"train: {res['info']}", flush=True)
+    if a.read_end:
+        import torch
+
+        recs.extend(json.loads((out / "records.json").read_text("utf-8")))
+        n_end = len((out / "groups.jsonl").read_text("utf-8").splitlines())
+        end = f"g{n_end:04d}"
+        assert end not in {r["arm"] for r in recs}, f"{end} is read"
+        for arm in dict.fromkeys(r["arm"] for r in recs):
+            table_of(arm)
+        sv = torch.load(out / "rows.pt", map_location="cpu", weights_only=False)
+        assert sv["cfg"] == cfg, "rows.pt is another config's"
+        if not (out / f"rows_{end}.pt").exists():  # the save a run leaves since
+            (out / f"rows_{end}.pt").write_bytes((out / "rows.pt").read_bytes())
+        read_arm(end, sv["raw"].to(start))
+        info = {"groups": n_end, "steps": sv["steps"], "rows": str(out / "rows.pt")}
+    else:
+        read_arm("start", start)
+        pol.raw.data.copy_(start)
+        info = train(
+            pol,
+            rdr,
+            cfg,
+            strings,
+            sc,
+            tr,
+            out,
+            hy,
+            at,
+            row_name,
+            lambda n, rows: read_arm(f"g{n:04d}", rows),
+        )["info"]
+        print(f"train: {info}", flush=True)
     last = list(tables)[-1]
 
     from bench._common import make_run_dir, write_result
@@ -781,7 +820,7 @@ def main() -> None:
         script="project/cjk_rl/src/s1.py",
         args=vars(a) | {"cfg": cfg, "model": T.MODEL, "out": str(out)},
         label=name,
-        metrics={"train": res["info"], "read": tables, "kana_solo": kn},
+        metrics={"train": info, "read": tables, "kana_solo": kn},
     )
     print(f"→ {run_dir / 'result.json'}", flush=True)
 

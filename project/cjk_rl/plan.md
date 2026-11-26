@@ -5,9 +5,25 @@ The current run, what is open, what is parked, and the runs done. How a run goes
 question and gate go in its config header (`configs/<handle>_mmdd_hhmm.toml`) when it is
 submitted, and this file then names the run.
 
-## Now: the sentence run at scale (`sents_1126_1856`, submitted 2026-11-26)
+## Now: the sentence run at scale (`sents_1126_1856`, run 2026-11-26)
 
 ### Facts
+
+- Done: [sents](reports/sents_2026_11_26.md). Val positions hit 0.345 → 0.385 → 0.391 at
+  the start, 4 000 groups and the end (`sentw_1126_1528` at 400 groups: 0.422), whole val
+  strings 10 → 14 of 288 pages, the kana alone 351 → 361 of 656. The run walked its 8 000
+  strings in 5 232 groups (2 768 strings held only rows at `max_steps`); 88 of the 172
+  rows reached 4 steps.
+- The blind sheets (36 val strings, start against end) are with the user (11-26); no read
+  recorded.
+- The end rows are the pack `anima_cjk_vocab_pack_jp_v1_sents`, baked and linked into
+  ComfyUI on the user's word (11-26: "해당 학습된거 comfy cjk vocab pack loader로 사용할 수
+  있게 해줘 여기서 써보게").
+- `bplace_1126_2131` (the break-place probe on the end rows) was stopped at 36 of 120
+  strings to free the GPU for the user; no result.
+- The user (11-26), on the run's summary: "일단은 ocr이나 다른 부수요소 (이슈?) 를 손보고
+  다시 도전해볼 생각이야". The line waits on the reader and the side issues
+  ([issues.md](issues.md)) before another run.
 
 - Submitted on the user's word after `bplace_1126_1840`: "그래 학습 올리자 가보자구". Its
   question, gate branches, read and cost are in the config header.
@@ -41,11 +57,21 @@ submitted, and this file then names the run.
   at 5 – 8 glyphs (`sentw`: 0.94 → 1.17) and repeats on the sheets.
 - The budget spreads the steps over the rows where `sentw` put most of them on a few (8 rows
   took 10 steps or more, 65 none): 4 steps a row is at most 0.12 row norms.
+- The run's read is the header's second branch (the read stays at `sentw`'s), and the
+  budget is what ended it: the five rows most strings hold were at 4 steps by group 587.
+  The report's Interpretation has the rest.
 
 ### Next
 
-1. Read the run as its config header says.
-2. `probes/break_place.py` on its rows (`bplace_1126_1840` kept 17 pages of 480 on kmix's).
+1. The reader and the side issues first (the user, 11-26); the next sentence run comes
+   after. Proposed for then, not queued: the same recipe again from these rows, or a larger
+   `max_steps` (about this run's 2.2 h of training and its reads; `[start]` in `s1.py`
+   takes the kana alone and would have to take the marks' rows too). The blind sheets and
+   the user's own renders on the pack have no read recorded.
+2. When the line is taken up again: `probes/break_place.py` on its rows (the config of
+   `bplace_1126_2131` under a new name; `bplace_1126_1840` kept 17 pages of 480 on
+   kmix's), and `configs/smoke_gate.toml` under `--smoke` for `s1.py`'s end save, which no
+   run has gone through yet.
    If the page's own wrap gives the break row a direction, a micro arm on that loss with the
    glyph rows held is proposed, and how the break's caption is encoded (the text encoder kept
    on the GPU, or no line feed on the Qwen side) is settled there.
@@ -134,6 +160,9 @@ The glyph stage's leftovers:
   `AnimaVocabPackLoader`), baked from the run's `rows.pt` onto `anima_cjk_vocab_pack_punct`
   with `scripts/toolkits/bake_vocab_pack.py --glyph_route`. It is `jp_v1` with the 164 kana
   rows replaced (no other row and no routing map differs).
+- `sents_1126_1856`'s end rows as a pack (the user, 11-26):
+  `anima_cjk_vocab_pack_jp_v1_sents`, baked and linked the same way from the run's
+  `rows.pt`. It is `jp_v1` with 170 rows replaced: the 164 kana and `ー 。 、 ~ … ♥`.
 
 ## Done
 
@@ -177,7 +206,8 @@ report table.
 | 7 | the reader's line break as a break row's gradient, through four steps | `bgrad_1126_1806` | [sent_scale](reports/sent_scale_2026_11_26.md), fifth part | renders of different strings agree at −0.003 ± 0.003 (the last two steps), 0.004 ± 0.006 (all four) | – |
 | 7 | the same from a space's row: the pack's U+3000, T5's `▁` | `bgradw_1126_1815`, `bgradt_1126_1815` | [sent_scale](reports/sent_scale_2026_11_26.md), last part | all four steps: 0.000 ± 0.003, −0.002 ± 0.003; the read breaks after the asked glyph on 0 and 2 of 96 | – |
 | 7 | a page's own wrap as the label of a break's place: the denoising error by place, and its gradient on a break row | `bplace_1126_1840` | [sent_scale](reports/sent_scale_2026_11_26.md), last part | 17 pages kept of 480; the error at the true place under another place's on 0.560 / 0.577 / 0.578 of the pairs (a row, a line feed, the literal spelling; null 0.513 / 0.496 / 0.481); the row's gradient across strings −0.012 ± 0.014 | – |
-| 7 | the sentence run at scale: 8 000 strings at a seed, 64 renders a row, the window loss | `sents_1126_1856` | – | running | – |
+| 7 | the sentence run at scale: 8 000 strings at a seed, 64 renders a row, the window loss | `sents_1126_1856` | [sents](reports/sents_2026_11_26.md) | val strings' positions hit 0.345 → 0.385 → 0.391 of 288 pages at 4 000 groups and the end (sentw 0.422); kana alone 351 → 361 of 656 | – |
+| 7 | the break-place probe on the run at scale's rows | `bplace_1126_2131` | [sents](reports/sents_2026_11_26.md), last part | 5 pages kept of 144 when stopped | stopped at 36 of 120 strings |
 
 - The verdicts on items 2, 3 and 3c are the user's, in each report's Facts. Item 3c's is the
   call for item 4: the shared start at 6 steps.

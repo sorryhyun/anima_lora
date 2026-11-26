@@ -135,7 +135,10 @@ def main() -> None:
     at, _ = s1.row_map(pol, sc[tr[0]][frame], kana)
     start = pol.raw.detach().clone()
     if cfg.get("start"):
-        start = g1.saved_rows(cfg["start"], {k: at[s1.key(k)] for k in kana}, start)
+        rows = {k: at[s1.key(k)] for k in kana}
+        if cfg["start"].get("marks"):  # an s1 run's save: the marks' rows are trained
+            rows |= {m: at[s1.key(m)] for m in s1.MARKS}
+        start = g1.saved_rows(cfg["start"], rows, start)
     pol.raw.data.copy_(start)
 
     def ext(caption) -> list:

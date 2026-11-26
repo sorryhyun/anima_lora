@@ -116,6 +116,10 @@ sentence loop and its read), `src/loc.py` (a glyph's place from attention).
   (`src/loc.py`: blocks 8 and 13 – 15 by a hook outside the compiled blocks), a backward a
   row. With `skip_hit` a position the page's read already hits takes no window and no
   backward. The detector's term on a page with no box stays.
+- With `max_steps`, a string whose rows are all at the cap is passed over and is no group,
+  so a run can end under `groups` and short of its last `save_groups` entry; the rows after
+  the last string are then saved and read under the count the run ended at
+  (`sents_1126_1856`: 5 232 groups from 8 000 strings).
 - A row's score for the guards: over the renders that hold it, the positions of its glyph
   the aligned read hits; a look-alike counts 0.5.
 - The read, at each save, against kmix's rows: val strings in no train label by length
@@ -157,6 +161,9 @@ The sentence stage:
   ([sentw](reports/sentw_2026_11_26.md)).
 - A line break in the quote does not move the wrap, and the reader's line break gives a break
   row no shared direction ([sent_scale](reports/sent_scale_2026_11_26.md)).
+- At 64 renders a row the window loss lifts the read of strings less than the micro arm did
+  and leaves the kana alone where they were; the row budget ends the run before the strings
+  do ([sents](reports/sents_2026_11_26.md)).
 
 ## Rules
 
@@ -224,6 +231,7 @@ The sentence stage (the user's calls, 2026-11-26):
 | [sentm](reports/sentm_2026_11_26.md) | `sentm_1126_1331` | the sentence micro arm on the string's cross-entropy: val positions hit 0.345 → 0.331; pages wide where labels stand in columns |
 | [sentw](reports/sentw_2026_11_26.md) | `sgrad_*`, `aloc_1126_1501`, `sentw_1126_1528` | the window loss and its micro arm: val positions hit 0.345 → 0.422; passed |
 | [sent_scale](reports/sent_scale_2026_11_26.md) | `qbreak_1126_1751`, `bgrad*_1126_18*`, `bplace_1126_1840` | before the run at scale: line breaks in the quote, a break row's gradient, a page's own wrap as label (17 pages of 480) |
+| [sents](reports/sents_2026_11_26.md) | `sents_1126_1856`, `bplace_1126_2131` | the run at scale: val positions hit 0.345 → 0.391 (sentw 0.422), kana alone 351 → 361; its rows as a pack; the break-place probe on them, stopped |
 
 ### archive/reports/ (the GRPO and glyph stages)
 

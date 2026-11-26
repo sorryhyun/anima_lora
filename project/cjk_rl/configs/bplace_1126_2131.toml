@@ -1,0 +1,53 @@
+# The break-place probe on the run at scale's rows (probes/break_place.py, no training):
+#   bplace_1126_1840 with `[start]` kmix_1126_1158 `mix` -> sents_1126_1856 `g5232` (its
+#   rows after the last group; `marks = true` takes the marks' rows it trained along with
+#   the kana), nothing else changed (the same 120 strings of 5 - 12
+#   glyphs at the same 4 seeds and scenes, three spellings, steps 0 - 2, 2 draws). It is
+#   plan.md's step after the run at scale ("Next", item 2).
+# Question: do the trained rows give the probe more pages whose own wrap places a break
+#   (bplace_1126_1840 kept 17 of 480), and at that count does either of its reads leave 0.
+#   - `true − other`'s `across` over 0 by 2 standard errors on a step or on the sum, and
+#     `other − other` at 0 -> a micro arm that trains the break row on this loss is
+#     proposed to the user (pages relabelled by their own wrap, the glyph rows held).
+#   - `auc − null` over 0 by 2 standard errors on `lit` or `lf` and `across` at 0 -> the
+#     model already reads a break's place in that spelling; proposed: the same gradient
+#     read from that spelling's own tokens as the start.
+#   - the kept pages stay near 17 -> the label is what limits the probe on these rows
+#     too; a label that does not need the glyphs read (the lines' glyph counts, the
+#     tokens' attention centres) is what is left to propose.
+# Records it rests on:
+#   - bplace_1126_1840: 17 pages kept of 480 on kmix's rows (403 with a box, 152 read as
+#     two lines or more); `auc − null` 0.047 ± 0.056 / 0.081 ± 0.056 / 0.097 ± 0.051 (a
+#     row, a line feed, the literal spelling; the three steps' mean); the row's gradient
+#     across strings −0.012 ± 0.014 summed.
+#   - sents_1126_1856: its rows after 5 232 groups (481 row steps on 154 rows).
+# Not separated by this probe: the 120 strings are among the 8 000 the run walked (each
+#   once, at another seed), so the kept count is not a held-out read; and what
+#   bplace_1126_1840's header lists.
+# Read: the kept count beside bplace_1126_1840's, and the probe's two tables. Claude's
+#   read; it sets what is proposed.
+# Bars: `null` for the score, `other − other` for the gradient, each with the jackknife
+#   standard error over strings. Spread unknown.
+# Cost: as bplace_1126_1840, about 10 min (more with more kept pages: a kept page takes
+#   about 130 forwards and 9 backwards).
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local
+skip = 400          # past the strings sentm / sentw trained on, as bgrad
+lengths = [5, 12]
+strings = 120
+seed0 = 3000
+conf_min = 0.6
+steps = [0, 1, 2]   # σ 1, 0.9, 0.75
+draws = 2
+stand = "〆"   # a row the table holds and no string asks for: the break's place in it
+init = "↵"    # the pack's row the break starts at (not in the table)
+
+[start]
+run = "sents_1126_1856"
+save = "g5232"
+marks = true   # the marks' rows (ー 。 、 ~ … ♥) from the save too
