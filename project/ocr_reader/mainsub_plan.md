@@ -37,7 +37,10 @@ leaves this file for a report.
   ([report](reports/mainsub_1124_0151.md)). Not read.
 - Mains out of train `OCR:` until reviewed: 8,412 waiting on a line-break proposal (the user,
   2026-11-22: "b, c는 일단 학습에서 빠져있으니 괜찮을듯"), and 162 in `assets/m109_break_held.tsv`
-  (local; [report](reports/mainsub_1124_0138.md)).
+  (local; [report](reports/mainsub_1124_0138.md)). On 11-24 agents fixed the top 1,559 rows of
+  the page's `linebreak suspicious` sort, breaks and ruby subs
+  ([report](reports/mainsub_lb_suspicious_agents_2026_11_24.md)); 6,833 `mainsub_det` rows are
+  left on the sort, 41 of them held from the passes (their ruby unread).
 - KO label errors that recur in the `swaprelax_v5` reviews (`review_1124b`, `review_1124c`): hearts
   missing (101 of 273 reviewed edits), y-vowel and look-alike jamo misreads, a vertical column
   split per glyph, `…` written for `..` / `...` / `……`. v7 reads no KO heart and splits 223 of the
@@ -90,3 +93,10 @@ leaves this file for a report.
 - [`hayai_agent_tier1_2026_11_24.md`](reports/hayai_agent_tier1_2026_11_24.md): the user's 70-row
   review of the hayai sort and 22 Sonnet agents over the next 861 rows (734 applied); trim gate
   0.5 → 0.3.
+- [`mainsub_lb_suspicious_agents_2026_11_24.md`](reports/mainsub_lb_suspicious_agents_2026_11_24.md):
+  20 Sonnet agents over the top 1,600 rows of the `linebreak suspicious` sort; 1,559 applied
+  (539 with a sub), 41 held.
+- [`mainsub_1124_1923.md`](reports/mainsub_1124_1923.md): v7's recipe on the 11-24 labels, 8 × 2,
+  2 epochs on RunPod (val main 91.9 %, sub 54.9 %; vs the first v7: doujin SFX 334 → 350, Manga109
+  test SFX 80.8 → 81.9 %, K3 KO 29 → 32, ZH 36); shipped as Hub `v7/` in place (`169eacbc`),
+  `anime_tools` v0.15.0.
