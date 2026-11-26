@@ -142,3 +142,13 @@ Limits:
 First step, if taken: the read of `out2`'s templates (CPU); a lens at `norm2`'s output fitted
 twice on disjoint halves of the cached renders; the held-out λ spectrum and the overlap of the
 two fits; then the γ strips. Estimated 10 – 20 min on the GPU, not measured.
+
+Run on 2026-11-26 in another form (`x2lens_1126_2225`, `reports/x2_lens_2026_11_26.md`). Two
+points of the section above did not hold. `norm2`'s output reaches the image through `out2` and
+the overlap-add, both linear, so nothing is fitted by probes at this layer. And a single
+position's patch is 16 px wide, so its 32-px-periodic part is the patch itself: M_pat is
+proportional to M for the token tile in every direction, and a flat λ from the probes would have
+said nothing about it. The read ranked directions by how the hidden values repeat per phase of
+the token instead. Those directions exist and are the head's own position code; damping them
+raises the patterns. The edit that worked is of the other kind, completing `out2`'s cancellation
+of the 8 × 8 tile on the flat tokens' hidden directions.

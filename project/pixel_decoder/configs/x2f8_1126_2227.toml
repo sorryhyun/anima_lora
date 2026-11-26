@@ -1,0 +1,31 @@
+# x2 f8_k4 on two GAN finishes, as head files, read against x2r05gf_1124_1941 (no training):
+#   lens_read.py --write_heads f8_k4 --write_only on x2r10gf_1125_0104 (ratio 1.0) and
+#   x2ovgf_1124_0920 (ratio 2.0), each fitted on its own flat tokens' hidden values (seed 0 of the
+#   render cache); files under output/pixel_head/x2f8_1126_2227/<parent>_f8_k4/ (local). The edit:
+#   reports/x2_lens_2026_11_26.md.
+# The user (2026-11-26): "선명도가 약간 더 아쉽긴 했어 ㅇㅋ 한번 x2r05gf, ratio 후 편집 ? 시트
+#   만들어볼래? 비교해볼게".
+# Question: with the flat-colour grid folded out, does a finish at a higher ratio read better than
+#   x2r05gf_1124_1941, the best balance so far? The user picks an edited file -> it is the ship
+#   candidate in x2r05gf's place, and the ratio above it (with the same edit) is the next arm.
+#   x2r05gf stays -> the castle tile, or the sharpness itself, is what holds the ratio; the
+#   user's words say which.
+# Records it rests on:
+#   - reports/x2_lens_2026_11_26.md: f8_k4 on x2ovgf, computed from the hidden values in fp32: amp
+#     0.772 / 0.698 (unedited 0.771 / 0.698), the sky patch's 8-px fold 0.12 (0.37), castle s0
+#     departed 0.054 (0.054).
+#   - x2_plan.md's table: x2r05gf 0.710 / 0.646, 0.11, 0.003; x2r10gf 0.739 / 0.673, 0.16, 0.013.
+# Not known before the run: whether the files read the same through p3_generated.py (bf16 up to
+#   out2) as the in-script edit did.
+# Read: p3_generated.py --x2 on the 32 cached renders, columns x2r05gf | x2r10gf + f8_k4 | x2ovgf
+#   + f8_k4 (x2f8gen_1126_2227); sheet_texture.py --x2 and tile_dict.py on it; pair sheets
+#   x2r05gf | each edited file, labelled; the user's read decides.
+# Bars: spread unknown (one seed of each head).
+# Cost: two files on the CPU (2 min each), one cached render read (about 3 min), CPU reads.
+
+heads = [
+  "output/pixel_head/x2r05gf_1124_1941/head_x2.safetensors",
+  "output/pixel_head/x2f8_1126_2227/x2r10gf_1125_0104_f8_k4/head_x2.safetensors",
+  "output/pixel_head/x2f8_1126_2227/x2ovgf_1124_0920_f8_k4/head_x2.safetensors",
+]
+label = "x2f8gen_1126_2227"

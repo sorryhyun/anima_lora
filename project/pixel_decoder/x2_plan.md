@@ -27,8 +27,10 @@ with the reference code to [reports/x2_slope_2026_11_24.md](reports/x2_slope_202
   | `x2r200_1125_0036` | the same, slope term at 200 | 0.702 / 0.680 | 0.31 | 0.14 | 0.028 | 30.01 / 25.69 |
   | `x2r05_1124_1908` | ratio 0.5, no slope term, 1,000 | 0.687 / 0.659 | 0.29 | 0.15 | 0.003 | 30.20 / 25.89 |
 
-- No ship candidate. `x2r05gf_1124_1941` has the best balance so far and is not enough to ship
-  (the user's read, below). The Hub ×2 file stays.
+- Shipped 2026-11-26 as Hub `x2/anima_pixel_head_x2_v3.safetensors`: `x2r10gf_1125_0104` with
+  the edit `f8_k4` (the 8-px grid on flat colour folded out of `out2`, no training;
+  [record](reports/x2_lens_2026_11_26.md)): amp 0.739 / 0.673, flat-token grain 0.31, the sky
+  patch's 8-px fold 0.10, castle s0 0.014. The catalog's ×2 row still names the first Hub file.
 - The user's reads so far:
   - of `x2ovgf_1124_0920`, two regions ([record](reports/x2_ovgf_mix_2026_11_24.md)): the
     sharp line is the identity of the upscale; the lines are distorted (in `x2ovll` too,
@@ -37,6 +39,9 @@ with the reference code to [reports/x2_slope_2026_11_24.md](reports/x2_slope_202
   - of `x2slope_1124_2055`: "가능성은 있어 보이는데 03 s0 의 경우는 좀...".
   - of `x2r05gf_1124_1941` (2026-11-24): "r05gf가 제일 무난하긴 했지만 배포후보로까진 아쉬워 그래도 여태까지중에 제일 밸런스는 좋아".
   - of `x2r05gf_1124_1941` | `x2r10gf_1125_0104` (2026-11-25): "사실상 둘이 동률이다".
+  - of `x2r05gf_1124_1941` (2026-11-26): "선명도가 약간 더 아쉽긴 했어".
+  - of `x2r05gf_1124_1941` | `x2r10gf_1125_0104` + `f8_k4` and | `x2ovgf_1124_0920` + `f8_k4`
+    (2026-11-26): "ㅇㅋ 그래도 ratio 1.0 + 편집이 manga s0을 볼때 더 낫다 이걸로 v3 업로드하자".
 - Three patterns are open, each with its own source (README, "×2 training", the last items):
   1. The token tile on halftone and the breaks in lines: the B head's. No GAN setting removed
      them.
@@ -61,7 +66,9 @@ unpaired, the flat-cell cut, the ×1 fit reads) were deleted on the user's word 
 
 ## Next
 
-1. Nothing queued; the next step is the user's call. `x2r10gf_1125_0104` (`x2r05gf_1124_1941`
+1. Nothing queued; the next step is the user's call. v3 is on the Hub (above); the catalog's
+   ×2 row, the node's README and the card's ×2 samples still show the first file, and whether
+   v3 becomes the default is the user's call. `x2r10gf_1125_0104` (`x2r05gf_1124_1941`
    at ratio 1.0, the user's pick; [record](reports/x2_ratio_2026_11_24.md)) read half of the
    amp between ratio 0.5 and 2.0 (0.739 / 0.673) with a fifth to a quarter of the castle tile
    and the flat-colour fold; the user's read of the pair: "사실상 둘이 동률이다".
@@ -91,9 +98,12 @@ unpaired, the flat-cell cut, the ×1 fit reads) were deleted on the user's word 
   the tile on fine texture is open.
 - The GAN finish as a LoRA (`x2_idea.md`): rank 8 at two LRs ran; rank 64 and the factor reads
   of its steps 2 – 4 are not proposed. The finish stays a full finetune.
-- A Jacobian lens on the second stage, to fold pattern directions out of the head without
-  training (`x2_idea.md`, the last section): written down on the user's word (2026-11-25);
-  nothing run.
+- Pattern directions folded out of `out2` without training (`x2_idea.md`, the last section):
+  read as `x2lens_1126_2225` ([record](reports/x2_lens_2026_11_26.md)). Removing the hidden
+  layer's phase directions raises every pattern meter; `f8_k4` is the edit that shipped. The
+  same edit on another finish is one `lens_read.py --heads <run> --p32_sets --f8_k 4 --sheets
+  --write_heads f8_k4 --write_only` (CPU, 2 min). The token tile on fine colour texture and the
+  token-periodic part of the flat-colour pattern are not reached by it.
 - A convolution tail at pixel resolution: the reference decoder has none; not proposed.
 - A high-pass penalty on the pixels whose target is flat: the user read that direction as
   "애매"; dropped.
