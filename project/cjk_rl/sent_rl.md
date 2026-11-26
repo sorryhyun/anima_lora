@@ -12,8 +12,9 @@ user took the line up again the same day, and a second micro arm on the window l
 (`sentw_1126_1528`, the same 400 strings) moved it: the val strings' positions hit
 0.345 → 0.422 where `sentm` went to 0.331, the kana alone 351 → 345 of 656
 ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), with the three probes that
-led to the loss). Its blind sheets are with the user and not read yet. What runs next is
-the user's call on that read; the report's sixth part holds what a longer run would spend.
+led to the loss). The user passed it (11-26: "블라인드 결과는 그냥 안봐도 합격이라 괜찮을듯",
+one of the 36 sheets read). What runs next is the run at scale, its settings the user's
+call; the report's sixth part holds what a longer run would spend.
 
 ## Decided (the user's calls, 2026-11-26)
 
@@ -219,5 +220,5 @@ row-renders, against 4 in the glyph stage.
    24 891 train strings and 1 844 val strings in no train label.
 4. Done to the micro arm: the smoke and `sentm_1126_1331`.
 5. Done: the gradient and attention probes, the window loss in `src/s1.py` with
-   `src/loc.py`, and its micro arm `sentw_1126_1528`. The run at scale waits on the
-   user's read of its sheets.
+   `src/loc.py`, and its micro arm `sentw_1126_1528`, passed by the user. The run at
+   scale waits on its settings.
