@@ -218,7 +218,8 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
     with or without a line feed), what a hit goes with (a position of a string, not a
     pair of glyphs), the draw's `ー`, `~` and quote marks, and a break row's gradient
     from the reader's line break, from three starts (`bgrad_1126_1806`,
-    `bgradw_1126_1815`, `bgradt_1126_1815`: 0 on every step).
+    `bgradw_1126_1815`, `bgradt_1126_1815`: 0 on every step), and a page's own wrap as
+    the label of a break's place (`bplace_1126_1840`: 17 pages kept of 480).
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -268,8 +269,9 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   by the step it came through, and on a string also for the row's own positions' tokens
   and for its glyph on its attention windows; `attn_loc.py` reads whether a quote token's
   attention window holds its glyph; `quote_break.py` whether a page wraps where the
-  quote breaks, and `break_grad.py` whether the reader's line break gives a break row a
-  gradient that renders share. `g2_rows.py` (CPU) reads a G1 run's
+  quote breaks, `break_grad.py` whether the reader's line break gives a break row a
+  gradient that renders share, and `break_place.py` whether the denoising error on a
+  page that wrapped tells the break's place from the string's other places. `g2_rows.py` (CPU) reads a G1 run's
   records and log per row and sorts the rows into the plan's groups (not learned, pushed
   past the glyph, a reader's problem), with labelled sheets of those rows.
 - `configs/` — one file a run, its question and gate in the header.

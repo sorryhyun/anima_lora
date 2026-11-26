@@ -13,9 +13,12 @@ user took the line up again the same day, and a second micro arm on the window l
 0.345 → 0.422 where `sentm` went to 0.331, the kana alone 351 → 345 of 656
 ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), with the three probes that
 led to the loss). The user passed it (11-26: "블라인드 결과는 그냥 안봐도 합격이라 괜찮을듯",
-one of the 36 sheets read). What runs next is the run at scale. Its settings are under
-"The run at scale" below; it is not submitted, and how line breaks are handled is a
-placeholder there.
+one of the 36 sheets read). What runs next is the run at scale; its settings are under
+"The run at scale" below.
+
+The run at scale is submitted (`sents_1126_1856`, 11-26): the user, after `bplace_1126_1840`, "그래
+학습 올리자 가보자구". The quote holds no break; the break's place as a page's own wrap
+is read again on this run's rows.
 
 ## Decided (the user's calls, 2026-11-26)
 
@@ -152,10 +155,9 @@ Cost, to be set in the config: a group is about 4.0 s with the two-step backward
 with the last step's alone, and 0.95 s a step's backward), so 1 000 groups are 67 min. A group of a 7-glyph string is 28
 row-renders, against 4 in the glyph stage.
 
-## The run at scale — settings (2026-11-26, not submitted)
+## The run at scale — settings (2026-11-26, submitted as `sents_1126_1856`)
 
-`sentw_1126_1528`'s settings with the lines below changed. The config and its header are
-written when the user says run. Records:
+`sentw_1126_1528`'s settings with the lines below changed. Records:
 [reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md) (sixth part) and
 [reports/sent_scale_2026_11_26.md](reports/sent_scale_2026_11_26.md).
 
@@ -172,7 +174,7 @@ written when the user says run. Records:
 | size | an estimated 3 h | the user: "일단 예산범위는 추정 3h로 두자" |
 | strings and saves | `groups = 8000` of the thinned draw in drawn order, `save_groups = [4000, 8000]` | Claude's fit to the 3 h |
 | the mix of lengths, glyph groups for the kana alone, the start rows | the labels' own mix, none, kmix: as `sentw_1126_1528` | not set by the user |
-| line breaks | placeholder | the user: "줄바꿈 어떻게 할지는 일단 placeholder로" |
+| line breaks | none in the quote | the user: "줄바꿈 어떻게 할지는 일단 placeholder로", then, on the proposal to run without breaks and read `break_place.py` again on the run's rows: "그래 학습 올리자 가보자구" |
 
 - The fit to 3 h, a simulation over the thinned draw at a hit share of 0.36 (the start
   rows' on string pages) with 0.85 s a render and 0.58 s a row-render: 8 000 strings are
@@ -185,7 +187,8 @@ written when the user says run. Records:
 - Line breaks, as the run stands: the quote holds none. `qbreak_1126_1751`: a line feed
   or the literal backslash-n in the quote does not move where the page wraps.
   `bgrad_1126_1806`, `bgradw_1126_1815`, `bgradt_1126_1815`: a break row's gradient from
-  the reader's line-break token, from three starts
+  the reader's line-break token, from three starts. `bplace_1126_1840`: a page's own
+  wrap as the label of a break's place, 17 pages kept of 480
   ([reports/sent_scale_2026_11_26.md](reports/sent_scale_2026_11_26.md), last parts).
 
 ### Interpretation
@@ -246,7 +249,11 @@ written when the user says run. Records:
   its box stands that way, `back_steps = 4`, scenes with tall bubbles. The tall pages'
   lower count is the model's lettering, not the reader's read (the user, 11-26: the reader
   is trained mostly on columns), so no reader-side fix comes before these.
-- Line breaks: a placeholder, under "The run at scale".
+- Line breaks: not in the run at scale. A page's own wrap as the label of a break's place
+  (`bplace_1126_1840`, 17 pages kept of 480 on kmix's rows) is read again on the run's
+  rows; if it gives the break row a direction, a micro arm on that loss with the glyph
+  rows held is proposed, and how the break's caption is encoded after the read (the
+  text encoder kept on the GPU, or no line feed on the Qwen side) is settled there.
 - Half the backward by reading the loss off the σ 0.75 step's own x̂₀
   ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), last part). Not looked at.
 
@@ -262,5 +269,5 @@ written when the user says run. Records:
 4. Done to the micro arm: the smoke and `sentm_1126_1331`.
 5. Done: the gradient and attention probes, the window loss in `src/s1.py` with
    `src/loc.py`, and its micro arm `sentw_1126_1528`, passed by the user.
-6. The run at scale: its settings are recorded above; it waits on the user's word and on
-   the line-break placeholder.
+6. The run at scale: `sents_1126_1856`, submitted 11-26.
+7. `probes/break_place.py` on that run's rows.

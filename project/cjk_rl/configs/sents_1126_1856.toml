@@ -1,0 +1,89 @@
+# The sentence run at scale (src/s1.py): sentw_1126_1528 with `groups` 400 -> 8000,
+#   `save_groups` [200, 400] -> [4000, 8000], `skip_hit` absent -> true, `train_seeds`
+#   absent (4) -> 1, `max_steps` absent -> 4 and `[draw]` added; nothing else changed
+#   (kmix's rows as the start, the window loss a backward a row, the two-step backward,
+#   the guards, the read). The settings are the user's, 11-26 (sent_rl.md, "The run at
+#   scale"); the user, 11-26, after bplace_1126_1840: "그래 학습 올리자 가보자구".
+#   Line breaks: the quote holds none, as sentw.
+# Question: does the window loss at scale carry the read of strings the run did not
+#   train on past sentw's 400 groups, with the kana alone holding.
+#   - the val strings read more at 4000 and at 8000 and the kana alone hold -> the rows
+#     go to the user's sheets for the v2 preview (sent_rl.md, Ship), and
+#     probes/break_place.py is run again on these rows for its label yield.
+#   - the read stays at sentw's -> the rows at `max_steps` and their scores are read
+#     from the log before more groups are proposed.
+#   - glyphs drawn over glyphs asked rise at 5 - 8 glyphs, or the sheets show repeats ->
+#     an arm with the neighbour's-window positions left out is proposed.
+#   - the kana alone fall at 8000 and not at 4000 -> the save at 4000 is the candidate.
+# Records it rests on:
+#   - sentw_1126_1528 (400 groups of 4 seeds, 12.9 s a group): val strings' positions hit
+#     0.345 -> 0.361 -> 0.422 at 200 and 400 groups, the whole string 10 -> 14 of 288
+#     pages, train labels not trained on 0.402 -> 0.496, the kana alone 351 -> 345 of
+#     656, glyphs drawn over asked at 5 - 8 glyphs 0.94 -> 1.17; passed by the user.
+#   - sgrad_1126_1511: renders agree at 0.008 on positions the read hit and 0.034 on
+#     those it missed (`skip_hit`).
+#   - configs/smoke_gate.toml under --smoke: the loop runs with `skip_hit`,
+#     `train_seeds = 1` and `max_steps`; `[draw]` checked on the pool on CPU (24 891 ->
+#     24 413 strings).
+#   - sent_rl.md's simulation over the thinned draw (a hit share of 0.36, 0.85 s a
+#     render, 0.58 s a row-render): 8 000 strings are 5 311 renders and 8 128
+#     row-renders, and 85 of the 171 rows reach 64 renders that backed them.
+# Not separated by this run: the six keys change together from sentw, so the run does
+#   not say which of them a difference from sentw's 400 groups comes from; the first 400
+#   strings are sentw's, at one seed each.
+# Read: the start rows against the saves at 4000 and 8000, as sentw's read (12 val
+#   strings a length bin and 12 train strings not trained on, the read scenes at seeds 0
+#   and 1; the 164 kana alone on scenes 6 and 45), beside sentw's table; the log's rows
+#   at `max_steps`. Blind sheets, a val string a file; the user's read decides.
+# Bars: spread unknown (no twin). sentw's start read is this run's start read drawn
+#   again, which gives the read's repeat.
+# Cost: the simulation's 2.6 h of training and three reads of about 10 min: 3.1 h.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local (probes/sent_strings.py --seed 1126 --lengths 2-12)
+groups = 8000
+save_groups = [4000, 8000]
+train_seed0 = 2000  # lap n of the scenes: train_seed0 + 4n … + 3
+shuffle_seed = 1126
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step, at full length
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2
+back_steps = 2       # the backward covers σ 0.75 → 0.5 → 0
+loss = "window"        # a glyph's cross-entropy on its own attention window (src/loc.py)
+window = 1.3           # glyph sides, as aloc_1126_1501
+window_rows = "each"   # a backward a row
+skip_hit = true        # a position the page's read hits has no window and no backward
+train_seeds = 1        # a seed a string: train_seed0 + n
+max_steps = 4          # 64 renders that backed a row
+near_score = 0.5     # a look-alike position in a step's score
+taper = true         # step length eta × min(1, 2 (1 − score / renders))
+reader_compile = true
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"
+
+[back]
+drop = 4     # of the window's 32 renders
+window = 2   # steps
+over = 0.5
+
+[read]
+val_per_bin = 12
+seen = 12
+seeds = [0, 1]
+kana_scenes = [6, 45]
+kana_seeds = [0, 1]
+
+[draw]
+glyphs = "ー~"   # a string where these run longer than run_max or are over share_max of it is left out
+run_max = 2
+share_max = 0.5

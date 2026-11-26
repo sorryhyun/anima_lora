@@ -1,0 +1,62 @@
+# A page's own wrap as the label of a break's place (probes/break_place.py, no training):
+#   train strings of 5 - 12 glyphs rendered with no break in the quote on kmix's rows; a
+#   page whose read has two lines or more, every line end after a hit glyph, gives its
+#   true places. Its final latent is noised again to the σ of steps 0 - 2 and the step's
+#   x̂₀ is scored against it inside the picked box, under a caption with a break at each
+#   place of the string, in three spellings (a row on the T5 side at the pack's untrained
+#   `↵` with a line feed on the Qwen side; the line feed alone; the literal backslash-n).
+#   The user, 11-26, after bgrad / bgradw / bgradt: "sent rl에서 줄바꿈은 (나름) 중대한
+#   이슈인거같은데... 어떻게 학습시킬 방법이 없을까?".
+# Question: with the break put where the page did wrap, does the model's own denoising
+#   error tell that place from the string's other places, and does its difference between
+#   a true and another place give the break row a direction pages of different strings
+#   share.
+#   - `true − other`'s `across` over 0 by 2 standard errors on a step or on the sum, and
+#     `other − other` at 0 -> a micro arm that trains the break row on this loss is
+#     proposed to the user (pages relabelled by their own wrap, the glyph rows held).
+#   - `auc − null` over 0 by 2 standard errors on `lit` or `lf` and `across` at 0 -> the
+#     model already reads a break's place in that spelling; proposed: the same gradient
+#     read from that spelling's own tokens as the start.
+#   - both at 0 -> the denoising error does not carry a break's place at an untrained
+#     row either; left to propose: real pages with the labels' breaks under the
+#     flow-matching loss on the base model, or a LoRA beside the row.
+# Records it rests on:
+#   - bgrad_1126_1806, bgradw_1126_1815, bgradt_1126_1815: the reader's line-break token
+#     gives a break row 0.004 ± 0.006 across strings (all four steps) from three starts;
+#     the break asked after glyph n // 2, where 1, 0 and 2 of 96 pages wrap.
+#   - qbreak_1126_1751: the page does not wrap where the quote breaks, a line feed or the
+#     literal spelling; a break somewhere on 0.52 of the boxed pages.
+#   - sentw_1126_1528's read records, counted 11-26 (pages whose best box hits half the
+#     string or more): 244 of 565 read as two lines or more; a line ends after a hit kana
+#     on 102 of 1 249, after `…` on 16 of 120, `っ` 8 of 72, `ー` 6 of 35, `!` 1 of 44.
+#   - sgrad_1126_1511: 0.032 ± 0.009 on a row's glyph alone, 0.016 ± 0.008 on its
+#     windows, the size a row trained on.
+# Not separated by this probe: the row starts untrained, so a 0 on `row` with the
+#   forward score is expected and the gradient is the read; the latent error inside the
+#   box is the one loss tried; the student's x̂₀ at a noised final latent is not a step of
+#   its own trajectory.
+# Read: the probe's two tables. Claude's read; it sets what is proposed.
+# Bars: `null` for the score, `other − other` for the gradient, each with the jackknife
+#   standard error over strings. Spread unknown.
+# Cost: 120 strings of 4 renders (the smoke kept 2 pages of 24); a kept page takes about
+#   130 forwards and 9 backwards: about 10 min.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local
+skip = 400          # past the strings sentm / sentw trained on, as bgrad
+lengths = [5, 12]
+strings = 120
+seed0 = 3000
+conf_min = 0.6
+steps = [0, 1, 2]   # σ 1, 0.9, 0.75
+draws = 2
+stand = "〆"   # a row the table holds and no string asks for: the break's place in it
+init = "↵"    # the pack's row the break starts at (not in the table)
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"

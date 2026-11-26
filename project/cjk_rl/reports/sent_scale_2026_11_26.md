@@ -3,8 +3,9 @@
 Reads asked by the user after `sentw_1126_1528` passed: the saved records of
 `aloc_1126_1501` and `sentw_1126_1528` read again (no GPU), a forward-only probe of a
 line break in the quote (`qbreak_1126_1751`), the train strings counted for `ー`, `~` and
-quote marks, and gradient probes of a break row from three starts (`bgrad_1126_1806`,
-`bgradw_1126_1815`, `bgradt_1126_1815`, the last two parts). A probe's settings,
+quote marks, gradient probes of a break row from three starts (`bgrad_1126_1806`,
+`bgradw_1126_1815`, `bgradt_1126_1815`), and a probe of a page's own wrap as the label
+of a break's place (`bplace_1126_1840`, the last part). A probe's settings,
 question and gate are in its config header. The record reads were one-off scripts and are not kept as probes.
 The smoke of the settings the user fixed is the part before those.
 
@@ -277,3 +278,78 @@ init하는건?".
   asked place, and the reader's gradient gives it no direction that renders share.
   Three starts agree, so the 0 is not the start's.
 - How line breaks are handled is a placeholder in sent_rl.md (the user, 11-26).
+
+# `bplace_1126_1840` — a page's own wrap as the label of a break's place
+
+The user (11-26), after the three gradient probes: "내생각에 sent rl에서 줄바꿈은 (나름)
+중대한 이슈인거같은데... 어떻게 학습시킬 방법이 없을까? 뭔가 이거만한 위치 정보를 주면서
+유저들도 잘 활용할 수 있는 토큰이 없는데".
+
+## Facts
+
+- `sentw_1126_1528`'s read records, counted on CPU (the pages of every arm whose best
+  box hits half the string or more, strings of 3 glyphs or more): 244 of 565 read as
+  two lines or more; a line ends after a hit kana on 102 of 1 249, after `…` on 16 of
+  120, `っ` 8 of 72, `ー` 6 of 35, `!` 1 of 44.
+- `probes/break_place.py`, no training, the job 10.1 min: 120 train strings of 5 – 12
+  glyphs past index 400, each on a training scene at 4 seeds with no break in the
+  quote, kmix's rows. `results/20261126-1850-break_place-bplace_1126_1840/`, pages
+  `output/cjk_rl/break_place/bplace_1126_1840/` (local).
+- Of the 480 renders, 403 have a box and 152 read as two lines or more. 17 are kept (16
+  strings): every line end after a hit glyph, half the string or more hit. Of the
+  others with two lines, a break is not placed on 116 and under half of the string is
+  hit on 105 (both on 87). The kept pages' hit shares: 13 between 0.50 and 0.62, 4 at
+  0.83 or over. Their boxes: 4 tall, 13 wide. The read's glyph count is the string's on
+  20 of the 126 boxed pages with two lines.
+- The forward score: `auc` is the share of (true place, other place) pairs where the
+  break at the true place has the lower error, `null` the same with another string's
+  places standing in, ± a jackknife over strings; `gap` is the other places' mean error
+  minus the true places', over the error with no break.
+
+  | spelling | step (σ) | auc | null | auc − null | gap |
+  |---|---|---|---|---|---|
+  | a row at the pack's `↵`, a line feed on the Qwen side | 0 (1.00) | 0.558 | 0.502 | 0.056 ± 0.090 | 0.003 |
+  | | 1 (0.90) | 0.564 | 0.543 | 0.021 ± 0.094 | 0.008 |
+  | | 2 (0.75) | 0.559 | 0.495 | 0.064 ± 0.094 | 0.005 |
+  | | the three, mean | 0.560 | 0.513 | 0.047 ± 0.056 | 0.005 |
+  | the line feed alone | 0 (1.00) | 0.552 | 0.479 | 0.073 ± 0.084 | 0.003 |
+  | | 1 (0.90) | 0.647 | 0.478 | 0.168 ± 0.082 | 0.004 |
+  | | 2 (0.75) | 0.532 | 0.530 | 0.002 ± 0.100 | 0.002 |
+  | | the three, mean | 0.577 | 0.496 | 0.081 ± 0.056 | 0.003 |
+  | the literal backslash-n | 0 (1.00) | 0.498 | 0.462 | 0.036 ± 0.075 | 0.002 |
+  | | 1 (0.90) | 0.568 | 0.497 | 0.071 ± 0.086 | 0.005 |
+  | | 2 (0.75) | 0.668 | 0.483 | 0.185 ± 0.073 | 0.024 |
+  | | the three, mean | 0.578 | 0.481 | 0.097 ± 0.051 | 0.010 |
+
+- The break row's gradient, the mean cosine between pages of different strings, 17
+  pages:
+
+  | vector | step 0 | step 1 | step 2 | the three summed |
+  |---|---|---|---|---|
+  | true place − another place | 0.014 ± 0.024 | 0.001 ± 0.018 | 0.035 ± 0.040 | −0.012 ± 0.014 |
+  | another − another | −0.013 ± 0.011 | 0.039 ± 0.049 | −0.004 ± 0.028 | 0.009 ± 0.029 |
+  | the true place alone | 0.140 ± 0.060 | −0.010 ± 0.019 | 0.019 ± 0.046 | 0.034 ± 0.032 |
+
+- Spread unknown. The pages were not viewed.
+
+## Interpretation
+
+- None of the header's three branches is reached at 17 pages. The gradient's standard
+  errors (0.014 – 0.040) are the size of what is looked for (`sgrad`'s 0.016 and 0.032),
+  so its 0 says nothing either way.
+- The score is over its null in all nine cells and by 2 standard errors in two of them
+  (the line feed at σ 0.9, the literal spelling at σ 0.75), the largest gap on the
+  spelling the dataset captions use. That leans toward the DiT already reading a break's
+  place a little in that spelling. Nine cells on the same 17 pages do not make it a
+  result.
+- What limits the probe is the label, not the loss: on kmix's rows a page of 5 – 12
+  glyphs seldom reads well enough to place its breaks (17 of 480, 4 of them at 0.83 of
+  the string or over), and a read that hits half a garbled string places a break
+  loosely. The label gets better as the strings read better, so this loss fits after the
+  run at scale or on its rows, or with a label that does not need the glyphs read (the
+  lines' glyph counts, the tokens' attention centres).
+- A 2 × 2 or 3 × 3 block read the other way gives a wrong place (the user, 11-26:
+  "ㅁㅁ\nㅁㅁ 이면 줄바꿈이 애매하려나? 세로쓰기랑 가로쓰기 어느쪽인지도 헷갈릴거같고").
+  The rule that every line end follows a hit glyph drops a read whose order is broken;
+  a rule on both glyphs beside the break would be tighter.
+
