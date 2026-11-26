@@ -178,8 +178,9 @@ row-renders, against 4 in the glyph stage.
 - Vertical lettering (the user, 11-26): strings of three glyphs or more that are not
   SFX-like should come out in columns, with the prompt as it is. A string's label gives
   the way it stood (`orient`). Levers named and not tried: a render weighted by whether
-  its box stands that way, `back_steps = 4`, scenes with tall bubbles. The reader's lower
-  count on tall pages comes first: whether it is the lettering or the read.
+  its box stands that way, `back_steps = 4`, scenes with tall bubbles. The tall pages'
+  lower count is the model's lettering, not the reader's read (the user, 11-26: the reader
+  is trained mostly on columns), so no reader-side fix comes before these.
 - A row's direction in the string loop: more renders a step, glyph groups mixed in, or
   the backward back to one step. `sgrad_1126_1422` is the read that picks.
 
