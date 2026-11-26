@@ -7,7 +7,8 @@ The sentence run of ``sent_rl.md``. Policy, path and readers are G1's (``gd.Poli
 - A group is one string on one training scene at 4 seeds,
   ``<scene, bubble frame>. Text reads as "<string>".``. Group n takes string n of the
   draw and scene n mod the training scenes; a lap of the scenes draws new seeds
-  (``train_seed0 + 4 lap …``). A string is used once.
+  (``train_seed0 + 4 lap …``). A string is used once. With ``train_seeds`` a group has
+  that many seeds, its own (``train_seed0 + train_seeds n …``).
 - The page's box is picked by its sequence score to the string (``gd.pick``). The tuned
   reader's target is the string with the line breaks of the page's own read of that box
   (:func:`score`): the read is aligned to the string, and a break the read holds after
@@ -31,7 +32,9 @@ The sentence run of ``sent_rl.md``. Policy, path and readers are G1's (``gd.Poli
   ``window_rows = "sum"`` backs the windows' sum once and every row takes its part, as
   the string's loss does; ``"each"`` backs a row's windows alone, a backward a row, and
   the row takes that one. The box, the row's score and the detector's term are as
-  without it.
+  without it. With ``skip_hit`` a position the page's aligned read hits has no window
+  and no backward; a render that leaves a row none is in the row's score and not in
+  its ``accum``, so a row steps on ``accum`` renders that backed it.
 - A row's score for the guards (``near_score``, ``taper``, ``[back]``, as in G1): over
   the step's renders, the positions of the row's glyph that the aligned read hits, a
   look-alike (``g1.shape``) counting ``near_score``, over the positions asked, times
@@ -43,7 +46,10 @@ row (``ー`` with ``―``, ``。``, ``、``, ``~``, a dot run, ``♥``, ``「``,
 that save holds them; the marks begin at the config's ``rows``.
 
 Strings: ``strings_file`` (``probes/sent_strings.py``; local), ``train`` in drawn order
-and ``val`` by length. The run trains on the first ``groups`` of ``train``.
+and ``val`` by length. The run trains on the first ``groups`` of ``train``. With
+``[draw]`` a train string is left out of those when its glyphs of ``glyphs`` (keys)
+run longer than ``run_max`` or are more than ``share_max`` of it (:func:`thinned`); the
+read's strings are not thinned.
 
 The read (the start rows, then each save in ``save_groups``), every page read as
 ``g1.read`` reads it, with the boxes' reads kept as written:
@@ -201,6 +207,22 @@ def own_ce(tok: tuple, spans: list, pos: list):
     return each[keep].sum() / len(each)
 
 
+def thinned(strings: list, rule: dict) -> list:
+    """The strings a ``[draw]`` rule keeps, in their order."""
+    gl = {key(c) for c in rule["glyphs"]}
+    out = []
+    for s in strings:
+        ks = keys(s)
+        run = best = 0
+        for k in ks:
+            run = run + 1 if k in gl else 0
+            best = max(best, run)
+        share = sum(k in gl for k in ks) / len(ks)
+        if best <= rule["run_max"] and share <= rule["share_max"]:
+            out.append(s)
+    return out
+
+
 def bin_of(n: int) -> str | None:
     return next((f"{lo}-{hi}" for lo, hi in BINS if lo <= n <= hi), None)
 
@@ -232,6 +254,9 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
     win = cfg.get("loss") == "window"
     each = win and cfg["window_rows"] == "each"
     assert not win or cfg["window_rows"] in ("sum", "each"), cfg["window_rows"]
+    skip_hit = bool(cfg.get("skip_hit"))
+    assert win or not skip_hit, "skip_hit is the window loss's"
+    n_seeds = int(cfg.get("train_seeds") or 4)
     rec = loc.Recorder(pol.anima) if win else None
     dim = pol.raw.shape[1]
     init = pol.raw.detach().clone()
@@ -245,7 +270,7 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
     returns = dict.fromkeys(name, 0)
     log = open(out / "log.jsonl", "a")
     glog = open(out / "groups.jsonl", "a")
-    t_run, phase, n_groups = time.time(), {}, 0
+    t_run, phase, n_groups, n_backed = time.time(), {}, 0, 0
 
     def lap(k: str, t0: float) -> float:
         torch.cuda.synchronize()
@@ -268,7 +293,7 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
 
     def step(i: int, n: int) -> None:
         rs = since[i]
-        gbar = acc[i] / len(rs)
+        gbar = acc[i] / sum(x["norm"] is not None for x in rs)
         pos = sum(x["pos"] for x in rs)
         raw = sum(x["hit"] + w_near * x["near"] for x in rs)
         sc16 = accum * raw / max(pos, 1)  # of ``accum`` renders, as G1's score
@@ -310,6 +335,7 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                     "key": name[i],
                     "step": steps[i],
                     "renders": len(rs),
+                    "backed": sum(x["norm"] is not None for x in rs),
                     "positions": pos,
                     "hit": sum(x["hit"] for x in rs),
                     "near": sum(x["near"] for x in rs),
@@ -321,7 +347,7 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                     "cos_prev": cos,
                     "drift": float((pol.raw[i] - init[i]).norm()) / pol.row_scale,
                     "none": sum(x["case"] == "none" for x in rs),
-                    "clipped": sum(x["norm"] > cfg["clip"] for x in rs),
+                    "clipped": sum((x["norm"] or 0.0) > cfg["clip"] for x in rs),
                     "min": round((time.time() - t_run) / 60, 2),
                 },
                 ensure_ascii=False,
@@ -334,7 +360,8 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
 
     for n, s in enumerate(strings):
         si = scenes[n % len(scenes)]
-        seeds = [cfg["train_seed0"] + 4 * (n // len(scenes)) + k for k in range(4)]
+        first = n_seeds * n if "train_seeds" in cfg else 4 * (n // len(scenes))
+        seeds = [cfg["train_seed0"] + first + k for k in range(n_seeds)]
         caption = G.framed(sc[si][cfg["frame"]], s)
         au = units(s)
         ak = [key(u) for u in au]
@@ -388,7 +415,7 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                 g_by, loss, aux, n_win = {}, 0.0, 0.0, 0
                 for c, p in zip(cs, upos):
                     i = at[ak[p]]
-                    if i not in live:
+                    if i not in live or (skip_hit and hit[p]):
                         continue
                     # a graph a window, freed at once (a string's do not fit)
                     leaf_w = img.clone().requires_grad_(True)
@@ -409,11 +436,12 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                     g_by[i] = g_by[i] + g if i in g_by else g
                     n_win += 1
                     del seen, tk, htk, w01, leaf_w
-                loss, aux = loss / n_win, aux / n_win if hy is not None else None
+                loss = loss / n_win if n_win else None  # None: every position hit
+                aux = aux / n_win if n_win and hy is not None else None
                 if each:
                     cots = [([i], g) for i, g in g_by.items()]
                 else:
-                    cots = [(list(g_by), sum(g_by.values()))]
+                    cots = [(list(g_by), sum(g_by.values()))] if g_by else []
                 del g_by
             else:
                 got = r["sfx"] or ""
@@ -443,14 +471,17 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                 for i in mine:
                     row_g[i] = g_rows[i].clone()
                 del g_rows
+            if not cots:
+                del px, ei, xi
             del cots
             t = lap("bwd", t)
             norms = []
             for i in live:
-                g = row_g[i]
-                gn = float(g.norm())
-                norms.append(gn)
-                acc[i] += g * min(1.0, cfg["clip"] / max(gn, 1e-30))
+                gn = None  # None: the render backed nothing of this row
+                if i in row_g:
+                    gn = float(row_g[i].norm())
+                    norms.append(gn)
+                    acc[i] += row_g[i] * min(1.0, cfg["clip"] / max(gn, 1e-30))
                 pos = [p for p, k in enumerate(ak) if at.get(k) == i]
                 since[i].append(
                     {
@@ -462,22 +493,25 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                     }
                 )
             del row_g
+            n_backed += len(norms)
             pages.append(
                 {
                     "case": case,
-                    "loss": float(loss),  # the tuned reader's term (a window's mean)
+                    # the tuned reader's term (a window's mean)
+                    "loss": None if loss is None else float(loss),
                     "hy": None if aux is None else float(aux),
                     "hit": sum(hit),
                     "exact": keys(got) == ak,
-                    "norm": max(norms),
+                    "norm": max(norms, default=0.0),
+                    "backed": len(norms),
                 }
             )
         del e_graph
         n_groups += 1
         for i in live:
-            if len(since[i]) >= accum:
+            if sum(x["norm"] is not None for x in since[i]) >= accum:
                 step(i, n_groups)
-        crop = [x for x in pages if x["case"] != "none"]
+        crop = [x for x in pages if x["case"] != "none" and x["loss"] is not None]
         glog.write(
             json.dumps(
                 {
@@ -485,13 +519,16 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
                     "string": s,
                     "glyphs": len(au),
                     "rows": len(live),
+                    "backed": sum(x["backed"] for x in pages),  # row-renders
                     "scene": si,
                     "cases": {
                         c: sum(x["case"] == c for x in pages)
                         for c in ("box", "low", "none")
                     },
                     "exact": sum(x["exact"] for x in pages),
-                    "hit": round(sum(x["hit"] for x in pages) / (4 * len(au)), 3),
+                    "hit": round(
+                        sum(x["hit"] for x in pages) / (len(pages) * len(au)), 3
+                    ),
                     "ce": sum(x["loss"] for x in crop) / len(crop) if crop else None,
                     "ce_hy": (
                         sum(x["hy"] for x in crop) / len(crop)
@@ -530,6 +567,7 @@ def train(pol, rdr, cfg, strings, sc, scenes, out, hy, at, name, on_save) -> dic
         "minutes": round((time.time() - t_run) / 60, 2),
         "s_per_group": {k: round(v / max(n_groups, 1), 3) for k, v in phase.items()},
         "peak_gib": round(torch.cuda.max_memory_allocated() / 2**30, 2),
+        "row_renders": n_backed,
         "row_steps": sum(by),
         "rows_stepped": sum(v > 0 for v in by),
         "steps_max": by[-1],
@@ -594,7 +632,7 @@ def string_table(recs: list) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", required=True, help="its stem names the run")
-    ap.add_argument("--smoke", action="store_true", help="6 groups and a small read")
+    ap.add_argument("--smoke", action="store_true", help="24 renders and a small read")
     a = ap.parse_args()
 
     cfg = tomllib.loads(Path(a.config).read_text("utf-8"))
@@ -607,15 +645,22 @@ def main() -> None:
     rd = dict(cfg["read"])
     if a.smoke:
         tr, rd_sc = tr[:2], rd_sc[:1]
-        cfg = cfg | {"groups": 6, "accum": 4, "save_groups": [6]}
+        g = 24 // int(cfg.get("train_seeds") or 4)  # 24 renders
+        cfg = cfg | {"groups": g, "accum": 4, "save_groups": [g]}
         rd |= {"val_per_bin": 1, "seen": 1, "kana_scenes": rd["kana_scenes"][:1]}
     cfg = {"save_groups": [cfg["groups"]]} | cfg
     assert cfg["groups"] in cfg["save_groups"], "the last group is a save"
     frame = cfg["frame"]
     assert isinstance(frame, str), "one frame"
     pool = json.loads((T.REPO / cfg["strings_file"]).read_text("utf-8"))
-    strings = pool["train"][: cfg["groups"]]
     seen = pool["train"][len(pool["train"]) - rd["seen"] :]
+    drawn = pool["train"][: len(pool["train"]) - rd["seen"]]
+    if cfg.get("draw"):
+        kept = thinned(drawn, cfg["draw"])
+        print(f"[draw] leaves out {len(drawn) - len(kept)} of {len(drawn)} strings")
+        drawn = kept
+    strings = drawn[: cfg["groups"]]
+    assert len(strings) == cfg["groups"], "the draw is shorter than the run"
     assert not set(seen) & set(strings), "a seen string is trained on"
     val = [s for b in pool["val"].values() for s in b[: rd["val_per_bin"]]]
     kana_gl = g1.glyphs(cfg | {"fold_small": False}, a.smoke)

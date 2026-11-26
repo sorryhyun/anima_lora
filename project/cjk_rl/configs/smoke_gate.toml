@@ -1,0 +1,52 @@
+# Smoke of src/s1.py's `skip_hit`, `train_seeds`, `max_steps` and `[draw]` (run with
+#   --smoke): sentw_1126_1528's settings with them on. It checks that the loop runs;
+#   nothing is read from its rows.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local (probes/sent_strings.py --seed 1126 --lengths 2-12)
+groups = 400
+save_groups = [200, 400]
+train_seed0 = 2000  # lap n of the scenes: train_seed0 + 4n … + 3
+shuffle_seed = 1126
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step, at full length
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2
+back_steps = 2       # the backward covers σ 0.75 → 0.5 → 0
+loss = "window"        # a glyph's cross-entropy on its own attention window (src/loc.py)
+window = 1.3           # glyph sides, as aloc_1126_1501
+window_rows = "each"   # a backward a row
+skip_hit = true        # a position the page's read hits has no window and no backward
+train_seeds = 1        # a seed a string: train_seed0 + n
+max_steps = 4          # 64 renders that backed a row
+near_score = 0.5     # a look-alike position in a step's score
+taper = true         # step length eta × min(1, 2 (1 − score / renders))
+reader_compile = true
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"
+
+[back]
+drop = 4     # of the window's 32 renders
+window = 2   # steps
+over = 0.5
+
+[read]
+val_per_bin = 12
+seen = 12
+seeds = [0, 1]
+kana_scenes = [6, 45]
+kana_seeds = [0, 1]
+
+[draw]
+glyphs = "ー~"   # a string where these run longer than run_max or are over share_max of it is left out
+run_max = 2
+share_max = 0.5

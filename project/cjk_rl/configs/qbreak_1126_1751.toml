@@ -1,0 +1,44 @@
+# A line break in the quote (probes/quote_break.py, forward only): the val strings of
+#   aloc_1126_1501's 5 - 8 and 9 - 12 bins on kmix's rows, each asked with no break, with
+#   a line feed after glyph n // 2, and with the caption grammar's literal backslash-n
+#   there. The user, 11-26, on the draw taking the labels' breaks out of the quote: "ocr
+#   레이블에는 줄바꿈 있지 않았어? (아니마가 줄바꿈을 인식하는진 모르겠다만...)".
+# Question: does the 4-step student wrap the string where the quote breaks.
+#   - `at` well over `none`'s on an arm, the positions hit holding -> the draw can keep a
+#     label's breaks in the quote in that spelling; whether the run at scale does is the
+#     user's call.
+#   - `at` at `none`'s on both arms -> the quote stays without breaks, as sent_rl.md has
+#     it.
+#   - `literal` draws its characters (`stray`) or loses positions -> that spelling stays
+#     out of the quote whatever its `at`.
+# Records it rests on:
+#   - sent_rl.md: 12 547 of the 28 975 train targets hold a line break; the draw
+#     (probes/sent_strings.py) takes them out.
+#   - The tokenizer, read on CPU: a line feed in the quote leaves the T5 side's ids as
+#     they are and adds one Qwen token (198); the literal spelling adds a Qwen token
+#     (1699) and, on the T5 side, an ext row and T5's own `▁` `n`.
+#   - post_image_dataset/resized: 574 of 2 097 captions with a text clause hold the
+#     literal spelling; no training path calls process_escape (rg), every inference path
+#     does.
+#   - aloc_1126_1501: of its 187 boxed pages in these bins, 102 read as two lines or more.
+# Pages: 12 val strings a bin on scenes 6 and 45 at seeds 0 and 1, three arms, 288 pages.
+#   The `none` arm repeats aloc's pages of these strings and scenes.
+# Read: the probe's table and the pages of the arm that moves. Claude's read; it sets
+#   what is proposed, nothing in a run.
+# Bars: `none`'s `at` is the floor; spread unknown.
+# Cost: 144 captions of 2 renders, about 5 min.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+scenes = [6, 45]  # of s1's read scenes (ids in assets/glyph_scenes.json)
+seeds = [0, 1]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local
+bins = ["5-8", "9-12"]
+per_bin = 12
+conf_min = 0.6
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"

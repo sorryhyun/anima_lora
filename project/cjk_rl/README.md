@@ -212,6 +212,13 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
     (`sentw_1126_1528`): the val strings' positions hit 0.345 → 0.422 where `sentm` fell
     to 0.331, the kana alone 351 → 345 of 656. Last parts: what a longer run would spend,
     and the backward's two steps apart.
+  - [sent_scale_2026_11_26.md](reports/sent_scale_2026_11_26.md) — before the run at
+    scale: a glyph's window beside a line break (`aloc`'s records), a break in the quote
+    (`qbreak_1126_1751`: the read breaks after the asked glyph on 0.024 of the pages
+    with or without a line feed), what a hit goes with (a position of a string, not a
+    pair of glyphs), the draw's `ー`, `~` and quote marks, and a break row's gradient
+    from the reader's line break, from three starts (`bgrad_1126_1806`,
+    `bgradw_1126_1815`, `bgradt_1126_1815`: 0 on every step).
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -260,7 +267,9 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   lettered; `sent_grad.py` keeps a row's gradient a render on glyph and string captions,
   by the step it came through, and on a string also for the row's own positions' tokens
   and for its glyph on its attention windows; `attn_loc.py` reads whether a quote token's
-  attention window holds its glyph. `g2_rows.py` (CPU) reads a G1 run's
+  attention window holds its glyph; `quote_break.py` whether a page wraps where the
+  quote breaks, and `break_grad.py` whether the reader's line break gives a break row a
+  gradient that renders share. `g2_rows.py` (CPU) reads a G1 run's
   records and log per row and sorts the rows into the plan's groups (not learned, pushed
   past the glyph, a reader's problem), with labelled sheets of those rows.
 - `configs/` — one file a run, its question and gate in the header.

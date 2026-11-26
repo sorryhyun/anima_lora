@@ -13,8 +13,9 @@ user took the line up again the same day, and a second micro arm on the window l
 0.345 → 0.422 where `sentm` went to 0.331, the kana alone 351 → 345 of 656
 ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), with the three probes that
 led to the loss). The user passed it (11-26: "블라인드 결과는 그냥 안봐도 합격이라 괜찮을듯",
-one of the 36 sheets read). What runs next is the run at scale, its settings the user's
-call; the report's sixth part holds what a longer run would spend.
+one of the 36 sheets read). What runs next is the run at scale. Its settings are under
+"The run at scale" below; it is not submitted, and how line breaks are handled is a
+placeholder there.
 
 ## Decided (the user's calls, 2026-11-26)
 
@@ -151,6 +152,50 @@ Cost, to be set in the config: a group is about 4.0 s with the two-step backward
 with the last step's alone, and 0.95 s a step's backward), so 1 000 groups are 67 min. A group of a 7-glyph string is 28
 row-renders, against 4 in the glyph stage.
 
+## The run at scale — settings (2026-11-26, not submitted)
+
+`sentw_1126_1528`'s settings with the lines below changed. The config and its header are
+written when the user says run. Records:
+[reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md) (sixth part) and
+[reports/sent_scale_2026_11_26.md](reports/sent_scale_2026_11_26.md).
+
+### Facts
+
+| setting | value | set by |
+|---|---|---|
+| a position the page's read already hits | no window and no backward (`skip_hit = true`) | the user: "이미 읽힌 위치의 bwd 빼는건 찬성" |
+| a position whose window is its neighbour's | stays in | the user: "겹치는건 포함하는걸로 하고" |
+| seeds a string | 1 (`train_seeds = 1`) | the user: "본 학습에서는 seed 1로 하는게 좋을듯" |
+| a row's budget | 64 renders that backed it (`accum = 16`, `max_steps = 4`) | the user: "row당 예산은 일단 64로 생각하고 있어" |
+| strings heavy in `ー` / `~` | left out of the draw: a run of three or more, or over half of the string (`[draw] glyphs = "ー~"`, `run_max = 2`, `share_max = 0.5`); 478 of 24 891 | the user asked for the thinning ("적당히 샘플링 시 필터링하면 좋을듯"); the thresholds are Claude's pick |
+| the rows the draw cannot fill (ヂ, ヅ, ヲ …) | left as kmix has them, no glyph groups | the user: "di du yo는 보류하지 뭐 실제로 쓸거같진 않아" |
+| size | an estimated 3 h | the user: "일단 예산범위는 추정 3h로 두자" |
+| strings and saves | `groups = 8000` of the thinned draw in drawn order, `save_groups = [4000, 8000]` | Claude's fit to the 3 h |
+| the mix of lengths, glyph groups for the kana alone, the start rows | the labels' own mix, none, kmix: as `sentw_1126_1528` | not set by the user |
+| line breaks | placeholder | the user: "줄바꿈 어떻게 할지는 일단 placeholder로" |
+
+- The fit to 3 h, a simulation over the thinned draw at a hit share of 0.36 (the start
+  rows' on string pages) with 0.85 s a render and 0.58 s a row-render: 8 000 strings are
+  5 311 renders and 8 128 row-renders, 2.6 h, and 85 of the 171 rows reach 64; with the
+  start read and two saves' reads at about 10 min each, 3.1 h. 12 000 strings: 3.0 h of
+  training, 111 rows. With the neighbour's-window positions left out, 8 000 strings would
+  bring 52 rows to 64.
+- `src/s1.py` holds `skip_hit`, `train_seeds` and `[draw]`; `configs/smoke_gate.toml` is
+  the smoke of these settings.
+- Line breaks, as the run stands: the quote holds none. `qbreak_1126_1751`: a line feed
+  or the literal backslash-n in the quote does not move where the page wraps.
+  `bgrad_1126_1806`, `bgradw_1126_1815`, `bgradt_1126_1815`: a break row's gradient from
+  the reader's line-break token, from three starts
+  ([reports/sent_scale_2026_11_26.md](reports/sent_scale_2026_11_26.md), last parts).
+
+### Interpretation
+
+- The neighbour's-window positions are where a dropped glyph gets its only signal, and
+  the passed micro arm trained with them in. What to watch for with them in: the glyphs
+  drawn over asked at 5 – 8 glyphs (`sentw`: 0.94 → 1.17) and repeats on the sheets.
+- The budget spreads the steps over the rows where `sentw` put most of them on a few
+  (8 rows took 10 steps or more, 65 none): 4 steps a row is at most 0.12 row norms.
+
 ## Interpretation
 
 - The rows trained alone already carry into short strings, so the run starts from a working
@@ -201,13 +246,9 @@ row-renders, against 4 in the glyph stage.
   its box stands that way, `back_steps = 4`, scenes with tall bubbles. The tall pages'
   lower count is the model's lettering, not the reader's read (the user, 11-26: the reader
   is trained mostly on columns), so no reader-side fix comes before these.
-- The longer run on the window loss, each the user's call
-  ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), sixth part): a seed a
-  string, a budget of renders a row (`max_steps`), a position left out when its window is
-  its neighbour's or already reads, glyph groups for the rows the draw cannot fill and for
-  the kana alone, the mix of lengths.
-- Half the backward by reading the loss off the σ 0.75 step's own x̂₀ (the same report,
-  last part). Not looked at.
+- Line breaks: a placeholder, under "The run at scale".
+- Half the backward by reading the loss off the σ 0.75 step's own x̂₀
+  ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md), last part). Not looked at.
 
 ## Order of work
 
@@ -220,5 +261,6 @@ row-renders, against 4 in the glyph stage.
    24 891 train strings and 1 844 val strings in no train label.
 4. Done to the micro arm: the smoke and `sentm_1126_1331`.
 5. Done: the gradient and attention probes, the window loss in `src/s1.py` with
-   `src/loc.py`, and its micro arm `sentw_1126_1528`, passed by the user. The run at
-   scale waits on its settings.
+   `src/loc.py`, and its micro arm `sentw_1126_1528`, passed by the user.
+6. The run at scale: its settings are recorded above; it waits on the user's word and on
+   the line-break placeholder.

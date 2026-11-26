@@ -1,0 +1,39 @@
+# The break row's gradient from another start (probes/break_grad.py): bgrad_1126_1806
+#   with the row's start the pack's `↵` row -> the adapter's own T5 row of the space piece `▁` (id 3), nothing else changed (the same 24 strings,
+#   scenes, seeds, the line feed on the Qwen side, both losses through four steps). The
+#   user, 11-26, on bgrad's 0: "차라리 스페이스나 전각스페이스같이 비슷한 문자로 init하는건?".
+# Question: from a space's row, does the page wrap at the asked place more often, and do
+#   renders of different strings share a direction for the row.
+#   - the read breaks after the asked glyph well over bgrad's 1 of 96 -> the start
+#     itself carries the wrap; a micro arm from it is proposed to the user.
+#   - `brk`'s `across` over 0 by 2 standard errors -> the same, with the part that
+#     carries it as the backward.
+#   - neither -> the start does not change bgrad's read.
+# Records it rests on:
+#   - bgrad_1126_1806 (the pack's `↵` row): across -0.003 ± 0.003 (the last two steps),
+#     0.004 ± 0.006 (all four); the read breaks after the asked glyph on 1 of 96 renders,
+#     two lines or more on 30.
+#   - The tokenizer, on CPU: an ASCII space between routed glyphs leaves no token on the T5 side; `▁` (id 3) is the piece T5 writes for a space elsewhere.
+# Read: the probe's table beside bgrad_1126_1806's. Claude's read; it sets what is
+#   proposed.
+# Bars: 0 with the jackknife standard error over strings; bgrad's counts for the pages.
+#   Spread unknown.
+# Cost: as bgrad_1126_1806, about 5 min.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local
+skip = 400          # past the strings sentm / sentw trained on, as sgrad
+lengths = [5, 12]
+strings = 24
+seed0 = 3000
+conf_min = 0.6
+stand = "〆"   # a row the table holds and no string asks for: the break's place in it
+init_t5 = 3   # the adapter's own T5 row of the space piece `▁`
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"

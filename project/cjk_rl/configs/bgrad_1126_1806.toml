@@ -1,0 +1,49 @@
+# The reader's line break as a break row's gradient (probes/break_grad.py, no training):
+#   train strings of 5 - 12 glyphs asked with a break after glyph n // 2, the break one
+#   row on the T5 side (the table's `〆`, set to the pack's untrained row of `↵`) and a
+#   line feed on the Qwen side. The user, 11-26, after qbreak_1126_1751: "줄바꿈을
+#   학습시킬수는 없나? 내생각에 줄바꿈만큼 확실한 glyph signal row는 없는데".
+# Question: does the reader's cross-entropy of the line-break token give a break row a
+#   direction that renders of different strings share.
+#   - `brk`'s `across` over 0 by 2 standard errors on `last2` or `all` -> a micro arm that
+#     trains the break row alone is proposed to the user (the glyph rows held), with the
+#     part that carries it as its backward.
+#   - at 0 on every part -> the reader's gradient does not reach a wrap; what is left to
+#     propose is the reward form on that one row (src/grpo.py, the reward the read
+#     breaking after the asked glyph).
+#   - over 0 only on `s1` / `s0` -> the wrap is set before the steps back_steps = 2
+#     covers; the micro arm would need a four-step backward, and its cost is stated.
+# Records it rests on:
+#   - qbreak_1126_1751: the read breaks after the asked glyph on 0.024 of the pages with
+#     no break in the quote and 0.024 with a line feed (no row on the T5 side); a break
+#     somewhere on 0.52.
+#   - sgrad_1126_1511 (8 kana rows): renders of a row agree at 0.032 ± 0.009 on its glyph
+#     alone (last step) and 0.016 ± 0.008 on its windows through two steps; a string's
+#     cross-entropy gives a kana row 0.003 ± 0.004.
+#   - The trainable table (3 174 ext ids) holds no row for a line feed or for `↵`; the
+#     pack's `fold` (one character to one, T5 side) is where a line feed would be sent
+#     to a row at ship.
+# Not separated by this probe: the break's place is n // 2, not a label's own; the row
+#   starts at an untrained symbol row and the direction is read there only.
+# Read: the probe's table. Claude's read; it sets what is proposed.
+# Bars: 0 with the jackknife standard error over strings; sgrad's 0.032 and 0.016 as the
+#   size a row trained on. Spread unknown.
+# Cost: 24 strings of 4 renders, two losses each backed through four steps: about 8 min.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]
+strings_file = "output/cjk_rl/pool/sent_strings_s1126.json"  # local
+skip = 400          # past the strings sentm / sentw trained on, as sgrad
+lengths = [5, 12]
+strings = 24
+seed0 = 3000
+conf_min = 0.6
+stand = "〆"   # a row the table holds and no string asks for: the break's place in it
+init = "↵"    # the pack's row the break starts at (not in the table)
+
+[start]
+run = "kmix_1126_1158"
+save = "mix"

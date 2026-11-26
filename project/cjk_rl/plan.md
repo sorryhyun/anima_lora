@@ -43,8 +43,8 @@ groups, no movement in the read of strings
 again the same day. Two gradient probes and an attention probe led to a loss a glyph on
 its own attention window, and its micro arm `sentw_1126_1528` moved the read on the same
 400 strings ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md)); the user passed
-it (11-26). Next: the run at scale, its settings the user's call; the state and what is
-open are in sent_rl.md.
+it (11-26). Next: the run at scale. Its settings are recorded in sent_rl.md ("The run at
+scale"), not submitted; how line breaks are handled is a placeholder there.
 
 Ship (the user, 11-26): the rows trained further on words or sentences from kmix, if that
 run reads well, go out as a v2 preview with the kana alone; kmix itself is not the release.
@@ -166,6 +166,9 @@ item 4's is of 2 624 (164 glyphs).
 | 7 | a quote token's cross-attention as its glyph's place | `aloc_1126_1501` | [sentw](reports/sentw_2026_11_26.md), third part | a token's window read holds its glyph on 0.335 of 1 744 tokens, another token's 0.073 | – |
 | 7 | the gradient of a glyph read on its attention window | `sgrad_1126_1511` | [sentw](reports/sentw_2026_11_26.md), fourth part | 0.016 through two steps; every glyph's window summed −0.001 | – |
 | 7 | the sentence micro arm on the window loss, a backward a row | `sentw_1126_1528` | [sentw](reports/sentw_2026_11_26.md), fifth part | val strings' positions hit 0.345 → 0.422 of 288 pages (sentm 0.331); kana alone 351 → 345 of 656 | passed |
+| 7 | a line break in the quote: none, a line feed, the literal backslash-n | `qbreak_1126_1751` | [sent_scale](reports/sent_scale_2026_11_26.md), second part | the read breaks after the asked glyph on 0.024 / 0.024 / 0.063 of the pages with a box | – |
+| 7 | the reader's line break as a break row's gradient, through four steps | `bgrad_1126_1806` | [sent_scale](reports/sent_scale_2026_11_26.md), fifth part | renders of different strings agree at −0.003 ± 0.003 (the last two steps), 0.004 ± 0.006 (all four) | – |
+| 7 | the same from a space's row: the pack's U+3000, T5's `▁` | `bgradw_1126_1815`, `bgradt_1126_1815` | [sent_scale](reports/sent_scale_2026_11_26.md), last part | all four steps: 0.000 ± 0.003, −0.002 ± 0.003; the read breaks after the asked glyph on 0 and 2 of 96 | – |
 
 - `sentw_1126_1528`'s verdict is the user's (11-26), given on the counts with one of the
   36 blind sheets read (4 pages to 4); in the report's Facts.
