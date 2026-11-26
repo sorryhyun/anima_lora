@@ -1,143 +1,145 @@
-# Plan: the glyph stage on G-D (opened 2026-11-25)
+# Plan
 
-The glyph stage trains one row a glyph on the OCR reader's loss. How it runs is in
-[README.md](README.md), what it has measured in [reports/](reports/). This file holds the next
-step, what is parked and the runs done. A run's settings, question and gate go in its config
-header (`configs/<handle>_mmdd_hhmm.toml`) when it is submitted, and this file then names the
-run.
+The current run, what is open, what is parked, and the runs done. How a run goes is in
+[README.md](README.md), what the runs measured in [reports/](reports/). A run's settings,
+question and gate go in its config header (`configs/<handle>_mmdd_hhmm.toml`) when it is
+submitted, and this file then names the run.
 
-## 7. Kana words before the kanji (opened 2026-11-26)
+## Now: the sentence run at scale (`sents_1126_1856`, submitted 2026-11-26)
 
-The user's calls (11-26), on item 6's points:
+### Facts
 
-- The kana rows are g2b's 16-step rows with ten of g2a's (っ え グ ざ ヂ の な ゥ や at 6
-  steps, ヒ at 4), read by the user on the ten blind sheets: `kmix_1126_1158`
-  (`configs/kmix_1126_1158.toml`, `probes/rows_mix.py`).
-- Default guards from here: `taper`, `near_score` 0.5, `[back]` with `over` 0.5.
-- Words and sentences of kana come before the kanji. The kanji then take 6 steps from a
-  start shifted by the mean displacement of kmix's rows (`[start_shift]`, `save = "mix"`).
-- The sentence run's backward covers the last two steps, σ 0.75 → 0.5 → 0, in place of
-  the last alone (the user, on `tswap_1126_1209`: with a second string's text on the last
-  step alone a page mostly keeps the first; on the last two it follows the second).
-- In the word or sentence run a small kana is trained as itself: its target and its read
-  are the small glyph, not its full-size one (`fold_small` off). kmix's 20 small rows were
-  trained with the full-size glyph as their target.
+- Submitted on the user's word after `bplace_1126_1840`: "그래 학습 올리자 가보자구". Its
+  question, gate branches, read and cost are in the config header.
+- It is `sentw_1126_1528` with the settings below changed; the micro arm was passed by the
+  user (11-26: "블라인드 결과는 그냥 안봐도 합격이라 괜찮을듯", one of 36 sheets read).
 
-The sentence run's rough plan is [sent_rl.md](sent_rl.md): strings from the OCR reader's
-labels with their punctuation, `♡` written as `♥`, the read on val-only strings, the
-backward over two steps. Forward probes for it: `wread_1126_1207` (48 pool strings on
-jp_v1's and kmix's rows; the whole string alone 23 → 86 of 384 pages, none at 5 – 8 glyphs)
-and `tswap_1126_1209` (a render's text swapped at a step). No report file yet for either.
-`wmulti_1126_1252` and `enmulti_1126_1258` read a clause of two or three short strings, on
-the user's suggestion to have such captions in the run
-([reports/multi_read_2026_11_26.md](reports/multi_read_2026_11_26.md)): one bubble a page on
-the read scenes for kana and EN alike, no page of 288 and 128 with both strings read.
-`tread_1126_1306` read the pool's two-string templates on the user's call (the report's
-second part): two boxes a page whatever the clause asks, the asked kana string read on 8 of
-96 pages alone. Whether and on what scenes such captions go into the run is open in
-sent_rl.md.
+| setting | value | set by |
+|---|---|---|
+| a position the page's read already hits | no window and no backward (`skip_hit = true`) | the user: "이미 읽힌 위치의 bwd 빼는건 찬성" |
+| a position whose window is its neighbour's | stays in | the user: "겹치는건 포함하는걸로 하고" |
+| seeds a string | 1 (`train_seeds = 1`) | the user: "본 학습에서는 seed 1로 하는게 좋을듯" |
+| a row's budget | 64 renders that backed it (`accum = 16`, `max_steps = 4`) | the user: "row당 예산은 일단 64로 생각하고 있어" |
+| strings heavy in `ー` / `~` | left out: a run of three or more, or over half the string (`[draw]`, `run_max = 2`, `share_max = 0.5`); 478 of 24 891 | the user asked for the thinning ("적당히 샘플링 시 필터링하면 좋을듯"); the thresholds are Claude's pick |
+| the rows the draw cannot fill (ヂ, ヅ, ヲ …) | left as kmix has them, no glyph groups | the user: "di du yo는 보류하지 뭐 실제로 쓸거같진 않아" |
+| size | an estimated 3 h | the user: "일단 예산범위는 추정 3h로 두자" |
+| strings and saves | `groups = 8000` in drawn order, `save_groups = [4000, 8000]` | Claude's fit to the 3 h |
+| the mix of lengths, glyph groups, the start rows | the labels' own mix, none, kmix: as `sentw_1126_1528` | not set by the user |
+| line breaks | none in the quote | the user: "줄바꿈 어떻게 할지는 일단 placeholder로", then the go above |
 
-The sentence loop is built (`src/s1.py`) and its micro arm ran: `sentm_1126_1331`, 400
-groups, no movement in the read of strings
-([reports/sentm_2026_11_26.md](reports/sentm_2026_11_26.md)). The user took the line up
-again the same day. Two gradient probes and an attention probe led to a loss a glyph on
-its own attention window, and its micro arm `sentw_1126_1528` moved the read on the same
-400 strings ([reports/sentw_2026_11_26.md](reports/sentw_2026_11_26.md)); the user passed
-it (11-26). The run at scale is submitted on the user's word (`sents_1126_1856`, 11-26; settings
-in sent_rl.md, "The run at scale"), with no break in the quote. After it:
-`probes/break_place.py` on its rows (`bplace_1126_1840` kept 17 pages of 480 on kmix's).
+- The fit to 3 h, a simulation over the thinned draw at a hit share of 0.36 (the start rows'
+  on string pages) with 0.85 s a render and 0.58 s a row-render: 8 000 strings are 5 311
+  renders and 8 128 row-renders, 2.6 h, and 85 of the 171 rows reach 64; with three reads of
+  about 10 min, 3.1 h. 12 000 strings: 3.0 h of training, 111 rows. With the neighbour's-window
+  positions left out, 8 000 strings would bring 52 rows to 64.
+- `configs/smoke_gate.toml` is the smoke of these settings.
 
-Ship (the user, 11-26): the rows trained further on words or sentences from kmix, if that
-run reads well, go out as a v2 preview with the kana alone; kmix itself is not the release.
-The kanji are taken as a matter of scale and do not hold it.
+### Interpretation
 
-## 6. Where the kanji run starts — decided 11-26, in item 7
+- The neighbour's-window positions are where a dropped glyph gets its only signal, and the
+  passed micro arm trained with them in. What to watch with them in: glyphs drawn over asked
+  at 5 – 8 glyphs (`sentw`: 0.94 → 1.17) and repeats on the sheets.
+- The budget spreads the steps over the rows where `sentw` put most of them on a few (8 rows
+  took 10 steps or more, 65 none): 4 steps a row is at most 0.12 row norms.
 
-`g2b_1126_0058` is done ([reports/g2b_2026_11_26.md](reports/g2b_2026_11_26.md)): the kana
-from jp_v1's rows at 16 guarded steps read alone on 1 716 of 2 624 pages, against 1 686 and
-1 785 for `g2a_1125_1642`'s 4- and 6-step rows from the shared start. The user's read of its
-sheets (g2a's 6-step rows against its 16-step rows, 164 files, sent 11-26) is not made yet.
-Nothing is queued. The user's calls:
+### Next
 
-- The start of the kanji rows: the shared start or jp_v1's rows. For the shared start, the
-  shift is g1long's 16-row mean as g2a used it, or a mean over the 164 kana rows (g2a's rows
-  from jp_v1's: cosine 0.99 with g1long's mean; g2b's: 0.81, at half the length).
-- The guards on that run. The user (11-26): the return should fire where the guard has, or on
-  a stricter condition. `[back] over` is built for it (0.5: a best only where the taper
-  shortens the step); the return rule replayed on logged scores is in the report of item 6's
-  run and below. `taper` and `near_score` ran as built.
-- Which kana rows ship: g2a's 6-step rows are the pack `anima_cjk_vocab_pack_jp_v1_g2a`; g2b
-  reads higher on 64 rows and lower on 76.
+1. Read the run as its config header says.
+2. `probes/break_place.py` on its rows (`bplace_1126_1840` kept 17 pages of 480 on kmix's).
+   If the page's own wrap gives the break row a direction, a micro arm on that loss with the
+   glyph rows held is proposed, and how the break's caption is encoded (the text encoder kept
+   on the GPU, or no line feed on the Qwen side) is settled there.
+3. Ship (the user, 11-26): the rows trained from kmix, if they read well, go out as a v2
+   preview with the kana alone; kmix itself is not the release. The kanji come after, as a
+   matter of scale, and do not hold the preview.
 
-Facts kept from the run's planning (11-26):
+## Open (the user's calls)
+
+The sentence stage:
+
+- A cap on a row's steps beside the guards (frequent rows such as い, っ, ん, ー take many
+  more steps than rare ones).
+- The mix of lengths in the draw, and when strings over 12 glyphs come in.
+- `♡` at ship: its row is left as jp_v1 has it; a fold of `♡` to `♥` in the pack would send
+  both to the trained row.
+- Captions of several short strings in one clause (the user, 11-26: "짧은 단어 여러개
+  들어가는 케이스도 있으면 어떨까 해"). On the read scenes the model draws one bubble for
+  two strings, and the pool's two-string templates draw two boxes whether one string or two
+  are asked ([multi_read](reports/multi_read_2026_11_26.md)). Before it can go into the draw:
+  scenes that draw a bubble a string (new text-free scenes screened by EN pairs, as
+  `pscreen_1125_2306` screened the plain frame); the loss on such a page (each string on a box
+  of its own by `reward.match`, and what a string with no box takes); its share of the groups.
+- Vertical lettering (the user, 11-26): strings of three glyphs or more that are not SFX-like
+  should come out in columns, with the prompt as it is; a label gives the way it stood
+  (`orient`). Levers named and not tried: a render weighted by whether its box stands that
+  way, `back_steps = 4`, scenes with tall bubbles. The tall pages' lower count is the model's
+  lettering, not the reader's (the user, 11-26), so no reader-side fix comes first.
+- Half the backward by reading the loss off the σ 0.75 step's own x̂₀
+  ([sentw](reports/sentw_2026_11_26.md), last part). Not looked at.
+
+Before the v2 preview ships (from the archived glyph proposal's G3, not run): the rows
+against jp_v1's in the ruler's frame on `m15v11` (`turbo_read.py`'s ruler part), on the base
+and merged15 at 28 steps (rows that help the stack and hurt the base ship as a pack for that
+stack), and the ruler's short bin for composition. The user's read of the sheets decides
+each.
+
+The kanji (after the kana sentences):
+
+- 1 410 frequent kanji, 6 steps each from a start shifted by the mean displacement of kmix's
+  rows (`[start_shift]`, `save = "mix"`): about 29 h of training, and a read of all of them
+  22 560 renders an arm, about 3.3 h. At 4 steps (most of the kana's gain), or on the cheaper
+  step under Parked, is the user's call. `skip_lone_read` takes about 0.17 s off a 3.04 s
+  group; with `reader_compile` a group came to 2.90 s (`timeb_1126_1238`).
+
+The glyph stage's leftovers:
+
+- The shapes the two scripts share (へ べ ぺ / ヘ ベ ペ) folded as the small kana are, in the
+  read and the loss. The read can be recounted from `records.json` with no render.
+- The detector's misses on large one- and two-stroke glyphs (く ノ ヘ ロ ン), and how such
+  pages are counted.
+- The plain frame (the user, 11-25: no lettering without `speech bubble` on ComfyUI renders
+  of the g2a pack): leave the kana on the bubble frame's recipe, or a plain-frame arm of its
+  own scenes and share of renders. g2a's rows carry to plain captions at about EN's level;
+  `mix_1125_2338` read under g2a's rows in both frames.
+
+## Parked
+
+- A step that shrinks with the mean gradient's norm (the user left it out, 11-25); the step
+  tapers by the row's training-side count instead.
+- A term for text outside the picked box, for rows that double their glyph. It is a page term,
+  which the rules leave out; offered on 11-26, not taken up.
+- The no-box term off for a row once its glyph reads; offered on 11-26, not taken up.
+- The shared part kept as its own vector that every row's renders train: the cheaper step the
+  kanji may need.
+- G1's permuted-label control: not run.
+- The x_3 cache: set for the runs after the micro arm and dropped the same day (the user,
+  11-25). Its cost is not measured.
+- The GRPO stage's other arms (A: rows plus an llm_adapter LoRA; R-credit; the SFX track):
+  [archive/proposal.md](archive/proposal.md). Its arm D is what the line runs now.
+
+## Notes kept from planning
 
 - The return replayed on logged scores (the rows then move as logged): drop 4 with no floor,
   with `over` 0.5, and drop 6 with `over` 0.5 give 21, 18 and 11 returns on
   `g1long_1125_1335`'s 384 steps, 5, 3 and 3 on `g1shared_1125_1538`'s 128 (あ at step 8
   under each).
-- Two things were filed as "past the glyph". A row that reads is moved a full step by the
-  few renders that fail (ぬ in `g1long_1125_1335`: 14 – 16 of 16 at steps 12 – 16, 7 – 11 at
-  steps 21 – 24). A row that doubles its glyph (タ, ミ, こ in `g2a_1125_1642`) never read
-  over 9, 6 and 4 of 16 on the training side.
+- Two things were filed as "past the glyph". A row that reads is moved a full step by the few
+  renders that fail (ぬ in `g1long_1125_1335`: 14 – 16 of 16 at steps 12 – 16, 7 – 11 at
+  steps 21 – 24). A row that doubles its glyph (タ, ミ, こ in `g2a_1125_1642`) never read over
+  9, 6 and 4 of 16 on the training side.
 - `reader_attn = "sdpa"` was added to `g2a_1125_1642`'s config on 11-26: it ran before
   FlashAttention 2 became the default, and `start_from` compares the key.
-- A data build beside the run (the user, 11-26): `split_1126_0910` set aside 2 002 crops
-  where the tuned reader and hayai split on the asked glyph, for the tuned reader's training
-  later (`output/cjk_rl/reader_split/split_1126_0910/`, local; the report's second section).
-
-## 5. After the kana — to decide
-
-`g2a_1125_1642` is done ([reports/g2a_2026_11_25.md](reports/g2a_2026_11_25.md)); the user's
-read of its sheets is not made yet. Nothing is queued. What the report leaves to decide, each
-with its cost:
-
-- The shapes the two scripts share (へ べ ぺ / ヘ ベ ペ) folded as the small kana are, in the
-  read and the loss. The read can be recounted from `records.json` with no render; the loss
-  changes only for a later run.
-- The rows in `not_learned` that are the row's own (こ, the voiced rows ぎ ぞ ば ぶ ゲ ヅ, and
-  を タ モ ン): more steps from their 6-step save. About 12 rows at 8 more steps is 20 min of
-  training and four short reads.
-- The detector's misses on large one- and two-stroke glyphs (く ノ ヘ ロ ン): whether the
-  no-box term should be off for a row once its glyph reads, and how such pages are counted.
-- The frequent kanji ([proposal_glyph.md](proposal_glyph.md)): 1 410 rows at 6 steps are
-  about 29 h of training, and a read of all of them is 22 560 renders an arm, about 3.3 h.
-  Whether they run this way, at 4 steps (most of the kana's gain), or on the cheaper step of
-  § 2 is the user's call. `skip_lone_read` (built 11-25, off unless a config sets it) takes
-  about 0.17 s off a 3.04 s group, about 1.6 h of the 29; a log with it on has `lone` in
-  place of box / low on one-box pages. With `reader_compile` beside it a group came to 2.90 s
-  (`timeb_1126_1238`, 24 groups).
-
-- The plain frame (the user, 11-25, on ComfyUI renders of the g2a pack: no lettering without
-  `speech bubble`). Read ([plain](reports/plain_2026_11_25.md),
-  [pscreen](reports/pscreen_2026_11_25.md), [mix](reports/mix_2026_11_26.md)): g2a's 6-step
-  rows carry to captions with no bubble tag and are about at EN's level there; the model
-  itself letters EN on a fifth of plain pages and almost never on a scene of two figures;
-  16 rows trained in both frames on the plain screen's scenes (`mix_1125_2338`) read under
-  g2a's in both frames. Nothing queued. Open, the user's call: leave the kana on the bubble
-  frame's recipe, or a different plain-frame arm (its scenes, its share of the renders).
-
-## Parked
-
-- A step that shrinks with the mean gradient's norm: offered for item 4 and left out on the
-  user's call (11-25); not run. Item 6 tapers the step by the row's training-side count
-  instead.
-- A term for text outside the picked box (the detector's score there, pushed down), for the
-  rows that double their glyph. It would be a page term, which the stage's rules leave out;
-  offered to the user on 11-26, not taken up.
-- The no-box term off for a row once its glyph reads (item 5's third point): offered again
-  on 11-26, not in item 6.
-- The shared part kept as its own vector that every row's renders train: the cheaper step the
-  1 410 kanji may need ([proposal_glyph.md](proposal_glyph.md) § 2).
-- G1's permuted-label control: not run.
-- The x_3 cache: set for the runs after the micro arm and dropped the same day (the user,
-  11-25). What it costs is not measured.
-- After the kana: [proposal_glyph.md](proposal_glyph.md) (the frequent kanji, words, transfer
-  and ship reads). The sentence arms of [proposal.md](proposal.md) wait behind the stage.
+- g2a's 6-step rows as a pack (the user, 11-25): `anima_cjk_vocab_pack_jp_v1_g2a`
+  (`models/vocab_packs/`, local; linked into ComfyUI's `models/vocab_packs` for
+  `AnimaVocabPackLoader`), baked from the run's `rows.pt` onto `anima_cjk_vocab_pack_punct`
+  with `scripts/toolkits/bake_vocab_pack.py --glyph_route`. It is `jp_v1` with the 164 kana
+  rows replaced (no other row and no routing map differs).
 
 ## Done
 
 Solo is of 256 held-out pages (16 glyphs, 4 read scenes, 4 seeds), the start rows first;
-item 4's is of 2 624 (164 glyphs).
+items 4 and 6 are of 2 624 (164 glyphs). The GRPO stage's runs (11-13) are in the README's
+report table.
 
 | item | what | run | report | number | verdict |
 |---|---|---|---|---|---|
@@ -153,13 +155,16 @@ item 4's is of 2 624 (164 glyphs).
 | – | the 24-step rows on the base model, sign prompt | `sign_1125_1504` | [g1long](reports/g1long_2026_11_25.md), second part | 4 glyphs, 2 seeds | – |
 | 3b | the row line: the rows' walk, their place in the table, forward reads | `line_1125_1517`, `line_1125_1527` | [row_line](reports/row_line_2026_11_25.md) | solo at twice the 8-step displacement 122, at the other rows' mean displacement 112, at a drawn direction 59 | – |
 | 3c | G1 from the shared start: 16 rows, 8 steps | `g1shared_1125_1538` | [g1shared](reports/g1shared_2026_11_25.md) | solo 112 → 148 → 156 at 0, 4, 8 steps (hayai 104 → 147 → 167) | adopted on the user's read |
-| 4 | G2a: the 81 hiragana and the 83 katakana, 6 steps from the shared start, small kana folded | `g2a_1125_1642` | [g2a](reports/g2a_2026_11_25.md) | solo of 2 624: 743 → 1 322 → 1 686 → 1 785 at the start, the shifted start, 4, 6 steps (hayai 835 → 1 420 → 1 762 → 1 840) | – |
+| 4 | G2a: the 81 hiragana and the 83 katakana, 6 steps from the shared start, small kana folded | `g2a_1125_1642` | [g2a](reports/g2a_2026_11_25.md) | solo 743 → 1 322 → 1 686 → 1 785 at the start, the shifted start, 4, 6 steps (hayai 835 → 1 420 → 1 762 → 1 840) | – |
 | – | g2a's rows read with no bubble tag | `plain_1125_2249` | [plain](reports/plain_2026_11_25.md) | 16 rows, solo of 256 plain pages 22 → 93; on scene 35 0 → 4 of 64 | – |
 | – | EN words on the same scenes, both frames | `enplain_1125_2258`, `enbubble_1125_2258` | [plain](reports/plain_2026_11_25.md) | 16 words, solo of 256: plain 71, bubble 104 | – |
 | – | the plain screen: new scenes by their EN count with no bubble tag | `pscreen_1125_2306` | [pscreen](reports/pscreen_2026_11_25.md) | 160 scenes, EN solo 0.205; 24 at 8 of 16 or more | – |
 | – | 16 rows in the plain and bubble frames on 12 of the plain screen's scenes, 6 steps | `mix_1125_2338` | [mix](reports/mix_2026_11_26.md) | solo of 512 a frame, this run against g2a's rows: plain 202 against 238, bubble 297 against 329 | – |
-| 6 | G2b: the kana from jp_v1's rows, 16 steps, with `taper`, `[back]`, `near_score` | `g2b_1126_0058` | [g2b](reports/g2b_2026_11_26.md) | solo of 2 624: 743 → 1 118 → 1 393 → 1 566 → 1 716 at 4, 8, 12, 16 steps (g2a 1 686 and 1 785 at 4 and 6); rows against g2a's 6-step rows 64 up, 76 down | – |
+| 6 | G2b: the kana from jp_v1's rows, 16 steps, with `taper`, `[back]`, `near_score` | `g2b_1126_0058` | [g2b](reports/g2b_2026_11_26.md) | solo 743 → 1 118 → 1 393 → 1 566 → 1 716 at 4, 8, 12, 16 steps (g2a 1 686 and 1 785 at 4 and 6); rows against g2a's 6-step rows 64 up, 76 down | – |
 | – | the crops the two readers split on | `split_1126_0910` | [g2b](reports/g2b_2026_11_26.md), second part | 2 002 crops: hayai only 1 308, tuned only 694 | – |
+| 7 | the kana rows: g2b's 16-step rows with ten of g2a's (っ え グ ざ ヂ の な ゥ や at 6 steps, ヒ at 4) | `kmix_1126_1158` (`probes/rows_mix.py`) | – | ten rows where g2b reads 5 or more of 16 under g2a | adopted on the user's read |
+| 7 | kana strings on jp_v1's and kmix's rows, forward only | `wread_1126_1207` | [sent_prep](reports/sent_prep_2026_11_26.md) | the whole string alone 23 → 86 of 384 pages, none at 5 – 8 glyphs | – |
+| 7 | a render's text swapped at a step | `tswap_1126_1209` | [sent_prep](reports/sent_prep_2026_11_26.md) | B alone at k 0 / 2 / 3: a glyph 80 / 71 / 14, 2 glyphs 63 / 46 / 10 | – |
 | 7 | a clause of two or three short strings, on the read scenes and on the pool's two-string templates | `wmulti_1126_1252`, `enmulti_1126_1258`, `tread_1126_1306` | [multi_read](reports/multi_read_2026_11_26.md) | kana pairs with both strings read: 0 of 288 pages on the read scenes, 0 of 96 on the templates | – |
 | 7 | the sentence micro arm: 400 groups of kana strings from kmix's rows, the backward over two steps | `sentm_1126_1331` | [sentm](reports/sentm_2026_11_26.md) | val strings' positions hit 0.345 → 0.331 of 288 pages; kana alone 351 → 354 of 656 | – |
 | 7 | which way the micro arm's string pages are lettered | `probes/orient_read.py` on `sentm_1126_1331` | [sentm](reports/sentm_2026_11_26.md), second part | start rows: 73 tall, 250 wide of 384 | – |
@@ -173,18 +178,18 @@ item 4's is of 2 624 (164 glyphs).
 | 7 | a page's own wrap as the label of a break's place: the denoising error by place, and its gradient on a break row | `bplace_1126_1840` | [sent_scale](reports/sent_scale_2026_11_26.md), last part | 17 pages kept of 480; the error at the true place under another place's on 0.560 / 0.577 / 0.578 of the pairs (a row, a line feed, the literal spelling; null 0.513 / 0.496 / 0.481); the row's gradient across strings −0.012 ± 0.014 | – |
 | 7 | the sentence run at scale: 8 000 strings at a seed, 64 renders a row, the window loss | `sents_1126_1856` | – | running | – |
 
-- `sentw_1126_1528`'s verdict is the user's (11-26), given on the counts with one of the
-  36 blind sheets read (4 pages to 4); in the report's Facts.
 - The verdicts on items 2, 3 and 3c are the user's, in each report's Facts. Item 3c's is the
   call for item 4: the shared start at 6 steps.
+- `sentw_1126_1528`'s verdict is the user's (11-26), given on the counts with one of the 36
+  blind sheets read (4 pages to 4); in the report's Facts.
+- kmix is a data build, no arm: the ten rows where g2b's 16-step solo is under g2a's 6-step
+  solo by 5 or more of 16 under both readers, taken from g2a on the user's read of their ten
+  blind sheets (11-26: "다 그대로 가져와도 되겠다", "히는 4스텝"); the config header holds
+  the counts.
 - hayai's term at weight 0.2 is the user's call (11-25), made on the two hayai reports.
 - Item 4 ran on the user's calls (11-25): 6 steps a row from the shared start, the two
   scripts in one run, and the small kana folded onto their full-size glyphs (`fold_small`)
-  after a first submit (`g2a_1125_1630`) was stopped 6 min in. Its 28 rows in a group
-  (17 not learned, 9 past their glyph, 12 a reader's problem) are in the report.
-- Item 4's 6-step rows as a pack (the user, 11-25): `anima_cjk_vocab_pack_jp_v1_g2a`
-  (`models/vocab_packs/`, local; linked into ComfyUI's `models/vocab_packs` for
-  `AnimaVocabPackLoader`), baked from the run's `rows.pt` onto `anima_cjk_vocab_pack_punct`
-  with `scripts/toolkits/bake_vocab_pack.py --glyph_route`. It is `jp_v1` with the 164 kana
-  rows replaced (checked: no other row and no routing map differs); the rows in a group are
-  in it as trained.
+  after a first submit (`g2a_1125_1630`) was stopped 6 min in. Its 28 rows in a group (17 not
+  learned, 9 past their glyph, 12 a reader's problem) are in the report.
+- Item 6's full sheets (g2a's 6-step rows against g2b's 16-step rows, 164 files, sent 11-26):
+  no read recorded beyond kmix's ten.

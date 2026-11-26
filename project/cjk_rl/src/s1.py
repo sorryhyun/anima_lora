@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """S1 — the kana rows trained on strings: a render teaches every row in its quote.
 
-The sentence run of ``sent_rl.md``. Policy, path and readers are G1's (``gd.Policy``,
+The sentence stage of ``README.md`` (planned in ``archive/sent_rl.md``). Policy, path and readers are G1's (``gd.Policy``,
 ``gd.Reader``, ``gd.Hayai``; ``g1.py`` for the glyph stage's loop). What differs:
 
 - A group is one string on one training scene at 4 seeds,

@@ -71,7 +71,7 @@ A head maps a render (and, for the DiT basis, its caption) to a score. It has th
 | basis | for | against |
 |---|---|---|
 | Tagger (Anima Tagger probabilities or its backbone embedding) | readable (which tags lower the pick rate); shares a space with captions, so it scores a caption with no render; § 1 shows tags hold part of the gelcrawl choice | a tagger is trained to ignore what separates two renders of one caption: both get the same tags. Weak within a round by construction |
-| Embedding (PE-Spatial 32 × 32 grid, already in `AtSim` and the REPA cache; DINOv3 as in `classify.py`) | general perceptual features with a spatial grid; code and caches exist | the gradient path needs the VAE decode and the tower (memory, as in `../../cjk_rl/proposal.md` § 3.7); pixel-space gradients are the easiest to fool |
+| Embedding (PE-Spatial 32 × 32 grid, already in `AtSim` and the REPA cache; DINOv3 as in `classify.py`) | general perceptual features with a spatial grid; code and caches exist | the gradient path needs the VAE decode and the tower (memory, as in `../../cjk_rl/archive/proposal.md` § 3.7); pixel-space gradients are the easiest to fool |
 | DiT head (frozen merged14 block features of the renoised latent, the taps of the turbo GAN's discriminator, since removed from the loop) | stays in latent space, no decode; caption-conditioned; the removed turbo GAN sent a generator gradient through this module | gelcrawl images need VAE latents first (only the selected ones are cached); a discriminator is fooled unless its labels keep up, and human labels arrive slowly |
 
 Expected split, to be measured rather than argued: tags for caption ranking, an embedding or

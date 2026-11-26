@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""grpo_p0 — OCR-GRPO's forward probes (``project/cjk_rl/proposal.md`` § 4 P0; report ``reports/p0_2026_11_13.md``).
+"""grpo_p0 — OCR-GRPO's forward probes (``project/cjk_rl/archive/proposal.md`` § 4 P0; report ``reports/p0_2026_11_13.md``).
 
 The policy is the ruler's ``m14v3`` (merged14 + Hub turbo v3, 4 steps, cfg 1) with
 jp_v1's rows (``seed_1008``, punct pack, routed). 16 RL-pool strings (Manga109-s

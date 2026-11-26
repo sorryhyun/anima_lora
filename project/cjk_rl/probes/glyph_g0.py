@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""glyph_g0 — the forward probes of ``proposal_glyph.md`` § 4 (G0a – c): the tagless
+"""glyph_g0 — the forward probes of ``archive/proposal_glyph.md`` § 4 (G0a – c): the tagless
 frame on ``m15v11`` (4 steps, cfg 1, pixel-head decode), no update.
 
 Frame: ``<scene>. Text reads as "<string>".`` at 768². A scene is a training caption

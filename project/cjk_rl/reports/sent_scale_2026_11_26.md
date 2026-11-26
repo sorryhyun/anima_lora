@@ -18,7 +18,7 @@ The user (11-26): "줄바꿈의 경우 window가 어떻게 되나 모르겠네 �
 
 ## Facts
 
-- 12 547 of the 28 975 train targets hold a line break (sent_rl.md). The draw
+- 12 547 of the 28 975 train targets hold a line break (`../archive/sent_rl.md`; [sent_prep](sent_prep_2026_11_26.md)). The draw
   (`probes/sent_strings.py`) takes them out, so a quote has none, and the window loss's
   target is a glyph alone (`src/s1.py` drops `score`'s target with breaks on that branch).
 - A window is a square of 1.3 glyph sides about the token's attention peak, a glyph side
@@ -277,7 +277,7 @@ init하는건?".
 - The header's third branch on both: a space's row does not make the page wrap at the
   asked place, and the reader's gradient gives it no direction that renders share.
   Three starts agree, so the 0 is not the start's.
-- How line breaks are handled is a placeholder in sent_rl.md (the user, 11-26).
+- How line breaks are handled is a placeholder in `../archive/sent_rl.md` (the user, 11-26).
 
 # `bplace_1126_1840` — a page's own wrap as the label of a break's place
 

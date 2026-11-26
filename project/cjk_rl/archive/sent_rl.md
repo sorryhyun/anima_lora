@@ -1,5 +1,7 @@
 # Sentence RL — kana sentences from kmix (rough plan, opened 2026-11-26)
 
+> Archived 2026-11-26: superseded; the line's live state is in `../README.md` and `../plan.md`. Links below are relative to the line's root.
+
 What the sentence run trains, on what strings, and how it is read. The run's settings,
 question and gate go in its config header when it is submitted; this file is the plan before
 that and names the records it rests on. Where it stands in the line: [plan.md](plan.md) item 7.

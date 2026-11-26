@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""P1 — GRPO on jp_v1's rows, arm R (``project/cjk_rl/proposal.md`` § 3–4).
+"""P1 — GRPO on jp_v1's rows, arm R (``project/cjk_rl/archive/proposal.md`` § 3–4).
 
 Policy: the ruler's ``m14v3`` (merged14 + Hub turbo v3, 4 steps, cfg 1) with
 jp_v1's rows (``seed_1008``) trainable, everything else frozen. A group is one

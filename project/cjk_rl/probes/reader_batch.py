@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""reader_batch — the GRPO reward reader before P1 (``project/cjk_rl/proposal.md``; report ``reports/reward_reader_2026_11_13.md``).
+"""reader_batch — the GRPO reward reader before P1 (``project/cjk_rl/archive/proposal.md``; report ``reports/reward_reader_2026_11_13.md``).
 
 Re-reads P0's 640 renders (EN ref + four samplers, 16 strings × 8 seeds) with
 ``Readers.read_images``: a group's 8 renders read in shared batches, no whole-page
