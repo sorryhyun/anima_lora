@@ -65,7 +65,9 @@ read as training reads it; the start rows before training, then the rows after e
 pass in ``save_passes`` (absent: the last pass), which are also written as
 ``rows_s<steps a row>.pt``. An arm is ``start`` or ``s<steps a row>``. Per glyph
 ``solo`` / ``on_page`` / ``extra`` (``glyph_g0.page_terms``), the next glyph's ``solo``
-on the same pages (the null), the reader's cross-entropy on the picked crop, cases.
+on the same pages (the null), the reader's cross-entropy on the picked crop (a group's
+crops in one forward from 2026-11-26, a crop a forward before), cases. The pages are
+written by a thread pool, and the read prints its seconds a group by part.
 Tables: the start rows against each save. Sheets: per glyph the start rows and the
 last save as rows ``A`` / ``B`` in an order drawn per glyph (``sheets/key.json`` holds
 it).
@@ -335,6 +337,7 @@ def train(
     rng = random.Random(cfg["shuffle_seed"])
     log = open(out / "log.jsonl", "a")
     t_run, n_groups, phase = time.time(), 0, {}
+    warm, at_warm = int(cfg.get("warm_groups") or 0), None
 
     def lap(name: str, t0: float) -> float:
         torch.cuda.synchronize()
@@ -425,6 +428,8 @@ def train(
                 )
             del e_graph
             n_groups += 1
+            if n_groups == warm:
+                at_warm = dict(phase)
             if len(since[key]) >= accum:
                 rs = since[key]
                 gbar = acc[key] / len(rs)
@@ -542,6 +547,16 @@ def train(
         "groups": n_groups,
         "minutes": round((time.time() - t_run) / 60, 2),
         "s_per_group": {k: round(v / n_groups, 3) for k, v in phase.items()},
+        **(
+            {
+                "s_per_group_past_warm": {
+                    k: round((v - at_warm.get(k, 0.0)) / (n_groups - warm), 3)
+                    for k, v in phase.items()
+                }
+            }
+            if at_warm and n_groups > warm
+            else {}
+        ),
         "peak_gib": round(torch.cuda.max_memory_allocated() / 2**30, 2),
         "steps": steps,
         "returns": sum(returns.values()),
@@ -560,6 +575,16 @@ def _norm(s: str) -> str:
     return norm(s)
 
 
+def part_times(parts: dict) -> dict:
+    """``{part: (median, mean)}`` of the read's seconds a group; the median leaves out
+    the first groups' warm-up."""
+    out = {}
+    for k, v in parts.items():
+        v = sorted(v)
+        out[k] = (round(v[len(v) // 2], 3), round(sum(v) / len(v), 3))
+    return out
+
+
 def read(
     pol,
     rdr,
@@ -573,6 +598,8 @@ def read(
 ):
     """``[{arm, cls, key, scene, seed, case, solo, on_page, extra, null, ce, reads}]``
     and the pages on disk."""
+    from concurrent.futures import ThreadPoolExecutor
+
     import numpy as np
     import torch
     from common.readers import crop
@@ -583,6 +610,17 @@ def read(
     frames = frames_of(cfg)
     recs = []
     t0 = time.time()
+    parts: dict = {}  # part -> its seconds, a group
+    pool, saves = ThreadPoolExecutor(4), []  # the webp encode leaves the GIL
+
+    def lap(name: str, t: float) -> float:
+        torch.cuda.synchronize()
+        parts.setdefault(name, []).append(time.time() - t)
+        return time.time()
+
+    def save(bgr, f: Path) -> None:
+        Image.fromarray(bgr[:, :, ::-1]).save(f, quality=95)
+
     for arm, table in arms.items():
         pol.raw.data.copy_(table)
         for frame, si in [(f, si) for f in frames for si in scenes]:
@@ -595,8 +633,11 @@ def read(
                     )
                 caption = G.framed(sc[si][frame], key)
                 ok = same(key, bool(cfg.get("fold_small")))
+                t = t_group = time.time()
                 _, px = pol.rollout(pol.noise(seeds, G.SHAPE), pol.embed(caption))
+                t = lap("render", t)
                 bgrs, reads = rdr.read(px)
+                t = lap("read", t)
                 if hy is not None:
                     own = [
                         (b, r)
@@ -612,24 +653,38 @@ def read(
                     ]
                     for (_, r), text in zip(own, hy.read(crops)):
                         r["hy"] = text
+                    t = lap("hayai", t)
                 p01 = (px.clamp(-1, 1) + 1) / 2
-                for b, seed in enumerate(seeds):
-                    case, r = gd.pick(ok[0], reads[b], cfg["conf_min"])
-                    ce = None
-                    if r is not None:
-                        with torch.no_grad():
-                            ce = float(
+                picks = [gd.pick(ok[0], rs, cfg["conf_min"]) for rs in reads]
+                tag = f"_{frame}" if len(frames) > 1 else ""
+                files = [
+                    out / "read" / arm / f"{key}_sc{si:02d}{tag}_s{seed}.webp"
+                    for seed in seeds
+                ]
+                files[0].parent.mkdir(parents=True, exist_ok=True)
+                saves += [pool.submit(save, g, f) for g, f in zip(bgrs, files)]
+                t = lap("save", t)
+                have = [b for b, (_, r) in enumerate(picks) if r is not None]
+                ces: dict = {}
+                if have:  # the group's picked crops in one forward
+                    with torch.no_grad():
+                        ces = dict(
+                            zip(
+                                have,
                                 rdr.ce(
-                                    [p01[b]],
-                                    [bgrs[b]],
-                                    [gd.crop_box(r["box"], W, H)],
-                                    [ok[0]],
-                                )
+                                    [p01[b] for b in have],
+                                    [bgrs[b] for b in have],
+                                    [
+                                        gd.crop_box(picks[b][1]["box"], W, H)
+                                        for b in have
+                                    ],
+                                    [ok[0]] * len(have),
+                                ).tolist(),
                             )
-                    tag = f"_{frame}" if len(frames) > 1 else ""
-                    f = out / "read" / arm / f"{key}_sc{si:02d}{tag}_s{seed}.webp"
-                    f.parent.mkdir(parents=True, exist_ok=True)
-                    Image.fromarray(bgrs[b][:, :, ::-1]).save(f, quality=95)
+                        )
+                t = lap("ce", t)
+                for b, seed in enumerate(seeds):
+                    case, ce, f = picks[b][0], ces.get(b), files[b]
                     recs.append(
                         {"arm": arm, "cls": cls, "key": key, "scene": si, "seed": seed}
                         | ({"frame": frame} if len(frames) > 1 else {})
@@ -651,7 +706,13 @@ def read(
                         }
                         if hy is not None:
                             recs[-1]["hy_strict"] = G.page_terms(key, as_hy)["solo"]
+                parts.setdefault("group", []).append(time.time() - t_group)
+        for x in saves:
+            x.result()  # the arm's pages on disk before it is counted
+        saves.clear()
         print(f"  read {arm} ({(time.time() - t0) / 60:.1f} min)", flush=True)
+    pool.shutdown()
+    print(f"  read s a group by part (median, mean): {part_times(parts)}", flush=True)
     return recs
 
 

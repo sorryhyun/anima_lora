@@ -1,0 +1,34 @@
+# Timing arm B of two: timea_1126_1240 with reader_compile absent -> true and skip_lone_read
+#   absent -> true, and the read's code changed (src/g1.py, 11-26: a group's picked crops in
+#   one ce forward, the webp pages written by a pool of 4 threads). Nothing else changed: the
+#   4 glyphs, the 8 training scenes, the seeds, the shared start, flash_attention_2.
+#   Not separated on the training side: the two switches change together (reader_compile acts
+#   on `loss`, skip_lone_read on `read`). Not a run of record: no rows from it are kept.
+# Question, records, read, bars, cost: timea_1126_1240's header; this arm is the "after".
+#   Also read here: the log's `lone` count (what the skip reaches), reader compile lines and
+#   any recompile past the warm groups, peak GiB against A's.
+
+rows = "seed_1008"
+hira = "あき"
+kata = "サト"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+passes = 1
+train_seed0 = 1000
+read_seeds = [0, 1, 2, 3]
+shuffle_seed = 1125
+conf_min = 0.6
+clip = 0.12
+accum = 16
+eta = 0.03
+beta = 0.7
+hayai_weight = 0.2
+fold_small = true
+reader_compile = true   # the tuned reader's layers compiled for the loss (FA2)
+skip_lone_read = true   # a one-box training page is not read
+warm_groups = 8  # s_per_group_past_warm counts the groups after these
+
+[start_shift]  # as g2a: the case mix of a row that has started
+run = "g1long_1125_1335"
+save = "s24"

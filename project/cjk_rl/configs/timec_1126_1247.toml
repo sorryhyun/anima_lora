@@ -1,0 +1,34 @@
+# Timing arm C: timeb_1126_1238 with reader_attn flash_attention_2 -> sdpa, nothing else
+#   changed (reader_compile and skip_lone_read on, the read as B has it). Not a run of record.
+# Question: A (eager FA2) read 0.493 + loss 0.484 s a group where g2b_1126_0058 (eager SDPA,
+#   the 164 kana) logged 0.361 + 0.444; is the tuned reader on SDPA the faster one in the loop
+#   with both switches on?
+#   - C under B -> the next run sets reader_attn = "sdpa".
+#   - level or over -> flash_attention_2 stays.
+# Read, bars, cost: timea_1126_1240's header.
+
+rows = "seed_1008"
+hira = "あき"
+kata = "サト"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+passes = 1
+train_seed0 = 1000
+read_seeds = [0, 1, 2, 3]
+shuffle_seed = 1125
+conf_min = 0.6
+clip = 0.12
+accum = 16
+eta = 0.03
+beta = 0.7
+hayai_weight = 0.2
+fold_small = true
+reader_attn = "sdpa"
+reader_compile = true   # the tuned reader's layers compiled for the loss
+skip_lone_read = true   # a one-box training page is not read
+warm_groups = 8  # s_per_group_past_warm counts the groups after these
+
+[start_shift]  # as g2a: the case mix of a row that has started
+run = "g1long_1125_1335"
+save = "s24"

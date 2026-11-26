@@ -1,6 +1,7 @@
-# Reader room — the seconds of G1's reader side by part, three changes timed, and a one-box page left unread (2026-11-25)
+# Reader room — the seconds of G1's reader side by part, three changes timed, a one-box page left unread (2026-11-25), and the switches timed in G1's loop (2026-11-26)
 
-Covers two runs of `../probes/reader_room.py` and one smoke of G1's loop, a section each.
+Covers two runs of `../probes/reader_room.py`, one smoke of G1's loop and three timing runs
+of the loop, a section each.
 
 ## The parts and three changes (`room_1125_1324`)
 
@@ -116,3 +117,62 @@ The saves and the four reads ran as before.
 - A log from a run with the switch on has no box / low split on one-box pages. The smoke's
   6 groups are too few, and include the warm-up, to read its seconds as more than a check
   that the loop's `read` falls as the probe's did.
+
+## The switches in G1's loop, and the read's ce and saves (`timea_1126_1240`, `timeb_1126_1238`, `timec_1126_1247`)
+
+The user's call (11-26: "webp저장 스레드 및 ce 한번에 ... 그거랑 스위치 켜기. 한번 시간 재볼까").
+`src/g1.py`'s read changed between arms A and B: a group's picked crops go through one ce
+forward (a crop a forward before), and the webp pages are written by a pool of 4 threads.
+
+### Facts
+
+Three runs of G1's loop (`../configs/timea_1126_1240.toml`, `timeb_1126_1238.toml`,
+`timec_1126_1247.toml`; daemon jobs `20261126-123739-3a8bfc`, `20261126-123837-e99b8d`,
+`20261126-124452-db17bb`; `../results/20261126-124*-g1-time*/`, local): 4 glyphs, 8 training
+scenes, 1 pass, 32 groups from g2a's shared start, and two reads of 64 pages. A: the tuned
+reader on FlashAttention 2, no switch, the read's code as it stood. B: A with
+`reader_compile` and `skip_lone_read` on, and the read's new code. C: B on SDPA.
+
+Seconds a training group, the 24 groups after the first 8 (`s_per_group_past_warm`):
+
+| arm | head | last_fwd | read | loss | last_bwd | sum |
+|---|---|---|---|---|---|---|
+| `g2b_1126_0058` (SDPA, no switch; 10 496 groups, 164 kana) | 1.252 | 0.451 | 0.361 | 0.444 | 0.578 | 3.086 |
+| A | 1.251 | 0.450 | 0.493 | 0.484 | 0.575 | 3.253 |
+| B | 1.252 | 0.451 | 0.236 | 0.381 | 0.578 | 2.898 |
+| C | 1.253 | 0.451 | 0.190 | 0.396 | 0.578 | 2.868 |
+
+- Cases over the 128 training renders: A box 105, low 16, none 7; B lone 102, box 18, low 1,
+  none 7; C lone 105, box 13, low 2, none 8. `exact`: 72, 72, 69.
+- Peak allocated 14.07 GiB in all three.
+- Recompiles in the log (switched on by `vl16_compile.compile_layers`, so A logs none): the
+  DiT block's graph twice in B and C, at the read's first forward with no graph and at the
+  first training group's forward with one; in C also one of the reader's LM layer, on the
+  `S % 8` guard of SDPA. None after the first training groups.
+
+Seconds a read group (4 pages), the median over 16 groups, the start arm / the save:
+
+| arm | render | read | hayai | ce | save | group |
+|---|---|---|---|---|---|---|
+| A | 1.67 / 1.67 | 0.229 / 0.256 | 0.043 / 0.025 | 0.126 / 0.129 | 0.143 / 0.145 | 2.20 / 2.25 |
+| B | 1.67 / 1.68 | 0.228 / 0.190 | 0.044 / 0.024 | 0.070 / 0.071 | 0.000 | 1.99 / 1.96 |
+| C | 1.66 / 1.68 | 0.201 / 0.179 | 0.043 / 0.022 | 0.069 / 0.070 | 0.000 | 1.97 / 1.95 |
+
+- The start arm's 64 pages, A against B: the boxes' reads equal on 64 of 64; the recorded
+  `ce` of the picked crop differs by 0.019 at the mean and 0.083 at most (52 pages with a
+  box). A webp encode of a 768² page: 0.034 s on one thread, 0.009 s a page on 4 (CPU, 16
+  pages).
+- Spread unknown: 24 training groups and 16 read groups an arm, no twin.
+- The user's call on these (11-26): flash_attention_2 stays ("그냥 fa2 쓰는걸로 하자"), and the
+  sentence run takes FA2 with `reader_compile`.
+
+### Interpretation
+
+- The two switches take about 0.36 s off A's group (11 %) and about 0.19 s off g2b's (6 %);
+  the DiT's three phases do not move. The read's change takes 0.2 – 0.3 s off a read group,
+  about 10 minutes of a read of g2b's size (2 624 groups).
+- A's read sits 0.13 s over g2b's with no switch on either. The runs do not say whether that
+  is FlashAttention 2's `generate` or these 4 glyphs' pages; C against B puts the attention's
+  share of the whole group at 0.03 s once the switches are on.
+- The recompiles are one graph a grad mode of the DiT's block and cost nothing past the warm
+  groups: the DiT phases match g2b's long means.

@@ -1,0 +1,45 @@
+# Timing arm A of two (B: timeb_*): G1's loop as g2a_1125_1642 runs it, cut to 4 glyphs and 8
+#   training scenes, 1 pass (32 groups, 2 steps a row), with the tuned reader on the default
+#   attention (flash_attention_2; g2a and g2b ran sdpa), no reader_compile, no skip_lone_read,
+#   and the read's code as it stood (a ce call and a webp save a page, on the main thread).
+#   Not a run of record: no rows from it are kept for use.
+# Question (the user, 11-26: "webp저장 스레드 및 ce 한번에 ... 그거랑 스위치 켜기. 한번 시간
+#   재볼까"): what do reader_compile + skip_lone_read take off a training group, and the batched
+#   ce + threaded save off a read group? This arm is the "before" of both.
+#   - B's group under A's by the seconds reader_room's runs gave (about 0.25 s of training,
+#     the ce and save parts of a read) -> the switches go into the next run's config.
+#   - no gain, or B out of memory with the compiled reader beside the DiT -> named, and the
+#     switch that costs it stays off.
+# Records it rests on:
+#   - reports/reader_room_2026_11_25.md: readers only, read 0.317 -> 0.148 s a group with the
+#     one-box skip; README commit 13f0a4ad: eager FA2 0.350 + 0.460, compiled FA2 0.345 + 0.356.
+#   - g2b_1126_0058 (sdpa, no switch): head 1.252, last_fwd 0.451, read 0.361, loss 0.444,
+#     last_bwd 0.578 s a group over 10 496 groups.
+# Read: numbers only, Claude's: s_per_group_past_warm (the 24 groups after the first 8) by
+#   phase, the read's seconds a group by part (median over 16 groups an arm, two arms), the
+#   log's cases, peak GiB.
+# Bars: spread unknown (24 groups; no twin).
+# Cost: 32 training groups and two reads of 64 pages; about 5 minutes with the load.
+
+rows = "seed_1008"
+hira = "あき"
+kata = "サト"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+passes = 1
+train_seed0 = 1000
+read_seeds = [0, 1, 2, 3]
+shuffle_seed = 1125
+conf_min = 0.6
+clip = 0.12
+accum = 16
+eta = 0.03
+beta = 0.7
+hayai_weight = 0.2
+fold_small = true
+warm_groups = 8  # s_per_group_past_warm counts the groups after these
+
+[start_shift]  # as g2a: the case mix of a row that has started
+run = "g1long_1125_1335"
+save = "s24"

@@ -162,7 +162,9 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   - [reader_room_2026_11_25.md](reports/reader_room_2026_11_25.md) — the reader side of G1's
     group alone: 0.75 s a group by part, the GPU busy for a third of it; a decode cap and 4
     pages a call timed. Second part: a one-box page left unread (`room_1125_2155`), read
-    0.317 → 0.148 s a group with the same box and gradient on 256 of 256 pages.
+    0.317 → 0.148 s a group with the same box and gradient on 256 of 256 pages. Third part
+    (11-26): `reader_compile` and `skip_lone_read` in G1's loop, a group 3.25 → 2.90 s; the
+    read's ce a group in one forward and its pages saved by threads, a read group 2.20 → 1.99 s.
   - [row_line_2026_11_25.md](reports/row_line_2026_11_25.md) — G1 long's rows: a step's
     direction against a walk on noise, and the rows read with no training at twice their
     8-step displacement (122 of 256) and at the other rows' mean displacement (59 → 112; a

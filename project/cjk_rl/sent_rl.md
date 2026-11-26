@@ -18,6 +18,9 @@ that and names the records it rests on. Where it stands in the line: [plan.md](p
 - Ship: the rows this run trains from kmix, if they read well, go out as a v2 preview with
   the kana alone. The kanji are taken as a matter of scale and come after.
 - The backward covers the last two steps, σ 0.75 → 0.5 → 0 (on `tswap_1126_1209`'s table).
+- The tuned reader runs on FlashAttention 2 with `reader_compile` on (on `timeb_1126_1238`'s
+  seconds, `reports/reader_room_2026_11_25.md`, third part). `skip_lone_read` does not apply:
+  the run needs every page's read for the breaks and the score.
 
 ## Facts it rests on
 

@@ -86,7 +86,8 @@ with its cost:
   Whether they run this way, at 4 steps (most of the kana's gain), or on the cheaper step of
   § 2 is the user's call. `skip_lone_read` (built 11-25, off unless a config sets it) takes
   about 0.17 s off a 3.04 s group, about 1.6 h of the 29; a log with it on has `lone` in
-  place of box / low on one-box pages.
+  place of box / low on one-box pages. With `reader_compile` beside it a group came to 2.90 s
+  (`timeb_1126_1238`, 24 groups).
 
 - The plain frame (the user, 11-25, on ComfyUI renders of the g2a pack: no lettering without
   `speech bubble`). Read ([plain](reports/plain_2026_11_25.md),
@@ -128,6 +129,7 @@ item 4's is of 2 624 (164 glyphs).
 | 2 | G1's micro arm: 16 rows, 8 steps | `g1micro_1125_1148` | [g1micro](reports/g1micro_2026_11_25.md) | solo 59 → 132 | adopted on the user's read |
 | – | hayai v2.7 beside the tuned reader | `hayai_1125_1234`, `g0h_1125_1243` | [reader_pair](reports/reader_pair_2026_11_25.md), [hayai_g0](reports/hayai_g0_2026_11_25.md) | hayai counts the micro arm 60 → 125; the two row gradients' cosine 0.21 | – |
 | – | the reader side of a group, timed | `room_1125_1324` | [reader_room](reports/reader_room_2026_11_25.md) | 0.75 s a group | – |
+| – | `reader_compile` + `skip_lone_read` in the loop, the read's ce a group and its saves on threads | `timea_1126_1240`, `timeb_1126_1238`, `timec_1126_1247` | [reader_room](reports/reader_room_2026_11_25.md), third part | a training group 3.25 → 2.90 s, a read group 2.20 → 1.99 s | – |
 | – | a one-box training page left unread (`skip_lone_read`) | `room_1125_2155`, `lone_1125_2200` (smoke) | [reader_room](reports/reader_room_2026_11_25.md), second part | read 0.317 → 0.148 s a group; same box and image gradient on 256 of 256 pages | – |
 | 3 | G1 long: 16 rows, 24 steps, hayai's term | `g1long_1125_1335` | [g1long](reports/g1long_2026_11_25.md) | solo 59 → 136 → 175 → 199 at 8, 16, 24 steps | adopted on the user's read |
 | – | the 24-step rows on the base model, sign prompt | `sign_1125_1504` | [g1long](reports/g1long_2026_11_25.md), second part | 4 glyphs, 2 seeds | – |
