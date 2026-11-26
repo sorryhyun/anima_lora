@@ -76,7 +76,7 @@ def test_training_target_keeps_the_two_hearts():
 
 @pytest.mark.parametrize(
     "raw",
-    ["わからなかったの......", "あ・・・っ", "…………", "なっ...成島", "え…?"],
+    ["わからなかったの......", "…………", "なっ...成島", "え…?", "ジョン・スミス"],
 )
 def test_training_target_keeps_dot_spelling(raw):
     # TARGET_NORM 7: dots trained as labelled (… survives NFKC); keys still fold
@@ -85,9 +85,28 @@ def test_training_target_keeps_dot_spelling(raw):
     assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
 
 
+@pytest.mark.parametrize(
+    "raw, target",
+    [
+        ("あ・・・っ", "あ…っ"),
+        ("・・", "…"),
+        ("あ・・・・", "あ…"),
+        ("あ・・・・・", "あ……"),
+        ("そんな・・・・・・\nこと", "そんな……\nこと"),
+        ("・・・・・・・・", "………"),
+        ("あ・・…", "あ……"),
+    ],
+)
+def test_training_target_folds_mid_dot_runs(raw, target):
+    # TARGET_NORM 11: a ・ run → … per three dots, at least one; keys unchanged
+    m = _mod()
+    assert m.training_target(raw) == target
+    assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
+
+
 def test_training_target_folds_dot_width():
     m = _mod()
-    assert m.training_target("あ．．．･･･") == "あ...・・・"
+    assert m.training_target("あ．．．･･･") == "あ...…"
     assert m.training_target("お‥‥お玉") == "お....お玉"
     assert m.training_target("はーい‥…") == "はーい..…"
 

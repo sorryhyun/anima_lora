@@ -97,7 +97,8 @@ sentence loop and its read), `src/loc.py` (a glyph's place from attention).
   itself (`fold_small` off); kmix's 20 small rows were trained with the full-size glyph.
 - Strings: the OCR reader's training labels as its rule normalises them
   (`project/ocr_reader/core/crop_dataset.py::normalize_target`), punctuation in, `♡` written
-  as `♥` and a run of two or more `・` as one `…` (in the quote and in the target), lengths
+  as `♥`, a `・` run as `…` per three dots (the reader's `TARGET_NORM = 11`, 11-26;
+  `sent_strings_s1126`, the run at scale's draw, holds the norm 10 labels' `・` runs), lengths
   2 – 12, the ruler's 5-grams and `$CHARACTER_REF_EXCLUDE` held out
   (`probes/sent_strings.py` → a local file the config names). `[draw]` leaves out strings
   heavy in `ー` / `~`.

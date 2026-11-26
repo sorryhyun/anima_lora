@@ -19,6 +19,11 @@ leaves this file for a report.
 
 ## Work
 
+- `TARGET_NORM = 11` (2026-11-26): a `・` run is `…` per three dots, at least one, in the
+  training target (`・・・・・` → `……`, the user; `.` runs and
+  `…` as labelled; `core/textnorm.py` fold 6). Before it, `load_mainsub` main targets held
+  2,343 train / 294 val labels with a `・` run against 21,818 / 2,146 with `…`. No run on it
+  yet.
 - No-label boxes (`neg_other` 22,718, `drop` 2,678 train) are on the page as `mainsub_nolabel`
   ([report](reports/hayai_first_pass_2026_11_24.md)). Pending: `load_mainsub` reading the
   reviewed ones (their crops are cut; the loader reads `manifest_sfxp_det_all` only), and the val

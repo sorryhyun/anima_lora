@@ -3,16 +3,16 @@
 
 For ``src/s1.py``. Source: the reader's main labels (``OCR:`` rows of
 ``project/ocr_reader/core/crop_dataset.py::load_mainsub``, metric ``main``), as the
-reader's rule normalises them (``normalize_target``, ``TARGET_NORM = 10``). A label
+reader's rule normalises them (``normalize_target``, ``TARGET_NORM = 11``: a ``・`` run
+arrives as ``…`` per three dots, ``・・・・・`` → ``……``). ``sent_strings_s1126`` was built
+on norm 10, ``・`` runs as labelled; a draw on norm 11 cannot rebuild it. A label
 becomes a string when, with its line breaks taken out,
 
 - it holds no space, at least one kana and ``--lengths`` glyphs (a dot run one glyph,
   ``s1.units``);
 - every glyph is a kana of the config's ``hira`` / ``kata``, a mark with a row (``ー``
   ``―`` ``。`` ``、`` ``~`` a dot run ``♥`` ``「`` ``」``) or ``!`` / ``?``; a blank heart is
-  written as the filled one (``♡`` → ``♥``), and a run of two or more ``・`` as one ``…``
-  (the user, 2026-11-26; ``--keep_mid_dots`` leaves it, as ``sent_strings_s1126`` was
-  built);
+  written as the filled one (``♡`` → ``♥``);
 - it shares no 5-gram with a ruler string (``src/pool.py``'s rule);
 - the quote's rows on the T5 side are the rows its glyphs name (the tokenizer run on the
   framed caption; a string that fails is dropped and counted).
@@ -34,7 +34,6 @@ import glob
 import json
 import os
 import random
-import re
 import sys
 import tomllib
 from collections import Counter
@@ -51,7 +50,6 @@ import s1  # noqa: E402
 
 OUT = T.REPO / "output" / "cjk_rl" / "pool"
 FREE = "!?"  # T5's own tokens, no row
-MID_DOTS = re.compile("・{2,}")
 
 
 def labels(split: str) -> list:
@@ -74,7 +72,6 @@ def main() -> None:
     ap.add_argument("--name", required=True, help="the file's stem")
     ap.add_argument("--seed", type=int, default=1126)
     ap.add_argument("--lengths", default="2-12")
-    ap.add_argument("--keep_mid_dots", action="store_true", help="・・・ as labelled")
     a = ap.parse_args()
     cfg = tomllib.loads(Path(a.config).read_text("utf-8"))
     lo, hi = (int(x) for x in a.lengths.split("-"))
@@ -91,8 +88,6 @@ def main() -> None:
         if any(" " in x for x in lines):
             return None
         s = "".join(lines).replace("♡", "♥")
-        if not a.keep_mid_dots:
-            s = MID_DOTS.sub("…", s)
         us = s1.units(s)
         if not lo <= len(us) <= hi or not any(u in kana for u in us):
             return None

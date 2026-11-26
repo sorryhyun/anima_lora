@@ -39,10 +39,15 @@ Folds, in order:
    ``–`` 4); the user's call. Japanese keeps ``―``.
 6. **Dot runs** — ``[.・…‥]{2,}`` and a lone ``‥`` → one ``…``. Scoring keys
    only since ``TARGET_NORM = 7`` (2026-11-18): the training target keeps
-   ``...`` / ``・・・`` / ``…`` as labelled (``…`` shielded from NFKC, which
-   spells it ``...``); ``‥`` takes NFKC's ``..``.
+   ``...`` / ``…`` / ``……`` as labelled (``…`` shielded from NFKC, which
+   spells it ``...``); ``‥`` takes NFKC's ``..``. A ``・`` run is folded to ``…``, one per
+   three dots (``・・・・・`` → ``……``, the user), in the target since ``TARGET_NORM = 11``
+   (2026-11-26, :data:`MID_DOT_RUN_RE`): Manga109 spells a pause ``・・`` / ``・・・`` (2,343 train
+   main labels against 21,818 with ``…``), and under norm 7 the reader lost where a
+   repeated-``・`` run ends (COO speech runaways 11 → 94 at ``sfxpc_1118_2037``). ``.``
+   runs stay: the KO reviews keep ``..`` / ``...`` apart from ``…``.
 
-The **training target** (:func:`training_target`, ``TARGET_NORM = 10``) keeps
+The **training target** (:func:`training_target`, ``TARGET_NORM = 11``) keeps
 the label's line breaks as ``\\n`` (one token, id 23; norm 4 collapsed them to a
 space, so v4 answers one line) and keeps the two hearts apart: ``♥`` (and ``❤``) for
 the filled one, ``♡`` for the outline. Norms 4–9 wrote every heart as ``♥``: in the
@@ -62,6 +67,10 @@ import unicodedata
 ELLIPSIS = "…"
 ELLIPSIS_RE = re.compile(r"[.．・…‥]{2,}|‥")
 """Every dot run (any spelling) and the two-dot leader ``‥`` on its own."""
+MID_DOT_RUN_RE = re.compile(r"・{2,}")
+"""A run of middle dots, the one dot run the training target folds (``TARGET_NORM = 11``,
+:func:`_mid_dots`).
+A lone ``・`` is a separator (``ジョン・スミス``) and stays."""
 
 _DAKUTEN_FOLD = str.maketrans({"゛": "゙", "゜": "゚"})
 """Spacing → combining voiced marks, applied before NFKC (see module doc)."""
@@ -156,13 +165,20 @@ def collapse_keep_lines(s: str) -> str:
 
 
 def training_target(s: str) -> str:
-    """The training target (``TARGET_NORM = 10``): :func:`fold_glyphs` without
+    """The training target (``TARGET_NORM = 11``): :func:`fold_glyphs` without
     the dot-run fold (``dots=False``) or the heart fold (``hearts=False``: ``♥`` and
-    ``♡`` apart), line breaks kept as ``\\n`` (:func:`collapse_keep_lines`).
-    ``exact_key`` / ``space_key`` stay ``♡``-spelled, whitespace-blind and
-    dot-folded, so a read with or without breaks, any dot spelling and either heart
-    scores the same."""
-    return collapse_keep_lines(fold_glyphs(s, dots=False, hearts=False))
+    ``♡`` apart), a ``・`` run → ``…`` per three dots (:data:`MID_DOT_RUN_RE`), line breaks kept
+    as ``\\n`` (:func:`collapse_keep_lines`). ``exact_key`` / ``space_key`` stay
+    ``♡``-spelled, whitespace-blind and dot-folded, so a read with or without breaks,
+    any dot spelling and either heart scores the same."""
+    s = fold_glyphs(s, dots=False, hearts=False)
+    return collapse_keep_lines(MID_DOT_RUN_RE.sub(_mid_dots, s))
+
+
+def _mid_dots(m: re.Match) -> str:
+    """A ``・`` run → one ``…`` per three dots, rounded, at least one (``・・`` → ``…``,
+    ``・・・・・`` → ``……``): the run's length stays, the repeated token goes."""
+    return ELLIPSIS * max(1, round(len(m[0]) / 3))
 
 
 def exact_key(s: str) -> str:
