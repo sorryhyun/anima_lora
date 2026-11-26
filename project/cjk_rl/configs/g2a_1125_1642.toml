@@ -66,6 +66,7 @@ eta = 0.03    # row norms a step
 beta = 0.7    # momentum over a row's steps
 hayai_weight = 0.2
 fold_small = true    # a small kana is read and trained as its full-size glyph
+reader_attn = "sdpa"  # added 11-26: the run was before FlashAttention 2 became the default (13f0a4ad)
 
 [start_shift]
 run = "g1long_1125_1335"

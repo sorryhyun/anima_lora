@@ -1,0 +1,72 @@
+# G2b: g2a_1125_1642 with the start the shared start -> jp_v1's rows (no [start_shift]), the
+#   steps a row 6 -> 16 (passes 2 -> 4, max_steps off), and three keys that read a row's own
+#   renders before its step (src/g1.py's docstring): near_score 0.5, taper, [back] drop 4
+#   window 2. Nothing else changed: the 164 kana rows, fold_small, the scenes, the split, the
+#   update, hayai's term, the seeds a pass, the reader on SDPA as g2a ran.
+#   Not separated: the start, the step count and the three keys change together (the user's
+#   call, 11-26: "1, 2번이랑 ... 탁점 등 유사한 경우 점수를 절반정도 ... 이번 히라/카타 는 jp v1에서
+#   16스텝 학습해보자. 그래서 6스텝 학습한거랑 비교해보고 다음 한자런은 어디서부터 출발할지").
+#   Claude's reading of two points of that call: "jp v1에서" is the start rows with no shift;
+#   the half score is in the count that taper and [back] read and in the read's tables, and
+#   the loss is unchanged.
+# Question: where the kanji run starts. The kana from jp_v1's rows at 16 guarded steps
+#   against g2a's 6 steps from the shared start, on the same read pages.
+#   - this run at or over g2a's 6-step rows by its 8-step save, with fewer rows past their
+#     glyph -> the kanji can start at jp_v1's rows on the guarded step, and the saves say how
+#     many steps they need.
+#   - under g2a's 6-step rows until 12 - 16 steps -> the shared start is worth its steps, and
+#     the kanji start from a shared start (this run's rows are a second measure of it, 164
+#     rows against g1long's 16).
+#   The user decides on the table and the sheets.
+# Records it rests on:
+#   - reports/g2a_2026_11_25.md (g2a_1125_1642): solo of 2 624, start -> shifted start -> 4 ->
+#     6 steps 743 -> 1 322 -> 1 686 -> 1 785; 9 rows past their glyph at 6 steps.
+#   - reports/g1long_2026_11_25.md (g1long_1125_1335): 16 rows from jp_v1's rows, solo of 256
+#     59 -> 136 -> 175 -> 199 at 8, 16, 24 steps; ぬ on the training side 16 of 16 at step 14
+#     and 7 at steps 22 and 24.
+#   - the three logs (g1long, g1shared_1125_1538, g2a), counted 11-26: a step's mean gradient
+#     norm by its exact count of 16, median 0.023 at 0 - 3, 0.012 at 12 - 15, 0.004 at 16,
+#     the step 0.03 row norms at each.
+#   - [back] replayed on g1long's logged counts (the rows then move as logged, not as they
+#     would): 21 returns in 384 steps, 10 of 16 rows; ぬ at steps 5, 18, 22, あ at 19, 22; in
+#     g1shared's, あ at step 8. Some of the returns are a step's own spread (ひ at step 5).
+#   - near_score on g2a's records: pages with no solo and a look-alike box 147 at the start,
+#     90 at 6 steps (ベ 12, ペ 12, ぶ 8, ぼ 7 of 16).
+#   - No run has trained with taper, [back] or near_score; a smoke of this config checks the
+#     path only.
+# Read: the saves at 4, 8, 12 and 16 steps, in the process, on g2a's read scenes and seeds
+#   (16 pages a row and arm); the start rows are g2a's records (start_from), and g2a's s00,
+#   s04 and s06 arms are read from its records.json on the same pages (same rows of the
+#   table, same reader). Per row: solo under the two readers, near, score, extra, no-box
+#   pages; probes/g2_rows.py's groups at each save beside g2a's 28; from log.jsonl a row's
+#   score, step length and returns a step. Sheets: this run's 16-step rows against g2a's
+#   6-step rows, a glyph a file, rows A / B in a drawn order. The user's read decides.
+# Bars: spread unknown (no twin run). A read repeats page for page (line_1125_1517).
+# Cost: 10 496 groups at about 3.05 s, 8.9 h; four reads of 2 624 renders, about 1.6 h.
+
+rows = "seed_1008"
+hira = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんゔ"
+kata = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロワヲンヴヵヶ"
+frame = "bubble"
+train_scenes = [0, 3, 96, 13, 36, 68, 87, 106, 18, 41, 24, 117, 25, 63, 78, 118]  # ids in assets/glyph_scenes.json
+read_scenes = [6, 12, 45, 15]
+passes = 4
+save_passes = [1, 2, 3, 4]  # saves at 4, 8, 12 and 16 steps
+train_seed0 = 1000  # pass p: train_seed0 + 4p … + 3
+read_seeds = [0, 1, 2, 3]
+shuffle_seed = 1125
+conf_min = 0.6
+clip = 0.12   # a render's row-gradient norm, effective units
+accum = 16    # renders a row step
+eta = 0.03    # row norms a step, at full length
+beta = 0.7    # momentum over a row's steps
+hayai_weight = 0.2
+fold_small = true    # a small kana is read and trained as its full-size glyph
+reader_attn = "sdpa"  # as g2a ran, so its records are this run's start and reference arms
+start_from = "g2a_1125_1642"
+near_score = 0.5     # a look-alike read (another voiced mark, へ / ヘ) in a step's score
+taper = true         # step length eta × min(1, 2 (1 − score / renders))
+
+[back]
+drop = 4     # of the window's 32 renders
+window = 2   # steps

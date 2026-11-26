@@ -34,6 +34,26 @@ direction. A pass is every (glyph, training scene) once, shuffled; pass p draws 
 ``train_seed0 + 4p …``. With ``max_steps`` in the config a row that has taken that many
 steps is passed over for the rest of the run, and a save is named by the steps taken.
 
+Three keys, each off when absent, read a row's own renders before its step. A step's
+renders were drawn at the row as it stood before that step, so their count reads that
+row.
+
+- ``near_score``: a render whose picked box reads a look-alike of the glyph
+  (:func:`near`: the same kana with another voiced mark, and へ / ヘ and their voiced
+  forms across the scripts) counts that much of an exact read. A step's ``score`` is
+  its exact reads plus ``near_score`` times its look-alikes; the loss does not change.
+  A ``lone`` page is not read and counts no look-alike. The read's tables gain
+  ``near`` (pages with no solo and a box that reads a look-alike) and ``score``.
+- ``taper``: the step's length is ``eta`` times ``min(1, 2 (1 − score / renders))``:
+  full while half the renders or fewer read, none when all of them do.
+- ``[back]`` (``drop``, ``window``, ``over``): a row's window is the summed score of
+  its last ``window`` steps. The best window so far keeps the row its better step was
+  drawn at. A window under the best by more than ``drop`` returns the row there with
+  its momentum cleared, in place of that step (it counts as a step); the best and the
+  window then start again from the returned row. With ``over`` (absent: 0) a window
+  is a best only above that share of its renders, so at 0.5 a row returns only to
+  where ``taper`` was shortening its step.
+
 Glyphs come from the config's ``hira``, ``kata`` and ``kanji`` strings; a class may be
 left out. With ``fold_small`` a small kana and its full-size glyph are one glyph to the
 loss and the read (:func:`same`): a small kana's row takes the full-size glyph as its
@@ -90,6 +110,7 @@ import random
 import sys
 import time
 import tomllib
+import unicodedata
 from math import comb
 from pathlib import Path
 
@@ -122,6 +143,36 @@ def same(key: str, fold: bool) -> list:
     if fold and key in FULL:
         return [key, FULL[key]]
     return [key]
+
+
+def shape(ch: str) -> str:
+    """A kana without its voiced mark; へ and ヘ, one shape in both scripts, as へ."""
+    base = unicodedata.normalize("NFD", ch)[0]
+    return "へ" if base == "ヘ" else base
+
+
+def near(key: str, fold: bool) -> list:
+    """The kana that are look-alikes of ``key``: the same :func:`shape`, and not a
+    read that counts as ``key`` (:func:`same`)."""
+    ok = same(key, fold)
+    shapes = {shape(k) for k in ok}
+    kana = [chr(c) for c in (*range(0x3041, 0x3097), *range(0x30A1, 0x30FB))]
+    return [c for c in kana if shape(c) in shapes and c not in ok]
+
+
+def window_read(scores: list, best: float | None, back: dict, renders: int) -> tuple:
+    """``(window, verdict)`` for a row's scores since its last return, ``renders`` a
+    step: ``window`` is the sum of the last ``back["window"]`` (``None`` with fewer);
+    ``verdict`` is ``"best"`` when it is the first or at least ``best`` and over
+    ``back["over"]`` of the window's renders, ``"back"`` when it is under ``best`` by
+    more than ``back["drop"]``, else ``None``."""
+    n = back["window"]
+    if len(scores) < n:
+        return None, None
+    w = sum(scores[-n:])
+    if best is None or w >= best:
+        return w, ("best" if w > back.get("over", 0.0) * n * renders else None)
+    return w, ("back" if best - w > back["drop"] else None)
 
 
 def terms(keys: list, reads: list) -> dict:
@@ -266,6 +317,15 @@ def train(
     row = {k: pol.row_of(cap[(k, scenes[0], frames[0])]) for _, k, _ in gl}
     turn = {k: n for n, k in enumerate(row)} | {si: n for n, si in enumerate(scenes)}
     ok = {k: same(k, bool(cfg.get("fold_small"))) for k in row}
+    w_near = float(cfg.get("near_score") or 0.0)
+    nr = {
+        k: [_norm(x) for x in near(k, bool(cfg.get("fold_small")))] if w_near else []
+        for k in row
+    }
+    taper, back = bool(cfg.get("taper")), cfg.get("back")
+    trail = {k: [] for k in row}  # (the row a step's renders were drawn at, score)
+    best: dict = {}  # key -> (window score, row)
+    returns = dict.fromkeys(row, 0)
     acc = {k: torch.zeros(dim, device=pol.dev) for k in row}
     mom = {k: torch.zeros(dim, device=pol.dev) for k in row}
     prev: dict = {}
@@ -349,6 +409,7 @@ def train(
                 t = lap("last_bwd", t)
                 n = float(g.norm())
                 acc[key] += g * min(1.0, cfg["clip"] / max(n, 1e-30))
+                read_as = G.boxes([r]) if r is not None and r.get("sfx") else []
                 since[key].append(
                     {
                         "case": case,
@@ -358,11 +419,8 @@ def train(
                         "norm": n,
                         "exact": hit[0]
                         if case == "lone"
-                        else bool(
-                            r
-                            and r["sfx"]
-                            and G.boxes([r]) in [[_norm(x)] for x in ok[key]]
-                        ),
+                        else read_as in [[_norm(x)] for x in ok[key]],
+                        "near": read_as in [[x] for x in nr[key]],
                     }
                 )
             del e_graph
@@ -370,17 +428,44 @@ def train(
             if len(since[key]) >= accum:
                 rs = since[key]
                 gbar = acc[key] / len(rs)
-                mom[key] = cfg["beta"] * mom[key] + gbar
-                d = mom[key] / mom[key].norm().clamp_min(1e-30)
-                with torch.no_grad():
-                    pol.raw[row[key]] -= cfg["eta"] * pol.row_scale * d
-                steps[key] += 1
+                score = sum(x["exact"] + w_near * x["near"] for x in rs)
+                window = verdict = None
+                if back:
+                    trail[key] = (
+                        trail[key][-back["window"] + 1 :] if back["window"] > 1 else []
+                    )
+                    trail[key].append((pol.raw[row[key]].detach().clone(), score))
+                    window, verdict = window_read(
+                        [x for _, x in trail[key]],
+                        best[key][0] if key in best else None,
+                        back,
+                        accum,
+                    )
                 cos = (
                     float(torch.nn.functional.cosine_similarity(gbar, prev[key], dim=0))
                     if key in prev
                     else None
                 )
-                prev[key] = gbar.clone()
+                if verdict == "back":
+                    with torch.no_grad():
+                        pol.raw[row[key]] = best[key][1]
+                    mom[key].zero_()
+                    del best[key]
+                    trail[key] = []
+                    prev.pop(key, None)
+                    returns[key] += 1
+                    length = None
+                else:
+                    if verdict == "best":  # of the window's rows, the better read
+                        at = max(reversed(trail[key]), key=lambda x: x[1])[0]
+                        best[key] = (window, at)
+                    mom[key] = cfg["beta"] * mom[key] + gbar
+                    d = mom[key] / mom[key].norm().clamp_min(1e-30)
+                    length = min(1.0, 2.0 * (1.0 - score / len(rs))) if taper else 1.0
+                    with torch.no_grad():
+                        pol.raw[row[key]] -= length * cfg["eta"] * pol.row_scale * d
+                    prev[key] = gbar.clone()
+                steps[key] += 1
                 crop = [x for x in rs if x["case"] != "none"]
                 rec = {
                     "pass": p,
@@ -396,6 +481,11 @@ def train(
                         for c in ("box", "low", "lone", "none")
                     },
                     "exact": sum(x["exact"] for x in rs),
+                    "near": sum(x["near"] for x in rs),
+                    "score": score,
+                    "length": length,  # of eta; None: the row returned
+                    "window": window,
+                    "back": verdict == "back",
                     "ce": sum(x["loss"] for x in crop) / len(crop) if crop else None,
                     "ce_hy": (
                         sum(x["hy"] for x in crop) / len(crop)
@@ -454,6 +544,8 @@ def train(
         "s_per_group": {k: round(v / n_groups, 3) for k, v in phase.items()},
         "peak_gib": round(torch.cuda.max_memory_allocated() / 2**30, 2),
         "steps": steps,
+        "returns": sum(returns.values()),
+        "rows_returned": sum(v > 0 for v in returns.values()),
         "drift": {
             k: round(float((trained[row[k]] - init[row[k]]).norm()) / pol.row_scale, 4)
             for k in row
@@ -571,28 +663,43 @@ def sign_p(up: int, down: int) -> float:
     return min(1.0, 2 * sum(comb(n, i) for i in range(k + 1)) / 2**n)
 
 
-def tabulate(recs: list, arms: list) -> dict:
+def tabulate(recs: list, arms: list, soft: tuple | None = None) -> dict:
+    """``soft``: ``(near_score, {glyph: its look-alikes})``; a cell then holds ``near``
+    (pages with no solo and a box that reads a look-alike) and ``score``."""
     a, b = arms
     keys = list(dict.fromkeys(r["key"] for r in recs))
 
     def cell(arm, key):
         xs = [r for r in recs if r["arm"] == arm and r["key"] == key]
         crop = [r["ce"] for r in xs if r["ce"] is not None]
-        return {
-            "n": len(xs),
-            "solo": sum(r["solo"] for r in xs),
-            "on_page": sum(r["on_page"] for r in xs),
-            "null": sum(r["null"] for r in xs),
-            "extra": round(sum(r["extra"] for r in xs) / len(xs), 2),
-            "r_seq": round(sum(r["r_seq"] for r in xs) / len(xs), 3),
-            "none": sum(r["case"] == "none" for r in xs),
-            "low": sum(r["case"] == "low" for r in xs),
-            "ce": round(sum(crop) / len(crop), 3) if crop else None,
-        } | ({"hy_solo": sum(r["hy_solo"] for r in xs)} if "hy_solo" in xs[0] else {})
+        solo = sum(r["solo"] for r in xs)
+        nr = (
+            sum(
+                not r["solo"] and any(x in soft[1][key] for x in r["boxes"]) for r in xs
+            )
+            if soft
+            else 0
+        )
+        return (
+            ({"near": nr, "score": solo + soft[0] * nr} if soft else {})
+            | {
+                "n": len(xs),
+                "solo": sum(r["solo"] for r in xs),
+                "on_page": sum(r["on_page"] for r in xs),
+                "null": sum(r["null"] for r in xs),
+                "extra": round(sum(r["extra"] for r in xs) / len(xs), 2),
+                "r_seq": round(sum(r["r_seq"] for r in xs) / len(xs), 3),
+                "none": sum(r["case"] == "none" for r in xs),
+                "low": sum(r["case"] == "low" for r in xs),
+                "ce": round(sum(crop) / len(crop), 3) if crop else None,
+            }
+            | ({"hy_solo": sum(r["hy_solo"] for r in xs)} if "hy_solo" in xs[0] else {})
+        )
 
     per = {k: {arm: cell(arm, k) for arm in arms} for k in keys}
     out = {"per_glyph": per, "paired": {}, "total": {}}
     ms = ("solo", "on_page", "null", "extra", "r_seq", "none", "low", "ce")
+    ms += ("score",) if soft else ()
     for m in ms + (("hy_solo",) if "hy_solo" in recs[0] else ()):
         pairs = [
             (per[k][a][m], per[k][b][m])
@@ -617,6 +724,11 @@ def tabulate(recs: list, arms: list) -> dict:
             "on_page": sum(r["on_page"] for r in xs),
             "null": sum(r["null"] for r in xs),
             "none": sum(r["case"] == "none" for r in xs),
+            **(
+                {m: sum(per[k][arm][m] for k in keys) for m in ("near", "score")}
+                if soft
+                else {}
+            ),
             **{
                 f"solo_{c}": sum(r["solo"] for r in xs if r["cls"] == c)
                 for c in CLASSES
@@ -711,6 +823,13 @@ def main() -> None:
     if recs is None:
         recs = read(pol, rdr, cfg, gl, sc, rd_sc, {"start": start}, out, hy)
     tables: dict = {}
+    soft = None
+    if cfg.get("near_score"):
+        fold = bool(cfg.get("fold_small"))
+        soft = (
+            cfg["near_score"],
+            {k: {_norm(x) for x in near(k, fold)} for _, k, _ in gl},
+        )
 
     def keep() -> None:  # the records so far, beside the rows
         (out / "records.json").write_text(
@@ -723,7 +842,7 @@ def main() -> None:
         recs.extend(read(pol, rdr, cfg, gl, sc, rd_sc, {arm: rows}, out, hy))
         keep()
         pair = [r for r in recs if r["arm"] in ("start", arm)]
-        tables[arm] = tabulate(pair, ["start", arm])
+        tables[arm] = tabulate(pair, ["start", arm], soft)
         print(
             f"  {arm}: total {tables[arm]['total'][arm]}  paired solo "
             f"{tables[arm]['paired']['solo']}",
@@ -731,7 +850,7 @@ def main() -> None:
         )
         if len(frames) > 1:
             tables[arm]["by_frame"] = {
-                f: tabulate([r for r in pair if r["frame"] == f], ["start", arm])
+                f: tabulate([r for r in pair if r["frame"] == f], ["start", arm], soft)
                 for f in frames
             }
             for f, t in tables[arm]["by_frame"].items():
@@ -769,7 +888,8 @@ def main() -> None:
         print(
             f"  {k} solo by arm (start, {', '.join(tables)}) "
             + " → ".join(str(x["solo"]) for x in by)
-            + ("  hayai " + " → ".join(str(x["hy_solo"]) for x in by) if hy else ""),
+            + ("  hayai " + " → ".join(str(x["hy_solo"]) for x in by) if hy else "")
+            + ("  score " + " → ".join(str(x["score"]) for x in by) if soft else ""),
             flush=True,
         )
     for k, v in table["per_glyph"].items():

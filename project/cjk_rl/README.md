@@ -9,7 +9,7 @@ It has two stages. The first (2026-11-13) ran GRPO on sentence captions; its arm
 nothing on the ruler ([reports/p1_2026_11_13.md](reports/p1_2026_11_13.md)), and its other
 arms ([proposal.md](proposal.md)) wait. The second, the glyph stage (2026-11-25), is the one
 running: one glyph a caption, and the reader's loss carried back to that glyph's row by
-gradient (G-D). The next step is in [plan.md](plan.md), item 5.
+gradient (G-D). The next step is in [plan.md](plan.md), items 6 and 5.
 
 ## The glyph stage, as it runs
 
@@ -66,6 +66,18 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   seeds. No x_3 cache. With `max_steps` a row at that many steps is passed over.
 - A render teaches the one row in its caption, so the cost grows with the row count: 3.05 s a
   group, 12 s a row step, 14.2 GiB peak on the 16 GB card.
+- Three config keys, each off when absent, read a row's own renders before its step
+  (`src/g1.py`'s docstring; first set in `g2b_1126_0058`). A step's renders are drawn at the
+  row as it stood before the step, so their count reads that row.
+  - `near_score`: a render whose picked box reads a look-alike of the glyph (the same kana with
+    another voiced mark, and へ / ヘ with their voiced forms across the scripts) counts that
+    much of an exact read in the step's score. The loss is unchanged.
+  - `taper`: the step's length is 0.03 row norms times min(1, 2 (1 − score / renders)): full
+    while half the renders or fewer read, none when all of them do.
+  - `[back]`: a row whose score over its last 2 steps falls more than `drop` under its best
+    2-step score returns to the row it stood at then, with its momentum cleared, in place of
+    that step. With `over` a 2-step score is a best only above that share of its renders
+    (0.5: where `taper` shortens the step); `g2b_1126_0058` ran without it.
 
 ### The shared start
 
@@ -98,6 +110,8 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
 - The 164 kana rows read alone on 0.28 of held-out pages before, 0.50 at the shared start and
   0.68 after 6 steps; 28 rows sit in a group of the plan's, many of them a reader's naming of
   a shape two glyphs share ([g2a](reports/g2a_2026_11_25.md)).
+- From jp_v1's rows with no shared start the same rows read alone on 0.65 after 16 steps,
+  and a few (え, っ, の) do not start at all ([g2b](reports/g2b_2026_11_26.md)).
 
 ## Files
 
@@ -167,6 +181,10 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   - [mix_2026_11_26.md](reports/mix_2026_11_26.md) — 16 kana rows trained in both frames on
     the plain screen's scenes: under g2a's bubble-only rows on the same pages in both frames
     (plain 202 against 238 of 512, bubble 297 against 329).
+  - [g2b_2026_11_26.md](reports/g2b_2026_11_26.md) — G2b: the 164 kana from jp_v1's rows
+    at 16 steps with the step taper, the return and the half score; solo 743 → 1 716 of
+    2 624 (g2a's 6-step rows 1 785), the rows that do not start without the shared start,
+    the returns counted. Second part: 2 002 crops the tuned reader and hayai split on.
 - `src/pool.py` — P1's prompt pool: the training captions with each quoted OCR string swapped
   for another OCR string of its length (Manga109-s, or another caption's), nothing else
   changed; → `output/cjk_rl/pool/pool.json`.
@@ -189,6 +207,9 @@ glyph more reliably than the model draws EN text. Code: `src/gd.py` (the path), 
   measures the row gradient of `src/gd.py`.
   `reader_pair.py` reads pages on disk with the tuned reader and hayai v2.7 on the same
   crops; `hayai_g0.py` measures hayai's loss beside the tuned reader's on G1's path.
+  `reader_split.py` sets aside the crops one reader reads as the asked glyph and the other
+  does not, from the read pages of G1 runs (PNG crops and a `manifest.jsonl` under
+  `output/cjk_rl/reader_split/`, local), for the tuned reader's training.
   `reader_room.py` times the reader side of G1's group by part, without the DiT, on pages a
   G1 run wrote, and its `lone` variant times `skip_lone_read`. `base_sign.py` renders a G1 save's rows on another model of the ruler's table
   in a prompt of its config and reads them beside the start rows. `row_walk.py` (CPU) counts
@@ -235,4 +256,7 @@ The glyph stage (the user's calls, 2026-11-25):
   own (the user, 2026-11-26; `read_shift = true` in a config reads it). Where an earlier run
   read the start rows on the same pages, the config names it (`start_from`) and they are not
   rendered again.
+- A row is guarded by its own training-side count (the user, 2026-11-26): the step tapers as
+  the row reads, a row returns to its best when its count falls, and a look-alike read (another
+  voiced mark and the like) counts half (`taper`, `[back]`, `near_score`).
 - Words are real words only, no random strings.

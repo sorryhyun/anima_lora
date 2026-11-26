@@ -6,6 +6,40 @@ step, what is parked and the runs done. A run's settings, question and gate go i
 header (`configs/<handle>_mmdd_hhmm.toml`) when it is submitted, and this file then names the
 run.
 
+## 6. Where the kanji run starts — to decide
+
+`g2b_1126_0058` is done ([reports/g2b_2026_11_26.md](reports/g2b_2026_11_26.md)): the kana
+from jp_v1's rows at 16 guarded steps read alone on 1 716 of 2 624 pages, against 1 686 and
+1 785 for `g2a_1125_1642`'s 4- and 6-step rows from the shared start. The user's read of its
+sheets (g2a's 6-step rows against its 16-step rows, 164 files, sent 11-26) is not made yet.
+Nothing is queued. The user's calls:
+
+- The start of the kanji rows: the shared start or jp_v1's rows. For the shared start, the
+  shift is g1long's 16-row mean as g2a used it, or a mean over the 164 kana rows (g2a's rows
+  from jp_v1's: cosine 0.99 with g1long's mean; g2b's: 0.81, at half the length).
+- The guards on that run. The user (11-26): the return should fire where the guard has, or on
+  a stricter condition. `[back] over` is built for it (0.5: a best only where the taper
+  shortens the step); the return rule replayed on logged scores is in the report of item 6's
+  run and below. `taper` and `near_score` ran as built.
+- Which kana rows ship: g2a's 6-step rows are the pack `anima_cjk_vocab_pack_jp_v1_g2a`; g2b
+  reads higher on 64 rows and lower on 76.
+
+Facts kept from the run's planning (11-26):
+
+- The return replayed on logged scores (the rows then move as logged): drop 4 with no floor,
+  with `over` 0.5, and drop 6 with `over` 0.5 give 21, 18 and 11 returns on
+  `g1long_1125_1335`'s 384 steps, 5, 3 and 3 on `g1shared_1125_1538`'s 128 (あ at step 8
+  under each).
+- Two things were filed as "past the glyph". A row that reads is moved a full step by the
+  few renders that fail (ぬ in `g1long_1125_1335`: 14 – 16 of 16 at steps 12 – 16, 7 – 11 at
+  steps 21 – 24). A row that doubles its glyph (タ, ミ, こ in `g2a_1125_1642`) never read
+  over 9, 6 and 4 of 16 on the training side.
+- `reader_attn = "sdpa"` was added to `g2a_1125_1642`'s config on 11-26: it ran before
+  FlashAttention 2 became the default, and `start_from` compares the key.
+- A data build beside the run (the user, 11-26): `split_1126_0910` set aside 2 002 crops
+  where the tuned reader and hayai split on the asked glyph, for the tuned reader's training
+  later (`output/cjk_rl/reader_split/split_1126_0910/`, local; the report's second section).
+
 ## 5. After the kana — to decide
 
 `g2a_1125_1642` is done ([reports/g2a_2026_11_25.md](reports/g2a_2026_11_25.md)); the user's
@@ -38,10 +72,14 @@ with its cost:
 
 ## Parked
 
-- A row stopped by its own training-side count, and a step that shrinks with the mean
-  gradient's norm. Both were offered for item 4 and left out on the user's call (11-25);
-  neither has run. The cases they are for: ぬ in `g1long_1125_1335`, あ in
-  `g1shared_1125_1538`.
+- A step that shrinks with the mean gradient's norm: offered for item 4 and left out on the
+  user's call (11-25); not run. Item 6 tapers the step by the row's training-side count
+  instead.
+- A term for text outside the picked box (the detector's score there, pushed down), for the
+  rows that double their glyph. It would be a page term, which the stage's rules leave out;
+  offered to the user on 11-26, not taken up.
+- The no-box term off for a row once its glyph reads (item 5's third point): offered again
+  on 11-26, not in item 6.
 - The shared part kept as its own vector that every row's renders train: the cheaper step the
   1 410 kanji may need ([proposal_glyph.md](proposal_glyph.md) § 2).
 - G1's permuted-label control: not run.
@@ -73,6 +111,8 @@ item 4's is of 2 624 (164 glyphs).
 | – | EN words on the same scenes, both frames | `enplain_1125_2258`, `enbubble_1125_2258` | [plain](reports/plain_2026_11_25.md) | 16 words, solo of 256: plain 71, bubble 104 | – |
 | – | the plain screen: new scenes by their EN count with no bubble tag | `pscreen_1125_2306` | [pscreen](reports/pscreen_2026_11_25.md) | 160 scenes, EN solo 0.205; 24 at 8 of 16 or more | – |
 | – | 16 rows in the plain and bubble frames on 12 of the plain screen's scenes, 6 steps | `mix_1125_2338` | [mix](reports/mix_2026_11_26.md) | solo of 512 a frame, this run against g2a's rows: plain 202 against 238, bubble 297 against 329 | – |
+| 6 | G2b: the kana from jp_v1's rows, 16 steps, with `taper`, `[back]`, `near_score` | `g2b_1126_0058` | [g2b](reports/g2b_2026_11_26.md) | solo of 2 624: 743 → 1 118 → 1 393 → 1 566 → 1 716 at 4, 8, 12, 16 steps (g2a 1 686 and 1 785 at 4 and 6); rows against g2a's 6-step rows 64 up, 76 down | – |
+| – | the crops the two readers split on | `split_1126_0910` | [g2b](reports/g2b_2026_11_26.md), second part | 2 002 crops: hayai only 1 308, tuned only 694 | – |
 
 - The verdicts on items 2, 3 and 3c are the user's, in each report's Facts. Item 3c's is the
   call for item 4: the shared start at 6 steps.

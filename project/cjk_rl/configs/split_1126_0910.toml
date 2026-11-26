@@ -1,0 +1,17 @@
+# Reader split: the crops one reader reads as the asked glyph and the other does not, from
+#   the read pages of the kana runs, set aside for the tuned reader's training (the user,
+#   11-26: "hayai랑 ours랑 판정이 완전히 갈린 크롭 ... paddleocr 학습용으로 빼놓자 나중에"). No arm, no
+#   gate: a data build.
+# What it takes: the pages of each run's records.json where solo and hy_solo differ, read
+#   again from disk (probes/reader_pair.py's read); a box is kept on the fresh reads.
+#   Counted on the records, 11-26 09:10 (g2b's 16-step read not yet in): tuned only 692
+#   pages, hayai only 1 247, of 22 464.
+# `key` in the manifest is the glyph the caption asked for, not a checked label; `near`
+#   marks a miss that is a look-alike (another voiced mark, へ / ヘ).
+# Queued behind g2b_1126_0058, whose records it reads when it starts.
+# Cost: about 2 200 pages; reader_pair read 0.12 - 0.2 s a page, 5 - 8 min.
+
+runs = ["g2a_1125_1642", "g2b_1126_0058", "mix_1125_2338"]
+fold_small = true
+hayai = "JustANormalTinkerer/hayai-ocr-v2.7-supernova"
+revision = "90fc61482c33858ee9ea227cd797f6fdff33345c"  # the labeling pass's (11-24)
