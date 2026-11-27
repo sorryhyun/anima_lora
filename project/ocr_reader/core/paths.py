@@ -21,6 +21,7 @@ EVAL_OUT = OUTPUT / "eval"
 """Per-row eval reads (``<name>_<split>.jsonl``, ``sfx_<name>.jsonl`` …)."""
 
 VL16_BASE = REPO / "models/paddleocr_vl_1.6"
+OVIS3_BASE = REPO / "models/ovis_ocr3"  # ATH-MaaS/OvisOCR3 @ 4833d5d
 
 LINE_ANNOTATIONS = ASSETS / "manga109s_line_annotations.json"
 """``bluolightning/manga109s-line-annotations`` (HF, MIT; geometry only): per Manga109-s
