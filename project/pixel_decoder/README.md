@@ -125,6 +125,11 @@ most 0.06 / 0.0013 on test ([record](reports/x1_recipe_2026_11_22.md)).
   user's read: "gan ft가 날카롭게 만드는건 확인했다".
 - That finish has no term on the turbo point. Its amplitude there is 0.933 / 0.944, against
   0.920 / 0.931 for the head without a finish at 3,000 rollouts.
+- Pages against VAE(x̂0) at the base points in place of the page, a 3,000-rollout finetune of
+  the base (`x1pxh_1127_2135`): generated mono renders against the VAE decode 25.69 → 26.45 dB,
+  16-px stamp 1.451 → 1.176 (the VAE's 1.102), `manga_page` s0 4.66 → 2.72; colour 33.76 → 33.92
+  dB, held-out against the original level. No control for the extra rollouts
+  ([record](reports/x1_page_target_2026_11_27.md)).
 - The weight change of the GAN finish on the Hub pair (base → sharp; read inline, no script
   kept): 6 – 14 % of each matrix, at a cosine of −0.05 … +0.15 to the weight; stable rank 18 – 83
   against 230 – 456 for a random matrix of the same shape; 0.4 – 3 % of it inside the weight's

@@ -79,6 +79,44 @@ loses". Records: [reports/x1_recipe_2026_11_22.md](reports/x1_recipe_2026_11_22.
 
 Nothing is queued.
 
+### The recon head (the next item, not started)
+
+Facts:
+
+- `x1pxh_1127_2135` (the pages' target at the base points, the page → VAE(x̂0), a 3,000-rollout
+  finetune of `x1dll_1123_0821`): [reports/x1_page_target_2026_11_27.md](reports/x1_page_target_2026_11_27.md).
+  Only the 3,000 pages of `post_image_dataset/pixel_pages` changed target; the 2,981 cached
+  images kept the original.
+- The user (2026-11-27, on its sheets): "방향은 맞는데"; then: "실제 아니마가 만드는 데이터나 0.5
+  터보까지 가면 어때? vae를 충실히 따르는 쪽으로... 근데 바로 하기 보다는 일단 다음 아이템으로
+  넣어놓자. pixel decoder recon 정도로 네이밍할 생각이야 (vae 대체용)".
+- On `x1pxhb28_1127_2135`'s 32 renders the head against the VAE decode, sampled with the CFG
+  feature / teacher-forced on the same generated latent against VAE(x̂0): `x1pxh` colour 33.92 /
+  33.97 dB, mono 26.45 / 26.60; `x1dll` 33.76 / 33.83 and 25.69 / 25.80. Held-out real pages at σ
+  0.097, teacher-forced against VAE(x̂0): 31.67 (`x1pxh`), 31.04 (`x1dll`).
+- The trainer as it is: one cached latent + TE per rollout, noised to the point's σ; `:adapter`
+  switches the turbo LoRA on; `target` / `page_target` pick VAE(x̂0). It has no source of
+  generated latents.
+
+Interpretation:
+
+- The item as read from the user's words: a head named recon whose target is the VAE's decode at
+  every point, trained on what Anima renders as well as on dataset images, over the base points
+  and the turbo point at σ 0.5. It is the VAE's replacement; the head against the original (the
+  `:real` recipe) is another file.
+- Generated mono renders read 5 dB under real pages at the same kind of point, and the sampled
+  and teacher-forced reads of one render agree within 0.15 dB. So what the head lacks is Anima's
+  own content, not the sampler's last step: a cache of generated latents with their TE, noised
+  like any other item, would serve every decode point from one render, the turbo point included.
+- Not set yet (the user's): the prompts and sampler settings of the generated set and its size;
+  whether dataset images and pages stay in the mix; whether σ between 0.14 and 0.5 is covered
+  (the range question above); whether recon replaces the base file on the Hub or sits beside it;
+  whether a sharp finish follows it.
+- Proposed with the item, not taken: the `page_target = "real"` control of `x1pxh` (about
+  36 min), which says how much of its gain is the extra rollouts.
+
+### The wide range
+
 1. Proposed, not taken: a forward-only read of `x1dll_1123_0821` over the whole range, σ 0, 0.01,
    0.03, 0.0577, 0.1364, 0.25, 0.5, 0.6, 0.75, on the held-out test / text / manga sets, on the
    base DiT and with the turbo LoRA, against the original and VAE(x̂0). It says where the

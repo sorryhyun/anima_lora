@@ -1,0 +1,59 @@
+# Pages against VAE(x̂0): x1dll_1123_0821's recipe with page_target real -> xhat0, as a
+#   3,000-rollout finetune of that head (init x1dll_1123_0821, base points σ 0.0577 – 0.1364
+#   against the original + turbo point against VAE(x̂0), pages 0.33, LR 5e-5 one new cosine,
+#   16 updates from a 64 replay, DINO λ 331.6 on every base-point sample, pages included, seed 0).
+#   Colour samples keep the original as target. Code: scripts/pixel_head/base_x1.py.
+# The user (2026-11-27, on a ComfyUI manga render, VAE decode | base): "vae decode에는 그래도 여전히
+#   못미치는 구석이 있기는 한데"; on this arm: "ㅇㅋ 한번 해보자".
+# Question: with the VAE's decode of x̂0 as the pages' target, does the head write the VAE's
+#   screentone on generated mono renders in place of the token grid? Stamp toward the VAE's and
+#   mono dB against the VAE decode up, on the user's read -> a full-length base with page_target
+#   xhat0 (and the sharp finish from it) is proposed. The grid stays -> the DINO term on a page is
+#   next (pages with no term). Smooth grey, as mixt_1119_2106 -> the decode of x̂0 is not learned on
+#   pages at this budget; a page-heavy arm or the form on pages is next.
+# Not separated: the target change from 3,000 more rollouts under a new cosine. The control is
+#   x1dll_1123_0821 as it is; the same finetune with page_target real is the follow-up control.
+# Records it rests on:
+#   - archive/real_target_2026_11_19.md (local): on manga_page s0 the VAE(x̂0)-target head
+#     (mixt_1119_2106, rec only) is smooth grey, the original-target head a regular pattern; mono
+#     against the VAE decode 26.34 / 24.54 dB.
+#   - reports/x1_dino_2026_11_22.md: manga_page s0 stamp16, VAE 1.49, LPIPS arm 2.08, DINO arm 4.89.
+#   - x1dgan512_1123_1214.toml's header: x1dll on 16 prompts x 2 seeds, amp colour / mono
+#     0.909 / 0.882, stamp16 0.565 / 1.451 (VAE 0.426 / 1.102), manga_page s0 / s1 4.66 / 4.94.
+# Read: this head against x1dll_1123_0821. (1) Held-out manga 10 at σ 0.0577 – 0.1364, dB against
+#   VAE(x̂0) and against the original, test 30 / text 8 beside them. (2) Generated, P3's 16 prompts
+#   x seeds 0, 1, base 28 steps CFG 4, p3_generated.py with both heads (x1pxhb28_1127_2135),
+#   sheet_texture.py (amp, stamps, the colour 26 / mono 6 split), pair sheets x1dll | this head on
+#   the mono prompts, labelled; the user's read decides.
+# Bars: spread unknown (no twin on the DINO recipe; the LPIPS recipe's twin gap at 3,000 rollouts
+#   is 0.06 dB on test, reports/x1_recipe_2026_11_22.md).
+# Cost: 3,000 rollouts at about 0.8 s, about 45 min with the reads, then about 7 min of renders.
+
+output_name = "x1pxh_1127_2135"
+output_dir = "output/pixel_head"
+init = "output/pixel_head/x1dll_1123_0821/head.safetensors"
+points = "0.0577-0.1364:real 0.5:adapter"
+target = "xhat0"
+page_target = "xhat0"                  # x1dll: real
+adapter = "output/ckpt/release/anima_turbo_4step_v4_longer.safetensors"
+pages = "post_image_dataset/pixel_pages"
+page_share = 0.33
+
+rollouts = 3000                        # the points alternate: about 500 are pages at a base point
+opt_steps = 16
+replay = 64
+lr = 5e-5
+warmup = 200
+
+dino = "facebook/dinov3-vits16-pretrain-lvd1689m"
+lambda_dino = 331.6
+dino_tiles = 4
+
+eval_points = "0.03 0.25"
+eval_every = 1000
+start_eval = false
+n_sheets = 4
+
+stream = "fp32"
+compile = true
+seed = 0

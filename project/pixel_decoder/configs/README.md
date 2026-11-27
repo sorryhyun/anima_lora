@@ -14,6 +14,7 @@ gitignored; in git under this folder up to 7cc7cbbf). The trainers' field defaul
 | `x1read_1124_1053` | the sharp file on the same windows, no fit | | same |
 | `x1sig_1124_1250` | decode-point read over σ 0 – 0.1364, two named images | | same |
 | `x1sig_1124_1252` | the same on a third image | | same |
+| `x1pxh_1127_2135` | 3,000-rollout finetune of the base with the pages' target at the base points VAE(x̂0) | | `../reports/x1_page_target_2026_11_27.md` |
 | `rgbacache_1123_2254` | the RGBA cache `pixel_alpha_r4` with every cutout's colour | | `../rgba_plan.md`, Data |
 | `rgbar5_1123_2305` | R5, the first four-channel run | baseline | `../reports/rgba_r2_r6_2026_11_24.md` |
 | `rgbar6_1124_0034` | R6, R5 at LR 5e-5 | shipped | Hub `x1/anima_pixel_decoder_rgba_preview` |

@@ -4,7 +4,8 @@ The recipe (``project/pixel_decoder/README.md``): one DiT forward per rollout at
 point, the points taken in turn. A ``:real`` point trains the head against the image the
 latent was encoded from (with the DINO feature term, and the PE-GAN term in a finish), any
 other point against ``target`` (the VAE's decode of x̂0 or x0). A share of the rollouts
-are manga pages. Whole images go into a replay buffer, and each update draws one of them.
+are manga pages; ``page_target`` gives a page at a ``:real`` point another target, with the
+point's terms kept. Whole images go into a replay buffer, and each update draws one of them.
 
 - :func:`parse_points` — ``"0.0577-0.1364:real 0.5:adapter"`` → the trained and read points.
 - :class:`X1Rollout` — (item, point) → (features, x_t patches, the targets asked for).
@@ -277,7 +278,8 @@ class X1Trainer:
         return None if self._dino_ema is None else self._dino_ema.item()
 
     def push(self, f, lat, target, real: bool) -> None:
-        """A rollout's features, x_t patches and target image."""
+        """A rollout's features, x_t patches and target image; ``real`` = the sample
+        takes the ``:real`` point's DINO and GAN terms against that target."""
         # bf16 features lose nothing: the head's first linear runs under bf16 autocast
         self.replay.append((f.to(torch.bfloat16), lat, target.half(), real))
 

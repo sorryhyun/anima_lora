@@ -52,6 +52,12 @@ class X1Request(Request):
         "target of the points without :real: the VAE's decode of x0-hat or of x0",
         choices=("xhat0", "x0"),
     )
+    page_target: str = _f(
+        "real",
+        "target of a page at a :real point: the page itself, or the VAE's decode of "
+        "x0-hat or of x0 (the point's DINO and GAN terms stay on the sample)",
+        choices=("real", "xhat0", "x0"),
+    )
     adapter: str = _f(TURBO, "LoRA switched on at the :adapter points")
     eval_points: str = _f("0.03 0.25", "read, not trained on: SIGMA[:adapter]")
     # the loop (_x1_trainer.X1TrainConfig)
@@ -322,6 +328,8 @@ def run(req: X1Request) -> Path:
         "rollouts": req.rollouts,
         "run": req.output_name,
     }
+    if req.page_target != "real":
+        stamp["page_target"] = req.page_target
     if cfg.lambda_dino > 0:
         stamp |= {
             "dino": req.dino,
@@ -367,8 +375,11 @@ def run(req: X1Request) -> Path:
                 item = order.pop()
             pt = train_points[r % len(train_points)]
             sg = pt.lo if pt.hi == pt.lo else sig_rng.uniform(pt.lo, pt.hi)
-            f, lat, tgts = rollout(item, r, sg, pt.adapter, (pt.target,))
-            trainer.push(f, lat, tgts[pt.target], pt.target == "real")
+            key = pt.target
+            if key == "real" and isinstance(item, Path):
+                key = req.page_target
+            f, lat, tgts = rollout(item, r, sg, pt.adapter, (key,))
+            trainer.push(f, lat, tgts[key], pt.target == "real")
             for k, v in trainer.update().items():
                 ema[k] = v if k not in ema else 0.98 * ema[k] + 0.02 * v
             done = r + 1
