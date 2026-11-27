@@ -6,7 +6,7 @@ read beside the main / sub proposals of the rest (``m109_mainsub.py``), the main
 line break among them.
 
 A box of ``manifest_sfxp_det_all`` is read from its crop on disk; any other box is cut from
-the page with the same 4 px margin (``build_sfx_prefix.margin_box``). hayai reads a crop as a
+the page with the same 4 px margin (``core.crops.margin_box``). hayai reads a crop as a
 whole: it does not tell main from sub.
 
 The reads are first-pass labels for the user's review. The weights are Apache-2.0; the

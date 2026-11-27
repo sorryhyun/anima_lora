@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""O2 arm B (``plan_ocr.md``): a peft LoRA on PaddleOCR-VL-1.6's LM for the crop ``OCR:`` task.
+"""A peft LoRA on PaddleOCR-VL-1.6's LM for the crop ``OCR:`` task.
 
     ANIMA_MANGA109S_ROOT=… make daemon-run ARGS="--stall-timeout 600 \\
         project/ocr_reader/ocr/finetune_vl16_lora.py --lr 1e-4 --epochs 2 --run vl16_lr1e-4"
     … --smoke                       # 30 steps + a 64-crop val, throughput check
-    … --train_tower --tower_lr 1e-5 # O2b: unfreeze the NaViT tower + projector (full FT)
-    … --extra_manifest colorized_1024_half_comic   # O3: + the colorized crops (manifest_<name>.parquet)
+    … --train_tower --tower_lr 1e-5 # unfreeze the NaViT tower + projector (full FT)
+    … --extra_manifest colorized_1024_half_comic   # + the colorized crops (manifest_<name>.parquet)
     … --extra_replace                # …swapped in for their grey originals instead of appended
-    … --init_adapter output/ocr/vl16_lr1e-4/ep2 --train_tower   # LP-FT stage 2: start from arm B's LoRA
+    … --init_adapter output/ocr/vl16_lr1e-4/ep2 --train_tower   # LP-FT stage 2: start from a trained LoRA
     … --train_tower --init_tower output/ocr/simmim_at/ep5/tower.safetensors   # SSL-adapted tower (ssl_tower_simmim.py)
-    … --tower_rank 64 --lm_full --lm_lr 1e-5   # ocr_reader P2b: tower LoRA + LM decoder layers full FT
+    … --tower_rank 64 --lm_full --lm_lr 1e-5   # tower LoRA + LM decoder layers full FT
     … --sfx_prefix                   # two prompts: OCR: (speech) + SFX: (sound effects), build_sfx_prefix.py crops
     … --mainsub                      # two prompts: OCR: (main text) + OCR2: (sub), crop_dataset.load_mainsub
 
@@ -20,20 +20,20 @@ template's ``User: <image>OCR:\\nAssistant:\\n`` (exactly the eval's), target =
 normalised text + ``</s>``; loss on the target tokens only. Batches hold up to
 ``--bs`` crops and are cut where the padded patch-token cost (largest crop × crops)
 would pass ``--token_budget`` (3,072 by default), so a large crop trains alone;
-``--token_budget 0`` groups fixed ``--bs`` batches by crop area (the A/B's rule). A
+``--token_budget 0`` groups fixed ``--bs`` batches by crop area. A
 short batch's loss is scaled by crops / ``--bs``. Defaults: bs 4 × 4, no gradient
 checkpointing (``--grad_ckpt`` turns it on). Batches are left-padded (loss on the last K logits); the
 per-epoch val generation is left-padded, greedy, ``use_cache=True``, no
 repetition guard — the runaway count is reported like the stock row.
 
-``--train_tower`` (O2b) additionally trains the vision tower (466 M) + the
+``--train_tower`` additionally trains the vision tower (466 M) + the
 projector (26 M) in full: the bf16 weights stay in place for the
 forward, an fp32 master copy takes the AdamW update at ``--tower_lr`` and is
 copied back each step (a 1e-5 update is below bf16 resolution otherwise).
 The trained tower is saved beside the adapter as ``tower.safetensors`` (bf16,
 base-model key names) and ``Vl16Reader`` loads it after the merge.
 
-``--tower_rank R`` (``project/ocr_reader`` P2b) puts a LoRA (α = 2R) on the
+``--tower_rank R`` puts a LoRA (α = 2R) on the
 tower's attention / MLP Linears and the projector's two Linears instead.
 ``--lm_full`` drops the LM LoRA and trains the 18 LM decoder layers (255 M) in
 full through the same fp32-master path at ``--lm_lr``; embed_tokens, the final
@@ -52,11 +52,10 @@ masters with the other rows frozen, and land in ``vocab.safetensors`` beside the
 adapter.
 
 ``--init_adapter <dir>`` (LP-FT, Kumar et al. 2022) loads an already-trained
-adapter dir as the starting point instead of a zero-init LoRA — its
+adapter dir as the starting point instead of a zero-init LoRA; its
 ``adapter_config.json`` wins over ``--rank`` / ``--dropout``. With
-``--train_tower`` this is the linear-probe-then-fine-tune order: arm B (LoRA
-only, tower frozen) is stage 1, this run is stage 2. A ``tower.safetensors``
-beside the adapter is loaded too when present.
+``--train_tower`` this is LP-FT's stage 2 (stage 1 = a LoRA-only run, tower
+frozen). A ``tower.safetensors`` beside the adapter is loaded too when present.
 
 Per epoch: val scoring (``eval_manga109`` metrics), ``ep<N>/`` = adapter dir
 (``eval_manga109.py --reader vl16 --ckpt`` merges it onto the base), ``best`` →
@@ -202,7 +201,7 @@ class Collate:
         # LEFT padding for training too: every row's target then sits at the end,
         # so the loss can be taken on the last K logits only (``logits_to_keep``)
         # instead of materialising fp32 logits over the 103k vocab for every
-        # image token — the OOM of the first launch (findings § O2).
+        # image token, which runs out of memory.
         enc = self.proc(
             text=texts,
             images=images,
@@ -249,9 +248,8 @@ def target_loss(model, enc, K: int | None = None) -> torch.Tensor:
     # positions seq-K .. seq-2 predict seq-K+1 .. seq-1
     tgt = labels[:, -(K - 1) :]
     keep = tgt != -100
-    # one long label among short ones pads K for every row (8 crops, K 80, the others
-    # 8 tokens: the head on B x K took 10.4 ms and 666 MiB, on the 135 target rows 4.0
-    # ms and 448 MiB)
+    # one long label among short ones pads K for every row, so the head runs on the
+    # target rows only
     logits = base.lm_head(hidden[:, -K:-1][keep])
     return torch.nn.functional.cross_entropy(logits.float(), tgt[keep])
 
@@ -403,10 +401,7 @@ def main():
         help="stop after this many optimizer steps; the LR decays over them "
         "(a budget-matched arm, e.g. finetune_ovis3_lora.py's --steps)",
     )
-    # bs 4 x 4 without gradient checkpointing, batches cut at 3,072 padded tokens, crops
-    # capped at 2,048 tokens: 16.7 crops/s at 11.8 GB peak on the costliest batches
-    # (smoke_bs4_1117_2258, --largest_first) against 13.7 for bs 2 x 8 / 1,536 and 13.0
-    # for bs 8 x 2 with checkpointing; bs 8 without checkpointing is out of memory on 16 GB
+    # bs 8 without gradient checkpointing is out of memory on 16 GB
     ap.add_argument("--bs", type=int, default=4)
     ap.add_argument("--grad_accum", type=int, default=4)
     ap.add_argument("--rank", type=int, default=16)
@@ -1079,8 +1074,7 @@ def main():
                 )
             if step >= total:
                 break
-        # Save BEFORE scoring: a scorer crash (an import moved under the
-        # anime_tools pin, 2026-09-08) must not cost the epoch's weights.
+        # save before scoring, so a scorer crash does not cost the epoch's weights
         ep_dir = out / f"ep{ep}"
         model.save_pretrained(ep_dir)
         for file, ps, _ in full_groups:

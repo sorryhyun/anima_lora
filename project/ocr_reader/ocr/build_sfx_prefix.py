@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Crops for the two-prompt reader (``_archive/ocr_reader/history/proposals/ocr_sfx_prefix.md``): ``OCR:`` reads
-speech, ``SFX:`` reads sound effects, each answers ``""`` on the other kind.
+"""Crops for the two-prompt reader: ``OCR:`` reads speech, ``SFX:`` reads sound effects,
+each answers ``""`` on the other kind.
 
     ANIMA_MANGA109S_ROOT=~/manga109s/Manga109s_released_2026_05_21 \\
         python project/ocr_reader/ocr/build_sfx_prefix.py [--det] [--speech] [--kozh]
@@ -30,7 +30,7 @@ to the page. Three parts, each its own manifest under ``derived/``:
 * ``--ellipsis`` → the same manifest, in place (also run at the end of ``--speech`` /
   ``--lines``): a dot run whose length is a multiple of three becomes that many ``…``
   thirds (``・・・・・・`` → ``……``; :func:`ellipsis_fold`), as the gelnote / swaprelax labels
-  spell it; a run of four in a label with text becomes one ``…`` (review edits, 11-18).
+  spell it; a run of four in a label with text becomes one ``…``.
   Other runs stay.
 * ``--gt test`` → ``manifest_sfxp_gt.parquet``: the grey manifest's rows of those splits (COO
   and speech) re-cut through ``crops.deskew_crop`` at the capped margin, for the gate evals
@@ -102,7 +102,7 @@ def rect_frac(q, c) -> float:
 
 
 def label_box(c, coo, texts):
-    """The v3-sheet rule for one crop ``c``; returns (cat, sfx_text, speech_text) or None
+    """The ``--det`` labelling rule (module docstring) for one crop ``c``; returns (cat, sfx_text, speech_text) or None
     for a dropped box."""
     cx0, cy0, cx1, cy1 = c
     ca = max((cx1 - cx0) * (cy1 - cy0), 1)
@@ -252,7 +252,7 @@ def merged_ok(texts, polys) -> bool:
 
 def build_clean(a, derived: Path):
     """``--clean`` → ``manifest_sfxp_det_clean.parquet``: the det manifest with the boxes
-    whose labels the 2026-11-17 crop sheets (``probes/sfxp_crop_sheet.py``) put in doubt
+    whose labels the crop sheets (``probes/sfxp_crop_sheet.py``) put in doubt
     unwritten (``path`` None, the reason in ``clean``):
 
     * ``dup_outer`` — an SFX ≥ 80 % inside 2+ kept boxes (nested detector boxes): every
@@ -262,7 +262,7 @@ def build_clean(a, derived: Path):
     * ``merged_order`` — 2+ SFX in one box whose joined order is in doubt (``merged_ok``);
     * ``neg_graze`` — an ``SFX:`` negative with part of a COO polygon inside.
 
-    Fragments and misses (the detector cuts or skips the SFX) stay out, as before.
+    Fragments and misses (the detector cuts or skips the SFX) stay out.
     Per-polygon types land in ``sfxp_types_<split>.parquet``.
     """
     full = pd.read_parquet(derived / "manifest_sfxp_det.parquet")

@@ -62,8 +62,6 @@ def deskew_crop(
 ):
     """Rotate a polygon upright and return the tight crop.
 
-    Two rules that matter for manga-ocr:
-
     * **Orientation is preserved.** ``minAreaRect`` reports an angle in
       ``[0, 90)``; taking it verbatim would transpose a vertical text column
       into a horizontal strip. manga-ocr reads vertical Japanese natively, so we
@@ -148,8 +146,7 @@ def rect_quad(x0, y0, x1, y1) -> np.ndarray:
 
 def ink_mask(crop: np.ndarray, border: bool = True) -> np.ndarray:
     """Otsu ink; with ``border``, connected components touching the crop edge go
-    (balloon outlines, panel lines, the neighbour's ink inside the 4 px margin) —
-    multi-line count 0.759 → 0.855 at gap 0.03 / sliver 0.45."""
+    (balloon outlines, panel lines, the neighbour's ink inside the 4 px margin)."""
     g = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
     _, b = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     if not border:

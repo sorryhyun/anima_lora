@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The KO / ZH gate (roadmap P0 K3): any reader over the gelnote hand labels.
+"""The KO / ZH gate (K3): any reader over the gelnote hand labels.
 
     make daemon-run ARGS="project/ocr_reader/ocr/eval_k3.py --reader vl16"                       # stock
     … --reader vl16 --ckpt output/ocr/vl16_b2_norm4/ep1 --name v3
@@ -17,12 +17,12 @@ Metrics, per language:
 
 - **exact**: ``textnorm.exact_key`` (folds, whitespace-blind), the sincos key.
 - **lb**: ``textnorm.linebreak_blind`` — exact *with* 띄어쓰기, a line break on either
-  side matching a space or none (the labels keep the crop's breaks since 2026-11-24).
+  side matching a space or none (the labels keep the crop's line breaks).
 - **spaced**: ``textnorm.normalize_target`` (whitespace runs → one space): a break
   counts as a space, so a read without the label's breaks misses on ZH.
 - **cer**: Levenshtein over the exact keys / label length.
-- **kana leak**: the prediction carries kana and the label does not. This is
-  the B′ failure (KO / ZH read as Japanese).
+- **kana leak**: the prediction carries kana and the label does not (KO / ZH
+  read as Japanese).
 - sim / runaway as ``eval_manga109``.
 
 The JA ``ー`` put-back (``eval_manga109.normalize_ja``) is not applied: it is a

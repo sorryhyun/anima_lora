@@ -14,8 +14,8 @@ from pathlib import Path
 from .paths import REPO, VL16_BASE
 
 # Decode cap, ``--max_new_tokens``. manga-ocr's WordPiece is ~1 token / kana and the
-# sincos labels reach 60 characters; greedy stops at EOS, so the headroom is free
-# except on a runaway, which ``scoring.is_runaway`` already counts.
+# sincos labels reach 60 characters; greedy stops at EOS, so the headroom costs only on
+# a runaway.
 MAX_NEW_TOKENS = 96
 
 VL16_TASKS = ("OCR:", "OCR2:", "SFX:")
@@ -28,11 +28,9 @@ MANGA_OCR_MODEL = "kha-white/manga-ocr-base"
 class MangaOCR:
     """manga-ocr (kha-white) with a vocab-only decoder.
 
-    The published tokenizer is ``BertJapaneseTokenizer``, whose *encoder* needs
-    MeCab/fugashi -- but generation only ever **decodes**, and decoding is plain
-    WordPiece over ``vocab.txt``. Reading the vocab directly keeps two native
-    dependencies out of the project for a pilot that never tokenises Japanese
-    input.
+    The published tokenizer is ``BertJapaneseTokenizer``, whose encoder needs
+    MeCab / fugashi; generation only decodes, and decoding is plain WordPiece over
+    ``vocab.txt``, so the vocab is read directly.
     """
 
     def __init__(self, model_id: str = MANGA_OCR_MODEL, device: str = "cuda") -> None:
@@ -65,12 +63,8 @@ class MangaOCR:
         return "".join(out).replace(" ", "")
 
     def read(self, crops: list, batch_size: int = 32, max_new_tokens: int = 48):
-        """Return ``[(text, mean_token_logprob), ...]``.
-
-        The logprob is the whole point of running greedy with scores: it is the
-        only per-region quality signal available without ground truth, and the
-        ``hard_neg`` control tells us whether it actually separates.
-        """
+        """Return ``[(text, mean_token_logprob), ...]``; the logprob is a per-region
+        confidence that needs no ground truth."""
         import numpy as np
         from PIL import Image
 
@@ -151,11 +145,11 @@ class Vl16Reader:
         model = AutoModelForImageTextToText.from_pretrained(
             path, dtype=torch.bfloat16, attn_implementation="sdpa"
         )
-        if adapter:  # O2 arm B: a peft LoRA on the LM, merged for the read
+        if adapter:  # a peft LoRA on the LM, merged for the read
             from peft import PeftModel
 
             model = PeftModel.from_pretrained(model, adapter).merge_and_unload()
-            # O2b: the full-finetuned tower + projector; ocr_reader P2b: LM layers
+            # full-finetuned weights: tower + projector, LM layers
             for name in ("tower.safetensors", "lm.safetensors"):
                 full = Path(adapter) / name
                 if not full.is_file():
@@ -202,8 +196,8 @@ class Vl16Reader:
         """Greedy reads of ``crops`` (BGR) with :attr:`task`, batched in crop-area order.
 
         A batch closes at ``bs`` crops or, with ``budget``, at that many tower patches
-        (bs 64 at the stock size OOMed on the largest crops without one; 65,536 by
-        default, about 0.6 GB of tower MLP activations). ``caps`` (one per crop)
+        (65,536 by default, about 0.6 GB of tower MLP activations; without a budget,
+        bs 64 OOMs on the largest crops). ``caps`` (one per crop)
         caps ``max_new_tokens`` per batch at its largest entry instead of the flat
         :attr:`max_tokens`, so a batch of short columns does not run the full cap for one
         runaway. ``prefetch`` batches are prepared on a thread while the GPU generates.
@@ -295,10 +289,9 @@ class Vl16Reader:
 
 class HayaiReader:
     """The community `hayai-ocr` VLM (SigLIP2-NaFlex tower + a 12-layer causal
-    decoder, ~150 M, `trust_remote_code`) — scored on request from its author
-    (`sorryhyun/paddleocr-vl-1.6-manga-lora` discussion #1). ``--ckpt`` is
-    ``<repo_id>[@<revision>]`` or a local dir; the default is the **v2.1**
-    branch (the revision the request names — `main` is v2.0). Decode follows
+    decoder, ~150 M, `trust_remote_code`). ``--ckpt`` is
+    ``<repo_id>[@<revision>]`` or a local dir; the default is the v2.1
+    branch (`main` is v2.0). Decode follows
     the card's own recipe (`num_beams=4`, `repetition_penalty=1.0`,
     `max_num_patches=256` for single lines; `ANIMA_HAYAI_PATCHES` overrides)
     and the crop goes in unrotated, as for `manga_ocr` — both read vertical
@@ -348,11 +341,9 @@ class HayaiReader:
 
         inputs = inputs.to(self.device)
         with self.torch.no_grad():
-            # hayai_beam.generate = upstream's beam search with the
-            # per-candidate Python loop vectorised and a per-row early stop
-            # (the upstream path is launch-bound at ~25 % GPU). ``upstream``
-            # keeps the model's own generate for an A/B. ``ANIMA_HAYAI_AMP``
-            # = bf16 (default) | fp16 (upstream's autocast) | 0 (fp32).
+            # hayai_beam.generate by default; ANIMA_HAYAI_BEAM_IMPL=upstream keeps
+            # the model's own generate. ``ANIMA_HAYAI_AMP`` = bf16 (default) |
+            # fp16 (upstream's autocast) | 0 (fp32).
             amp = os.environ.get("ANIMA_HAYAI_AMP", "bf16").lower()
             gen = (
                 self.model.generate
@@ -428,16 +419,13 @@ class Hayai27Reader:
 class HunyuanReader:
     """`tencent/HunyuanOCR` — HunyuanOCR-1.5 (1 B: 24 × 1024 LM + a 16-px-patch
     tower; native ``HunYuanVLForConditionalGeneration`` since transformers
-    5.13, no remote code), the second general OCR VLM scored against
-    PaddleOCR-VL-1.6 here. ``--ckpt`` overrides the local weights dir.
+    5.13, no remote code). ``--ckpt`` overrides the local weights dir.
 
-    Upstream **locks the prompt per task** (`inference/utils/tasks.py`: "users
-    pick a task, not a prompt"), so a crop is read with ``structured_parse`` =
-    ``提取图中的文字。`` verbatim; ``ANIMA_HUNYUAN_TASK`` picks another key of
-    :data:`TASKS`. Decode is the card's locked recipe — greedy,
-    ``repetition_penalty=1.08`` (``ANIMA_HUNYUAN_REP_PENALTY``, ``1.0`` = off).
-    That guard is *shipped* here, where ``vl16``'s runaway count is part of its
-    stock row, so the two stock rows are each the model as its authors ship it.
+    Upstream locks the prompt per task (`inference/utils/tasks.py`), so a crop is
+    read with ``structured_parse`` = ``提取图中的文字。`` verbatim;
+    ``ANIMA_HUNYUAN_TASK`` picks another key of :data:`TASKS`. Decode is the card's
+    recipe: greedy, ``repetition_penalty=1.08`` (``ANIMA_HUNYUAN_REP_PENALTY``,
+    ``1.0`` = off).
 
     Its image processor's ``min_pixels`` is 262144 (= 512²), so every crop is
     upscaled to ≥ 256 visual tokens however small the box — wall per crop is
@@ -471,9 +459,7 @@ class HunyuanReader:
 
         path = ckpt or str(REPO / self.DEFAULT)
         self.torch = torch
-        # ``ANIMA_HUNYUAN_PROMPT`` is off-recipe by construction (upstream ships
-        # no free-form prompt) — it exists only to test whether the Chinese
-        # task wording, not the tower, is what puts Han where the kana is.
+        # ``ANIMA_HUNYUAN_PROMPT``: a free-form prompt, off the card's recipe
         self.prompt = (
             os.environ.get("ANIMA_HUNYUAN_PROMPT")
             or self.TASKS[os.environ.get("ANIMA_HUNYUAN_TASK", "structured_parse")]

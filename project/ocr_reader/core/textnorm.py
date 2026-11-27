@@ -2,8 +2,8 @@
 
 :func:`fold_glyphs` is the single rule, so the reader never learns a spelling the scorer and
 ``anime_tools.ocr.reader`` discard. Callers pick the whitespace policy:
-``normalize_target`` / ``space_key`` collapse runs to one ASCII space, ``exact_key`` deletes
-them.
+:func:`normalize_target` collapses runs to one ASCII space, :func:`exact_key` deletes them,
+:func:`training_target` collapses them within a line and keeps the breaks.
 
 Folds, in order:
 
@@ -81,8 +81,7 @@ HEART_FOLD = str.maketrans(
         **{c: "×" for c in "☓✕✖╳✗✘"},
     }
 )
-"""Post-NFKC symbol table. Name kept from ``eval_manga109`` — it grew the wave,
-dash and quote folds but every consumer imported it under this name."""
+"""Fold 4, the post-NFKC symbol table: hearts, waves, dashes, quotes, circles, crosses."""
 
 
 HANGUL_RE = re.compile(r"[\uac00-\ud7a3\u3131-\u318e]")
@@ -177,7 +176,8 @@ def normalize_target(s: str) -> str:
 
 def collapse_keep_lines(s: str) -> str:
     """Whitespace runs inside a line → one ASCII space; line breaks kept, a run
-    of them (blank lines) one ``\\n``. U+3000 is a space here (NFKC)."""
+    of them (blank lines) one ``\\n``. U+3000 is a space here (NFKC). Spaces are never
+    deleted: 띄어쓰기 is lexical in Korean."""
     lines = (" ".join(line.split()) for line in s.replace("\r", "\n").split("\n"))
     return "\n".join(line for line in lines if line)
 
@@ -186,9 +186,7 @@ def training_target(s: str) -> str:
     """The training target: :func:`fold_glyphs` without
     the dot-run fold (``dots=False``) or the heart fold (``hearts=False``: ``♥`` and
     ``♡`` apart), a ``・`` run → ``…`` per three dots (:data:`MID_DOT_RUN_RE`), line breaks kept
-    as ``\\n`` (:func:`collapse_keep_lines`). ``exact_key`` / ``space_key`` stay
-    ``♡``-spelled, whitespace-blind and dot-folded, so a read with or without breaks,
-    any dot spelling and either heart scores the same."""
+    as ``\\n`` (:func:`collapse_keep_lines`)."""
     s = fold_glyphs(s, dots=False, hearts=False)
     return collapse_keep_lines(MID_DOT_RUN_RE.sub(_mid_dots, s))
 

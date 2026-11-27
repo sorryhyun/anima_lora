@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OvisOCR3 LoRA on the main / sub set, against the VL-1.6 LoRA arm at the same budget.
+"""OvisOCR3 LoRA on the main / sub set.
 
     make daemon-run ARGS="--queue --stall-timeout 900 \\
         project/ocr_reader/ocr/finetune_ovis3_lora.py --run ovis3ms_<mmdd_hhmm> --steps 1000"

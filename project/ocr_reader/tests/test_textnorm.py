@@ -146,8 +146,7 @@ def test_dash_glyphs_are_the_ones_the_corpus_uses():
     ],
 )
 def test_korean_dashes_fold_to_hyphen(raw, target):
-    # TARGET_NORM 8: a Hangul string's dashes → "-"; since 12 a run is one "-"; 13 leaves
-    # a Hangul string as 12 had it
+    # TARGET_NORM 8 / 12: a Hangul string's dash run → one "-" (13 leaves it alone)
     assert _mod().training_target(raw) == target
 
 

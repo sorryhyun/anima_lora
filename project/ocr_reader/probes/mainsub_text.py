@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The Manga109 ``<text>`` boxes the main / sub crops hold that ``manifest_sfxp_speech``
-does not (60,810 on the train split, 11-21): their texts are the raw annotation, with no
+does not: their texts are the raw annotation, with no
 ink-projection line breaks and no furigana pass. This cuts them as ``build_speech`` cuts
 the speech crops (the box at the 4 px margin) into ``crops_sfxp/mainsub_text/<split>/`` and
 writes ``manifest_mainsub_text.parquet`` (the speech manifest's columns, ``source =

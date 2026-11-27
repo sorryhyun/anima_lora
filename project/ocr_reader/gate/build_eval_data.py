@@ -3,9 +3,8 @@
 
     ANIMA_MANGA109S_ROOT=… .venv/bin/python project/ocr_reader/gate/build_eval_data.py
 
-The sincos gate used to cut its crops on the fly from
-``post_image_dataset/resized/sincos/``, a training tree that lost 8 label pages
-on 2026-10-10. This copies what each gate reads into one place:
+``post_image_dataset/resized/sincos/`` is a training tree missing 8 of the label
+pages, so this copies what each gate reads into one place:
 
 * ``sincos/pages/<stem>.png`` — the 155 resized pages behind
   ``assets/sfx_labels_sincos_597.tsv`` (so ``eval_sfx.py --pad`` still works);

@@ -4,21 +4,14 @@
     python project/ocr_reader/ocr/rescore_eval.py            # the table
     …/rescore_eval.py --write                                         # + rewrite the reports
 
-`exact_key` gained the ellipsis fold (every dot run → one `…`) in acd41d72,
-2026-09-08 00:12 — the eval half of the O4e guard fix. Every
-`output/ocr/eval/*.jsonl` written before that, and every
-`reports/eval/ocr_eval*.md` generated from one, therefore carries an `exact` on the
-older key, which counts `・・・` ≠ `...` ≠ `…` as three different reads. The
-effect is not a rounding difference: stock VL-1.6's COO speech row moves
-**1623 → 2118 of 2559** (63.4 → 82.8 %), because a manga speech line pauses
-and the two sides spell the pause differently.
-
-So a row measured before that commit **cannot be compared to one measured
-after**. This script re-derives `exact` for every stored jsonl from its own
-`pred_norm` + `text` columns — the same expression `scoring.score` uses
-— so the whole table lands on one key without re-running a single model. `sim`
-is untouched (it strips punctuation and symbols, so the fold never reached it)
-and so is `runaway`.
+`exact_key` folds every dot run into one `…` since acd41d72 (2026-09-08). An
+`output/ocr/eval/*.jsonl` written before that, and a `reports/eval/ocr_eval*.md`
+generated from one, carries an `exact` on the older key, which counts `・・・`,
+`...` and `…` as different reads, and **does not compare with a later row**. This
+script re-derives `exact` for every stored jsonl from its own `pred_norm` + `text`
+columns (the expression `scoring.score` uses), so the whole table lands on one key
+without re-running a model. `sim` is untouched (it strips punctuation and symbols,
+so the fold never reached it) and so is `runaway`.
 
 `--write` regenerates each `reports/eval/ocr_eval*.md` from the re-scored rows; the
 default prints the table and leaves the record alone.

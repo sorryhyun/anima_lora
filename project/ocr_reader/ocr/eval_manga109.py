@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""O0 scorer (``plan_ocr.md``): any reader over the Manga109-s crop manifest.
+"""Any reader over the Manga109-s crop manifest.
 
     ANIMA_MANGA109S_ROOT=… make daemon-run ARGS="project/ocr_reader/ocr/eval_manga109.py --reader manga_ocr"
     … --reader vl16         # PaddleOCR-VL-1.6 crop ``OCR:`` (batched, left-padded, use_cache)
@@ -14,7 +14,7 @@ Metrics per ``kind`` (``sfx`` = COO test crops, ``speech`` = the matched
   small kana all count);
 * **sim** — ``scoring.sim`` (NFKC, punctuation / symbols / spaces
   gone, ``SequenceMatcher`` ratio) after ``scoring.normalize_ja`` (vendored)
-  on the prediction (vertical if the crop is) — the A/B's comparison key;
+  on the prediction (vertical if the crop is);
 * **runaway** — ``is_runaway`` count (the VL failure class).
 
 Writes ``reports/eval/ocr_eval_<name>.md`` (summary table + worst 25 SFX lines)

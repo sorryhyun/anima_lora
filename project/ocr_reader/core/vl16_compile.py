@@ -24,8 +24,7 @@ marks go inside the callable so a checkpoint recompute re-marks.
   under ``--token_budget``, a large crop trains alone) is marked strictly to
   ``[2, bs]`` on the hidden state, the 4D mask and the rotary cos / sin; B = 1 stays
   static (dynamo specialises sizes 0 / 1). The prologue also pins the intra-op thread
-  count: the checkpoint recompute runs on the autograd device thread, and its
-  differing ``num_threads`` doubles every LM graph through the GLOBAL_STATE guard.
+  count (see ``lm`` below).
 
 A token count outside the range runs unmarked and specialises on its exact count, with
 one warning per count. A call with grad off (generation, ``predict``) goes straight to

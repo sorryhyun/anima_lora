@@ -24,8 +24,8 @@ outside a ``<text>`` box) is invisible here; the page's eye catches it.
 One source, ``mainsub_det``: every AnimeText box holding text
 (``manifest_sfxp_det_all``, ``build_sfx_prefix.py --det_all``: ``pos`` / ``pos_mixed`` /
 ``neg_speech``; a ``neg_speech`` main is the speech, or empty when every speech box is
-cut), train split by default. main / sub is read on the boxes the detector gives (the
-user's call, 2026-11-21): the COO polygons it misses (``manifest_sfxp_missed``) and the
+cut), train split by default. main / sub is read on the boxes the detector gives: the COO
+polygons it misses (``manifest_sfxp_missed``) and the
 crops cut from the ``<text>`` boxes (``manifest_sfxp_speech``) are out; the speech texts
 still come from the latter. Each row keeps the ``<text>`` ids in it (``sp``: the
 furigana reads follow them), ``ruby_raw`` (how many of those boxes head the sub with a ruby
@@ -95,11 +95,12 @@ def propose(items: list[Item], fr: dict, own: set[str], own_text: str | None):
 def trim_lines(it: Item, quad: np.ndarray, page: np.ndarray) -> tuple[str, int]:
     """A ``trim`` main cut to what the crop shows. The ``<text>`` box is cut from the
     page at the 4 px margin and split into columns / rows by ink projection
-    (``linebreak_auto.segment``, its eval settings). The text takes the columns by its
-    ``\\n`` when the counts agree, or whole when the ink is one column; otherwise it is
-    left whole (an unbroken label spread over ink lengths lands on the wrong columns:
-    BakuretsuKungFuGirl_024_29, PlatinumJungle_021_04). A column stays when half its width is inside the crop; along it, the glyphs spread over
-    the column's ink by ``glyph_weight`` and a glyph stays when its centre is inside.
+    (``core.crops.segment`` at ``linebreak_auto``'s eval defaults). The text takes the
+    columns by its ``\\n`` when the counts agree, or whole when the ink is one column;
+    otherwise it is left whole (an unbroken label spread over ink lengths lands on the
+    wrong columns). A column stays when half its width is inside the crop; along it, the
+    glyphs spread over the column's ink by ``glyph_weight`` and a glyph stays when its
+    centre is inside.
     Returns (text, glyphs dropped), the text unchanged when it is left whole or nothing
     drops."""
     x0, y0 = it.hull.min(0)
@@ -194,7 +195,7 @@ def book_rows(args) -> list[dict]:
     for ln in m109.iter_text(book):
         # dots as the JA speech labels spell them (``ellipsis_fold``, idempotent): the
         # <text> boxes outside manifest_sfxp_speech carry the raw annotation. Korean
-        # keeps ``...`` and ``…`` apart (the user, 11-21): a text with Hangul is left as is
+        # keeps ``...`` and ``…`` apart: a text with Hangul is left as is
         t = sp_text.get((book, ln.page, str(ln.id)), ln.text)
         if not HANGUL.search(t):
             t = ellipsis_fold(t)
@@ -333,7 +334,7 @@ def main():
         extra = pd.read_parquet(mt)
         for b, p, i, t in zip(extra.book, extra.page, extra.id, extra.text):
             sp_text.setdefault((b, int(p), str(i)), t)
-    # furigana_find.py read files: the ruby groups per <text> box, for trim rows
+    # furigana_find.py read files: the ruby groups per <text> box (sub heads, trim rows)
     fixed = {k: v[0] for k, v in agent_subs(a.ruby_fix).items()}
     ruby: dict[tuple, list] = {}
     for rp in a.ruby:

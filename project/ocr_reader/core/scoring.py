@@ -22,25 +22,22 @@ from . import textnorm
 
 
 def exact_key(s: str) -> str:
-    """:func:`textnorm.exact_key` — NFKC + whitespace-blind; heart / wave / dash
-    variants folded (the hand labels write ``♡`` and ``〜``, readers emit ``♥``
-    / ``~`` for the same glyph) and every dot run one ``…``."""
+    """:func:`textnorm.exact_key`."""
     return textnorm.exact_key(s)
 
 
 def linebreak_blind(a: str, b: str) -> bool:
-    """:func:`textnorm.linebreak_blind` — :func:`exact_key` equality plus the same
-    spacing, a line break on either side matching a space or none."""
+    """:func:`textnorm.linebreak_blind`."""
     return textnorm.linebreak_blind(a, b)
 
 
-# --------------------------------------------------------------------------- pilot keys
+# --------------------------------------------------------------------------- similarity keys
 
 _STRIP_RE = re.compile(r"[\s。、．，,.・…‥「」『』!！?？~～〜❤♥♡♪☆★()（）\-ー—–|｜]")
 
 
 def norm(s: str) -> str:
-    """The A/B's comparison key: NFKC, then punctuation / symbols / spaces gone."""
+    """The similarity key: NFKC, then punctuation / symbols / spaces gone."""
     return _STRIP_RE.sub("", unicodedata.normalize("NFKC", s))
 
 
@@ -50,7 +47,7 @@ def sim(a: str, b: str) -> float:
 
 
 def is_runaway(text: str, *, ngram_repeats: int = 3, run: int = 8) -> bool:
-    """The VL failure class PP does not have: ``ぉぉぉ…``×100, ``ふくっ``×100.
+    """A decode runaway: ``ぉぉぉ…``×100, ``ふくっ``×100.
 
     A glyph run of ``run`` or more, or any 3-gram occurring ``ngram_repeats``
     or more times. ``ぱんぱん`` (one repeat) and ``おおおん`` pass.

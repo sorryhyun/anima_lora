@@ -4,14 +4,13 @@ Upstream's ``num_beams > 1`` path (``modeling_hayai.py`` @ v2.1.5, the static-KV
 revision the reader pins; older snapshots without ``cache_seqlens`` fall back to
 the model's own ``generate``) runs a
 Python loop over ``batch × 2·beams`` candidates per decode step with an
-``.item()`` on each — that is the launch/sync wall behind the 25 % GPU
-utilisation in ``findings.md`` § hayai throughput. This module keeps the
+``.item()`` on each, so it is launch / sync bound. This module keeps the
 upstream prefill and decoder step verbatim and replaces only the candidate
 bookkeeping with batched tensor ops, so one step costs a fixed handful of
 kernel launches regardless of batch size.
 
-Semantics are upstream's, including its two quirks, so reads stay comparable
-with the ``pl100k`` tables and the K0 voter matrix:
+Semantics are upstream's apart from the per-row early stop (see ``generate``),
+including its two quirks:
 
 * candidates are walked in score order and an EOS candidate counts as a
   finished hypothesis only while fewer than ``num_beams`` live continuations
@@ -198,8 +197,7 @@ def generate(
         # hypotheses while its batch-mates run (and its read depends on
         # them). Here a row leaves the batch the moment it has B, and the
         # rows still running are compacted so late steps cost only what is
-        # still decoding (most reads are a few tokens; without it a batch runs
-        # as many steps as its longest row).
+        # still decoding.
         result = torch.full((b, L + 1), pad_id, dtype=torch.long, device=device)
         act = torch.arange(b, device=device)  # active row → original row
 

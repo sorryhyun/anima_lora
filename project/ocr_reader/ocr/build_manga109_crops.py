@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
-"""O1 crop builder (``plan_ocr.md``): Manga109-s COO + speech crops by the official split.
+"""Manga109-s COO + speech crops by the official split.
 
     ANIMA_MANGA109S_ROOT=~/manga109s/Manga109s_released_2026_05_21 \\
     python project/ocr_reader/ocr/build_manga109_crops.py --write_split
-    python project/ocr_reader/ocr/build_manga109_crops.py --split test   # O0's cut
+    python project/ocr_reader/ocr/build_manga109_crops.py --split test   # the test split only
     python project/ocr_reader/ocr/build_manga109_crops.py --workers 8   # all splits
-    python project/ocr_reader/ocr/build_manga109_crops.py --stats_only  # findings block
+    python project/ocr_reader/ocr/build_manga109_crops.py --stats_only  # stats block only
     … --image_root ~/manga109s/derived/colorized/1024_half_comic --name colorized_1024_half_comic --split train
-                                                                  # O3: the same polygons off the colorized pages
+                                                                  # the same polygons off the colorized pages
 
 ``--image_root`` re-cuts the **same** polygons from another page tree
-(``<root>/<Book>/<page>.png``, native size — O3's colorized copies); pages
+(``<root>/<Book>/<page>.png``, native size, e.g. colorized copies); pages
 missing there are skipped, and the crops + manifest land under
 ``derived/crops_<name>/`` / ``derived/manifest_<name>.parquet`` with a
 ``source=<name>`` column, so ``crop_dataset.load_split(extra=…)`` can mix them
 in without touching the grey manifest. Each colorized crop is checked against
-the grey crop of the same polygon (stroke-mask IoU after a 1-px dilation, the
-O3 pilot's clause (a)) and dropped under ``--min_iou`` (0.8) — a repainted
-glyph must not train under the source's label.
+the grey crop of the same polygon (stroke-mask IoU after a 1-px dilation) and
+dropped under ``--min_iou`` (0.8), so a repainted glyph does not train under the
+source's label.
 
-Copied from ``finished/cjk_aware_anima_dit/ocr/`` 2026-11-08; ``crops.deskew_crop`` now
-stops the margin at the page edge (``trim``), so the rebuilt ``crops/`` carry no
-replicated-border streaks. The old cut is kept as ``crops_replicate/`` +
-``manifest_replicate.parquet``.
+``crops.deskew_crop`` stops the margin at the page edge (``trim``); the earlier
+edge-replicated cut is kept as ``crops_replicate/`` + ``manifest_replicate.parquet``.
 
 For every book in the requested split(s): (a) every COO polygon (truncation links
 joined — ``manga109.iter_coo``), (b) a **matched draw** of ``<text>`` speech boxes,
@@ -32,7 +30,7 @@ book split and roughly the count. Crops via ``crops.deskew_crop``
 
 Output (never in-tree): ``$MANGA109S_ROOT/../derived/crops/<split>/<kind>/<book>_<page>_<id>.png``
 + ``derived/manifest.parquet`` (one row per kept crop; merged across runs by
-``(split, kind, id)``) + a stats block on stdout for ``findings.md``.
+``(split, kind, id)``) + a stats block on stdout.
 """
 
 from __future__ import annotations

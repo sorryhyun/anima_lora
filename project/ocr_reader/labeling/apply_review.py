@@ -14,16 +14,16 @@ Manifests per source: gelnote_ko / gelnote_zh → ``manifest_pseudo_gelnote_{ko,
 ``manifest_sfxp_kozh``;
 swaprelax_v5 → ``manifest_pseudo_swaprelax_v5`` + ``manifest_sfxp_kozh``;
 hito_v4_ja / hito_v4_ko → ``manifest_pseudo_hito_v4``;
-linebreak_suspicious / dots_suspicious / odd_dots / furigana → ``manifest_sfxp_speech`` (``orig`` is a proposal,
-so ``ok`` writes it too; a row matches when its text equals ``orig`` blind to whitespace and
-dot glyphs). Each manifest
+linebreak_suspicious / dots_suspicious / odd_dots / furigana → ``manifest_sfxp_speech``; for
+all but furigana ``orig`` is a proposal, so ``ok`` writes it too and a row matches when its
+text equals ``orig`` blind to whitespace and dot glyphs. Each manifest
 is copied to ``<name>.pre_review.parquet`` once, before its first change.
 
 mainsub_det / mainsub_speech (``--mainsub`` sources) → ``assets/m109_mainsub.tsv``
 (source, id, status, main, sub; ``\\n`` escaped), one row per crop, replaced whole on each
 export: ``ok`` / ``edit`` (or a sub typed without either) → status ``ok`` with the main box
 (``orig`` = the proposal for ``ok``) and the sub (the exported one, ``-`` = none); ``drop`` →
-status ``drop``. The manifests are not touched; training does not read the file yet.
+status ``drop``. The manifests are not touched; ``core.crop_dataset`` reads the file.
 
 anima_lowconf (``anima_lowconf.py``'s v7 reads of the Anima training set) →
 ``assets/anima_mainsub.tsv``, the same columns and rules as ``m109_mainsub.tsv``.
@@ -103,8 +103,7 @@ def main():
     a = ap.parse_args()
     rv = pd.read_csv(a.tsv, sep="\t", dtype=str, keep_default_na=False, quoting=3)
     rv["orig"] = rv.orig.map(unescape)
-    # an edit is stored as training reads it: spaces around a line break and blank
-    # lines go (``textnorm.collapse_keep_lines``)
+    # an edit is stored as training reads it
     rv["new"] = rv.new.map(unescape).map(collapse_keep_lines)
     d = m109.derived_root()
     if (rv.source == "doujin_sfx").any():
@@ -315,8 +314,7 @@ def write_mainsub(rv: pd.DataFrame, dry_run: bool, path: Path | None = None) -> 
 def write_subs(rv: pd.DataFrame, dry_run: bool) -> None:
     """The page's sub boxes → ``assets/sub_labels.tsv`` (source, id, text, sub; ``\\n``
     escaped): the ``OCR2:`` label of the row's crop, one item per line in reading order.
-    A row exported with ``-`` loses its sub; rows the export leaves out stay. Training
-    does not read the file yet."""
+    A row exported with ``-`` loses its sub; rows the export leaves out stay."""
     path = ASSETS / "sub_labels.tsv"
     old = (
         pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, quoting=3)

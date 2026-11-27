@@ -195,7 +195,7 @@ def _patch_gdn() -> None:
         if not torch.is_grad_enabled():
             return conv_fn(hidden_states, weight, bias, activation=activation, **kwargs)
         # depthwise causal conv as shifted products (pointwise in the graph, fp32 sum):
-        # Inductor's conv lowering specialised S (smoke_ovis3_dyn60_1127)
+        # Inductor's conv lowering specialises S
         seq_len, width = hidden_states.shape[-1], weight.shape[-1]
         xp = F.pad(hidden_states.to(weight.dtype), (width - 1, 0)).float()
         w = weight.float()

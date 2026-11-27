@@ -136,8 +136,8 @@ def ink_horizontal(crop: np.ndarray, bridge: int = 3) -> bool:
     so along the reading axis the ink runs on for a whole line while across it a run is
     one glyph (plus touching ruby). Runs are taken on the projections with gaps of at
     most ``bridge`` px closed; horizontal when the longest x run is 1.5× the longest y
-    run. The box shape does not tell (most crops tagged horizontal hold vertical columns
-    in a wide balloon), nor do the gap widths (a single column has none across)."""
+    run. The box shape does not tell: most crops tagged horizontal hold vertical columns
+    in a wide balloon."""
     ink = ink_mask(crop)
 
     def longest(prof: np.ndarray) -> int:
@@ -446,7 +446,7 @@ def main():
         "--orient",
         choices=["vertical", "horizontal"],
         default="vertical",
-        help="find: vertical = the crops not tagged horizontal (as before); horizontal = "
+        help="find: vertical = the crops not tagged horizontal; horizontal = "
         "any crop whose ink reads as rows (ink_horizontal), ruby above the rows",
     )
     ap.add_argument("--main_frac", type=float, default=0.7)

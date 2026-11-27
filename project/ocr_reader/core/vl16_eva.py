@@ -13,9 +13,9 @@ theirs. Per input, with covariance C and mean m:
 * that variance is ``tr(C) / (3 d)``, a kaiming-uniform row's on the centred inputs, so a
   step on ``lora_B`` moves the output as far as it does from the stock init.
 
-``lora_B`` is not touched. peft's own ``initialize_lora_eva_weights`` divides by the square
-root of the singular value (a scale that moves with the token count) and loops until every
-component's cosine settles; this computes the eigenvectors once from the full moments.
+``lora_B`` is not touched. The eigenvectors are computed once from the full moments, and
+the row scale does not depend on the token count (peft's ``initialize_lora_eva_weights``
+scales by the singular value's square root, which does).
 """
 
 from __future__ import annotations

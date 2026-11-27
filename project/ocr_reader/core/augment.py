@@ -13,9 +13,7 @@ Draws (each an independent Bernoulli, probabilities in :class:`Augment`):
 
 * **pad jitter** 5–25 % — the crop already carries 12 %; below that we cut
   inward, above it we extend with the crop's border colour (the page context
-  is not in the file). Also shifts the glyphs off centre.
-  Off for the 4 px crops (``Augment(tight=True)``, ``--sfx_prefix``): their pad is
-  4 px, so a cut inward clips the glyphs.
+  is not in the file). Also shifts the glyphs off centre. Off with ``tight``.
 * **rotation** ±8° (border replicate; ``tight``: canvas expanded, border colour) — COO polygons are hand-drawn and the
   ``minAreaRect`` deskew leaves a residual tilt; sincos SFX are often diagonal.
 * **scale jitter** — downscale to 0.5–1.0 and back (area / cubic): sincos min
@@ -24,7 +22,7 @@ Draws (each an independent Bernoulli, probabilities in :class:`Augment`):
 * **contrast / brightness** — gamma 0.6–1.5 and a ±30 level shift; screentone
   vs flat tint changes the local contrast of the strokes.
 * **invert** — white-on-dark lettering (outlined SFX on dark panels).
-* **colour tint** — the domain-gap draw: the grey crop's darkness becomes an
+* **colour tint** — the grey crop's darkness becomes an
   alpha over a *background* tint (skin / pastel / flat pink) with the strokes in
   a *text* tint (pink / red / white / dark). sincos SFX are pink on skin tones;
   COO is grey on white. Roles flip with a small probability.
@@ -181,8 +179,9 @@ class Augment:
     p_contrast: float = 0.6
     p_invert: float = 0.1
     p_tint: float = 0.35
-    # crops cut at the 4 px margin (build_sfx_prefix.py): no pad jitter (it assumes the
-    # 12 % pad and cuts into the glyphs), rotation on an expanded canvas
+    # crops cut at the 4 px margin (build_sfx_prefix.py, finetune --sfx_prefix): no pad
+    # jitter (it assumes the 12 % pad and cuts into the glyphs), rotation on an expanded
+    # canvas
     tight: bool = False
     rng: random.Random = field(init=False)
 

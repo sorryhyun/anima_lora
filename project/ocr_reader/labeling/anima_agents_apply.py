@@ -3,11 +3,8 @@
 ``output/ocr/anima_lowconf/agents/``) → ``assets/anima_mainsub.tsv`` with status ``agent``, for
 the ``anima_lowconf`` rows that file does not hold yet. A row is written when at least two
 agents gave the same main (whitespace-blind, ``review_page.vote``); a split row is left for
-review. Rows the user reviewed (status ``ok`` / ``drop``) are never touched.
-
-The status keeps the agent labels apart: on the user's first 47 reviewed rows (mostly Hangul,
-2026-11-24) a unanimous agent main matched the user's 11 of 16 times, a 2-of-3 main 10 of 17,
-a split row never.
+review. Rows the user reviewed (status ``ok`` / ``drop``) are never touched; the ``agent``
+status keeps the agent labels apart from them.
 
     python project/ocr_reader/labeling/anima_agents_apply.py [--dry_run]
 """

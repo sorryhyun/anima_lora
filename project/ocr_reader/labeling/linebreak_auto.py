@@ -680,9 +680,8 @@ def apply(a):
             continue
         i = pos.get((r["book"], int(r["page"]), str(r["id"])))
         # the manifest may hold the label ellipsis-folded (build_sfx_prefix --ellipsis)
-        # or already broken (a rerun): compare without the breaks
-        # (a break placed on a space takes the space, a dot run split by a break is not
-        # folded: compare blind to whitespace and dot spelling)
+        # or already broken (a rerun), and a break placed on a space takes the space:
+        # compare blind to whitespace and dot spelling
         if i is None or _flat_key(df.text.iat[i]) != _flat_key(r["raw"]):
             stale += 1
             continue
@@ -757,7 +756,7 @@ def dot_columns(crop) -> list[int]:
 
 def dots(a):
     """Dot-only speech labels (``・・・・・・\\n・・・``) re-spelled from the page, as the
-    user's review edits do (11-18): per printed column ``ceil(dots / 3)`` × ``…``, one
+    user's review edits do: per printed column ``ceil(dots / 3)`` × ``…``, one
     line per column. A row passes when every column holds ≥ 2 dots, there are ≤ 6
     columns and the counted dots are within 0.6–1.6× the label's (``…`` = 3, ``‥`` = 2);
     passing rows are written to ``manifest_sfxp_speech`` (``.pre_dots.parquet`` backup),

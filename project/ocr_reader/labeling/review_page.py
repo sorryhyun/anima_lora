@@ -18,8 +18,8 @@ COO onomatopoeia and the speech text (``manifest.parquet``); off by default.
 Every editable row has a ``+ sub`` button: a second box for the ``OCR2:`` label of the same
 crop (furigana, a smaller SFX, a hand-lettered aside; one item per line, reading order),
 exported as the ``sub`` column (``-`` = removed). The furigana reads (``--ruby``,
-``furigana_find.py``; ``--ruby_fix`` the agents' fixes) are not a source of their own
-(dropped 11-21): they head the ``mainsub_*`` sub proposals, and the ``furigana`` /
+``furigana_find.py``; ``--ruby_fix`` the agents' fixes) are not a source of their own:
+they head the ``mainsub_*`` sub proposals, and the ``furigana`` /
 ``furigana suspicious`` sorts list the mainsub rows with a ruby proposal (by id / most
 doubtful groups first).
 
@@ -33,13 +33,13 @@ Rules: ``README.md`` § Labeling. The header's ``has`` filter (any source) lists
 hold now: main only, sub only, both, or partly visible text.
 ``apply_review.py`` writes these rows to ``assets/m109_mainsub.tsv``.
 
-Line breaks that missed ``linebreak_auto.py apply``'s gate are not a source of their own
-(dropped 11-21): a ``mainsub_*`` row whose main is one such ``<text>`` box holds the
+Line breaks that missed ``linebreak_auto.py apply``'s gate are not a source of their own:
+a ``mainsub_*`` row whose main is one such ``<text>`` box holds the
 proposed breaks in its main box (the meta line: the label, the column reads), and the
 ``linebreak suspicious`` sort lists those rows, largest read distance first. Its ``ok``
 goes to ``m109_mainsub.tsv`` (the det crop's main), not the speech manifest.
-(``odd_dots`` and ``dots_suspicious`` are no longer listed: the first was empty by 11-21,
-the second reviewed in full on 11-18; ``apply_review.py`` still takes their rows.)
+``odd_dots`` and ``dots_suspicious`` are not listed; ``apply_review.py`` still takes their
+rows.
 
 hito rows also show the twin crop (the other edition's lettering of the same region) with
 its v4 read, and the read's mean token logprob (``prelabel_v4lp.jsonl``); they sort lowest
@@ -688,10 +688,10 @@ def furigana_rows(
     d: Path, path: Path | None, fix: Path | None = None
 ) -> dict[str, list[dict]]:
     """``furigana_find.py read``'s crops with ruby groups: the label as the manifest holds
-    it now, the sub box
-    prefilled with every group's non-empty read in reading order: one line per main
-    column (right to left), a column's groups top down, joined by a space. ``sus`` counts
-    the groups that read as something else or sit over no kanji (those rows first)."""
+    it now, the sub box prefilled with every group's non-empty read in reading order: one
+    line per main column (right to left), a column's groups top down, joined by a space.
+    ``sus`` counts the groups that read as something else or sit over no kanji (those rows
+    first)."""
     if path is None or not path.exists():
         return {}
     fixed = agent_subs(fix)
@@ -772,7 +772,7 @@ LINE_DOT_RUN = re.compile(r"[.．・･…‥]+")
 
 def round_dots(t: str) -> str:
     """Each dot run inside a line (``…`` counts 3, ``‥`` 2) → ``max(1, round(n / 3))`` ×
-    ``…``, as the review edits of 11-18 spell them (2 → ``…``, 7 → ``……``); a lone
+    ``…``, as the review edits spell them (2 → ``…``, 7 → ``……``); a lone
     ``・`` (nakaguro) and a run a line break splits stay as written."""
 
     def sub(m: re.Match) -> str:
@@ -974,7 +974,7 @@ def _subseq(a: str, b: str) -> bool:
 
 
 def hayai_kind(read: str, main: str, sub: str) -> int:
-    """Where a disagreeing hayai read points (the ``hayai: label errors first`` sort):
+    """Where a disagreeing hayai read points (the ``hayai: likely label errors first`` sort):
     2 = at the label (the read is the label plus a dakuten / handakuten, the label's
     characters reordered, or the label plus text the empty sub lacks), 0 = at hayai (the
     read is the label short of a mark or of characters, or is the sub alone: a misread or
@@ -1104,8 +1104,8 @@ def reader_split_rows(
 ) -> dict[str, list[dict]]:
     """``reader_split``: cjk_rl's ``split_1126_0910`` crops (``reader_split.py``), kana renders
     one reader reads as the asked glyph and the other does not, kept where both readers'
-    confidence is ``min_conf`` or over (the user, 11-26: both sure, one of them wrong). The main box holds the read
-    that matched (hayai's on a ``hayai_only`` crop, the tuned reader's on a ``tuned_only``
+    confidence is ``min_conf`` or over (both sure, one of them wrong). The main box holds
+    the read that matched (hayai's on a ``hayai_only`` crop, the tuned reader's on a ``tuned_only``
     one); the meta line the asked glyph and both reads. ``key`` is what the caption asked
     for, not a checked label. The applied main and sub of ``reader_split_mainsub.tsv`` over
     both."""
@@ -1330,8 +1330,9 @@ def ref_rows(d: Path, n: int, seed: int = 0) -> dict[str, list[dict]]:
 
 def applied_state() -> dict:
     """What ``apply_review.py`` has written to the assets: SFX marks (``source:id``
-    keys), subs (``sub_labels.tsv``) and Manga109 main / sub rows (``m109_mainsub.tsv``:
-    [status, main, sub]). The page exports only the rows whose state differs from it."""
+    keys), subs (``sub_labels.tsv``) and main / sub rows (``m109_mainsub.tsv``,
+    ``anima_mainsub.tsv``, ``reader_split_mainsub.tsv``: [status, main, sub]). The page
+    exports only the rows whose state differs from it."""
     A = ASSETS
 
     def rd(name: str) -> pd.DataFrame | None:

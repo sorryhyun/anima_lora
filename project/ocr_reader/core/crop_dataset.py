@@ -4,10 +4,7 @@
 * **Sets** — :func:`load_mainsub` (the main / sub mix, README § main / sub) and the
   per-kind loaders (:func:`load_sfxp`; :func:`load_split`: COO ``sfx`` : Manga109 ``speech``
   1 : 1 by count, ``--speech_ratio`` rescales the speech draw, both from one book split).
-* **Target rule** — :func:`normalize_target` (``textnorm.training_target``): the glyph
-  folds, whitespace runs inside a line collapsed to one ASCII space (never deleted:
-  띄어쓰기 is lexical in Korean), line breaks kept as ``\\n``. The scorer's ``exact`` is
-  whitespace-blind and applies the same folds.
+* **Target rule** — :func:`normalize_target` (``textnorm.training_target``).
 * **Augmentation** — ``augment.Augment`` on the train split only; per-worker
   seeding so DataLoader workers do not replay one RNG stream.
 """
@@ -55,9 +52,7 @@ changes (the folds: ``core/textnorm.py``)."""
 
 
 def normalize_target(s: str) -> str:
-    """:func:`textnorm.training_target` — folds, whitespace runs inside a line
-    collapsed to one ASCII space, line breaks kept as ``\\n``, edges stripped,
-    ``♥`` and ``♡`` kept apart."""
+    """:func:`textnorm.training_target`."""
     return textnorm.training_target(s)
 
 
@@ -73,8 +68,8 @@ def load_split(
 ) -> pd.DataFrame:
     """Manifest rows of one split; speech drawn at ``speech_ratio`` × the SFX count.
 
-    ``extra`` = names of sibling manifests (``manifest_<name>.parquet`` — O3's
-    colorized crops) whose rows of the same split are **appended** before the
+    ``extra`` = names of sibling manifests (``manifest_<name>.parquet``, colorized
+    crops) whose rows of the same split are **appended** before the
     speech draw / ``limit``, tagged by their ``source`` column, each row
     ``extra_repeat`` times (oversampling a small colorized set).
     ``extra_replace`` instead **swaps** them in: every grey row whose polygon
@@ -300,17 +295,17 @@ def with_breaks(x: dict, filled: dict[str, str]) -> str:
     return x["main"]
 
 
-# 1 in RUBY_RAW_SHARE train sub rows headed by an unreviewed ruby read trains (a hash of
-# RUBY_RAW_HASH_SEED and id, not the run's seed: the quarter is fixed, the rest never
-# trains).
+# 1 in RUBY_RAW_SHARE train sub rows headed by an unreviewed ruby read trains, picked by a
+# hash of RUBY_RAW_HASH_SEED and the id (not the run's seed), so the share is the same rows
+# in every run.
 RUBY_RAW_SHARE = 4
 RUBY_RAW_HASH_SEED = 0
 
 
 def ruby_sub_out(x: dict) -> bool:
     """A ``m109_mainsub.py`` train row whose proposed sub is an unreviewed ruby read outside
-    the fixed ``RUBY_RAW_SHARE`` quarter: its sub never trains unless a review or an agent
-    label replaces it."""
+    the ``RUBY_RAW_SHARE`` share: its sub trains only once a review or an agent label
+    replaces it."""
     return (
         bool(x.get("ruby_raw"))
         and bool(x["subp"].strip())
@@ -349,10 +344,10 @@ def load_mainsub(
       (such crops show text: a box cut under half, a sign). An unreviewed main with line
       breaks waiting (:func:`waiting_break`) is out of ``OCR:`` in train, not of ``OCR2:``. An unreviewed main
       takes its breaks from ``assets/m109_breaks.tsv`` (:func:`with_breaks`). An unreviewed
-      main in ``assets/m109_break_held.tsv`` (breaks held by the agents, two ``<text>`` boxes
-      on one line) is out of train ``OCR:`` the same way. Of the unreviewed train subs
-      headed by a ruby read no agent fixed (``ruby_raw``), one fixed quarter
-      (``RUBY_RAW_SHARE``) trains, picked by a hash of the id, the same for every seed.
+      main in ``assets/m109_break_held.tsv`` (line breaks no one settled: the agents' held
+      rows, and mains joining two ``<text>`` boxes on one line) is out of train ``OCR:`` the
+      same way. Of the unreviewed train subs headed by a ruby read no agent fixed
+      (``ruby_raw``), a fixed share trains (:func:`ruby_sub_out`).
     * KO / ZH (``manifest_sfxp_kozh``, train only): ``OCR:`` = the label; ``OCR2:`` =
       ``assets/sub_labels.tsv``'s sub, else ``assets/kozh_sfx.tsv``'s SFX text.
     * Anima (``assets/anima_mainsub.tsv``, train only; the review page's ``anima_lowconf``
@@ -398,9 +393,7 @@ def load_mainsub(
             f"{r.source}:{r.id}": (r.verdict, un(r.main), un(r.sub))
             for r in t.itertuples()
         }
-    # unreviewed speech mains whose line breaks no one settled: the agents' held rows
-    # (label and crop differ, columns unclear) and mains joining two <text> boxes on one
-    # line; out of train OCR: like the waiting rows
+    # agents' held rows: label and crop differ, columns unclear
     held = set()
     if (t := rd(ASSETS / "m109_break_held.tsv")) is not None:
         held = {f"{r.source}:{r.id}" for r in t.itertuples()}
@@ -469,8 +462,6 @@ def load_mainsub(
                     source="m109_" + x["cat"],
                 )
             )
-        # an unreviewed ruby read heads the sub: one fixed quarter of those rows trains, the
-        # same for every seed (``RUBY_RAW_SHARE``)
         if done and split == "train" and v is None and a is None and ruby_sub_out(x):
             done = False
             n_ruby += 1
@@ -667,9 +658,8 @@ def vl_tokens(
     Mirrors ``transformers…paddleocr_vl.smart_resize``: the processor rounds each
     edge to a multiple of ``factor`` (= patch 14 × merge 2) and then rescales so the
     pixel budget lands inside ``[min_pixels, max_pixels]``. Tokens = pixels / 14².
-
-    The **min_pixels floor is why crop area is a bad batching key** — every crop
-    below it is upscaled to the same cost, so sorting by area does not sort by cost.
+    Every crop below ``min_pixels`` is upscaled to the same cost, so crop area does not
+    order crops by cost.
     """
     w = np.asarray(w, dtype=np.float64).copy()
     h = np.asarray(h, dtype=np.float64).copy()
@@ -705,21 +695,15 @@ def token_batches(
     lm_tokens: np.ndarray | None = None,
     lm_budget: int = 0,
 ) -> list[list[int]]:
-    """Batches capped by **total packed tokens**, not crop count.
+    """Batches of crops sorted by token cost (jittered) and cut at ``budget`` total
+    tokens, so a batch from the large-crop tail cannot cost several times the median
+    and OOM the tower (``area_batches`` fixes the crop count instead).
 
     ``padded=True`` caps the padded cost (largest crop × crops) instead of the sum:
     the LM input is padded to the batch's longest row, and the jittered order can
-    put one large crop among small ones (sfxp train, budget 6144: sum-capped
-    batches reach 10,560 padded, padded-capped ones stay under the budget).
+    put one large crop among small ones.
 
-    ``area_batches`` fixes the crop count, so a batch drawn from the large-crop tail
-    can cost several times the median and OOM the tower on a spike (measured on
-    ``manifest_all``: median 20.1k tokens, max 122.6k, 34 batches over 60k). Sorting
-    by token cost and cutting on a budget bounds the peak; because ~99 % of crops sit
-    at the processor's min_pixels floor, a 24k budget costs only +0.6 % more steps.
-
-    ``batch_size`` stays the upper bound on crops per batch, so a budget wider than
-    ``batch_size`` × median gives fixed-count batches.
+    ``batch_size`` stays the upper bound on crops per batch.
 
     ``lm_budget`` > 0 also caps the batch's padded LM tokens (longest row of
     ``lm_tokens`` × crops): a long label pads the decoder's sequence for every row.

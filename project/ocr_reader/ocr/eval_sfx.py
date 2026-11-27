@@ -1,38 +1,24 @@
 #!/usr/bin/env python3
-"""The doujin gate (``plan_ocr.md`` O0/O2): any reader over the sincos hand labels.
+"""The doujin gate: any reader over the sincos hand labels.
 
     ANIMA_MANGA109S_ROOT=… make daemon-run ARGS="project/ocr_reader/ocr/eval_sfx.py --reader manga_ocr"
     … --reader manga_ocr --ckpt output/ocr/<run>/best
     … --reader vl16 [--ckpt output/ocr/<run>/best]       # a peft adapter dir merges onto the base
     … --reader record                                    # the pipeline's current read (no model)
 
-Labels: ``project/ocr_reader/assets/sfx_labels_sincos_597.tsv`` — the finished
-line's ``sfx_labels_sincos.tsv`` minus the 8 pages removed 2026-10-10, so
-**597 SFX** are scored; the 617-row counts below describe the original file.
-One row per AnimeText record (since 2026-09-06 the finished line's
-``relabel_animetext.py`` re-based the PP-box labels; ``kind_hand``
-/ ``text_hand`` are human — drafted off the crop sheets, corrected by the
-user; ``status`` = draft | drafted | checked | unchecked, only ``unchecked``
-is skipped). Crops are cut from the
-resized sincos pages with ``crops.deskew_crop`` at 12 % pad (the box is
-axis-aligned, so this is a padded rectangle crop; orientation preserved).
-
-Rows scored (the AnimeText basis, 2026-09-06 →; counts after the user's second
-label pass 2026-09-07): **617 SFX** (``kind_hand == sfx``; 86 of them
-``status: checked`` by the user) + **293 speech** + **39 chrome**, 949 of the
-file's 975 rows — the PP-box basis this replaced was 99
-SFX / 213 speech / 26 chrome and its gate subset was 71 lines, so **no number
-measured before 2026-09-06 is comparable to one measured after** (see
-``findings.md`` § "Label basis").
+Labels: ``project/ocr_reader/assets/sfx_labels_sincos_597.tsv``, one row per
+AnimeText record, **597 SFX** scored. ``kind_hand`` / ``text_hand`` are the human
+labels; ``status`` = draft | drafted | checked | unchecked, only ``unchecked`` is
+skipped. Crops are cut from the resized sincos pages with ``crops.deskew_crop`` at
+12 % pad (the box is axis-aligned, so this is a padded rectangle crop; orientation
+preserved). A number measured before 2026-09-06 was on the retired PP-box labels
+and does not compare (``findings.md`` § "Label basis").
 
 **The speech / chrome rows are not an accuracy metric.** Their ``text_hand``
 is the PP-OCRv6 record text on almost every row (``status: checked``
 certified the *kind*, not the text) and PP-OCRv6 reads no hearts, so a reader
-that reads ``♡`` correctly scores as a miss — read them as *agreement with
-PP-OCRv6*, nothing more (``findings.md`` § O3 label audit). The SFX rows are
-hand-typed and are the real gate. The user's 2026-09-07 pass off
-``probes/label_sheet.py`` began hand-typing speech rows too (9 so far); when
-that set grows the caveat weakens, but it holds today.
+that reads ``♡`` correctly scores as a miss: read them as agreement with
+PP-OCRv6. The hand-typed SFX rows are the gate.
 
 Metrics as ``eval_manga109``:
 exact (NFKC + whitespace-blind; the ``JOIN_SEP`` space between repeated blocks
@@ -66,7 +52,7 @@ LABELS = ASSETS / "sfx_labels_sincos_597.tsv"
 PAGES = REPO / "post_image_dataset/resized/sincos"
 # Frozen gate images (``project/ocr_reader/gate/build_eval_data.py``): crops cut
 # at the default pad, and the pages behind them. Preferred over ``PAGES``, a
-# training tree that lost 8 label pages on 2026-10-10.
+# training tree missing 8 of the label pages.
 FROZEN = EVAL_DATA / "sincos"
 FROZEN_PAD = 0.12
 
@@ -220,7 +206,7 @@ def main():
         "the retired PP-box labels (71-line gate / 99 SFX) and does not compare.\n"
     )
     # side view: the rows the *records* call sfx (kind_rec), which is what the
-    # pipeline's own kind rule sees — a subset of the hand-labelled 619
+    # pipeline's own kind rule sees
     gate = scored[scored.kind_rec == "sfx"]
     md += (
         f"\nSide view — the {len(gate)} `kind_rec: sfx` records: exact "
