@@ -24,8 +24,8 @@ Folds, in order:
    (``ㅋ`` U+314B), :data:`JAMO_FOLD`. Norm 3–5 taught ``ᄏᄏ`` for ``ㅋㅋ``.
 4. **Symbol table** — hearts ``♥`` / ``❤`` (+ U+FE0F) → ``♡``; wave dash ``〜``
    (U+301C) → ``~``; long dashes ``─`` (U+2500 box drawing) / ``—`` (U+2014) →
-   ``―`` (U+2015, the JIS dash; 616 vs 412 vs 1 train rows). Dash *runs* keep
-   their length — ``だから――――`` is a prolongation, like ``ーー``. Curly
+   ``―`` (U+2015, the JIS dash; 616 vs 412 vs 1 train rows), which fold 7 then
+   writes ``-``. Curly
    double quotes ``“`` / ``”`` → ASCII ``"`` (``TARGET_NORM = 6``, 2026-11-17: one
    quote, three spellings across the manifests; swaprelax_v5 had 75 ``”`` rows
    to 3 ``"``). Circles ``◯`` / ``〇`` → ``○`` (``TARGET_NORM = 9``, 2026-11-20: the
@@ -46,8 +46,15 @@ Folds, in order:
    main labels against 21,818 with ``…``), and under norm 7 the reader lost where a
    repeated-``・`` run ends (COO speech runaways 11 → 94 at ``sfxpc_1118_2037``). ``.``
    runs stay: the KO reviews keep ``..`` / ``...`` apart from ``…``.
+7. **Drawn-out lines** (``TARGET_NORM = 12``, 2026-11-27, the user) — every ``―`` → ASCII
+   ``-``; then a run of ``ー`` / ``-`` (mixed) → one ``-`` and a ``~`` run → one ``~``
+   (``むうーーーーーーーー~~`` → ``むう-~``, ``もう―――`` → ``もう-``). A lone ``ー`` is the
+   long-vowel mark of a word and stays (``ケーキ``). In vertical lettering ``ー`` and ``―`` are
+   one stroke, and the labels spell a drawn-out sound either way with any count: on
+   ``mainsub_1126_2213``'s val reads 168 of 1,466 misses differed only in the count (140 of
+   them short) and 198 read ``ー`` for a labelled ``―``. In the target and every key.
 
-The **training target** (:func:`training_target`, ``TARGET_NORM = 11``) keeps
+The **training target** (:func:`training_target`, ``TARGET_NORM = 12``) keeps
 the label's line breaks as ``\\n`` (one token, id 23; norm 4 collapsed them to a
 space, so v4 answers one line) and keeps the two hearts apart: ``♥`` (and ``❤``) for
 the filled one, ``♡`` for the outline. Norms 4–9 wrote every heart as ``♥``: in the
@@ -99,6 +106,11 @@ KO_DASH_FOLD = str.maketrans({c: "-" for c in "―–‒‐"})
 """Fold 5: the dashes of a Hangul string → ``-`` (applied after :data:`HEART_FOLD`, so
 ``—`` / ``─`` arrive as ``―``)."""
 
+LINE_RUN_RE = re.compile(r"[ー-]{2,}")
+WAVE_RUN_RE = re.compile(r"~{2,}")
+"""Fold 7 (``TARGET_NORM = 12``): after ``―`` → ``-``, a run of drawn lines (``ー`` / ``-``,
+mixed) → one ``-`` and a ``~`` run → one ``~``. A lone ``ー`` stays (``ケーキ``)."""
+
 
 def _jamo_fold() -> dict[int, int]:
     out = {}
@@ -147,6 +159,7 @@ def fold_glyphs(s: str, *, dots: bool = True, hearts: bool = True) -> str:
     s = s.translate(HEART_FOLD if hearts else _SHAPE_KEEP_HEARTS)
     if HANGUL_RE.search(s):
         s = s.translate(KO_DASH_FOLD)
+    s = WAVE_RUN_RE.sub("~", LINE_RUN_RE.sub("-", s.replace("―", "-")))
     if not dots:
         return s.translate(_DOT_RESTORE)
     return ELLIPSIS_RE.sub(ELLIPSIS, s)
@@ -165,7 +178,7 @@ def collapse_keep_lines(s: str) -> str:
 
 
 def training_target(s: str) -> str:
-    """The training target (``TARGET_NORM = 11``): :func:`fold_glyphs` without
+    """The training target (``TARGET_NORM = 12``): :func:`fold_glyphs` without
     the dot-run fold (``dots=False``) or the heart fold (``hearts=False``: ``♥`` and
     ``♡`` apart), a ``・`` run → ``…`` per three dots (:data:`MID_DOT_RUN_RE`), line breaks kept
     as ``\\n`` (:func:`collapse_keep_lines`). ``exact_key`` / ``space_key`` stay

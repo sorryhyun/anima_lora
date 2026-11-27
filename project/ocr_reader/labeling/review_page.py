@@ -51,11 +51,7 @@ the rows whose main the read does not match (whitespace-blind, with ``exact_key`
 read equal to main + sub counts as a match; a main of one kana, or one kana two or three times,
 compares with hiragana = katakana and small = large: ``へへへ`` / ``ヘヘヘ``, ``ぁ`` / ``あ``),
 largest distance first. hayai reads a crop as
-one string with no line breaks, so it says nothing about a row's breaks. ``mainsub_nolabel``:
-the detector boxes with no label (``neg_other``: no annotation inside; ``drop``: an SFX cut
-partway; train), the main box holding hayai's read as a first pass; their crops are cut on
-the first build to ``crops_sfxp/det_nolabel/``. ``apply_review.py`` writes these rows to
-``assets/m109_mainsub.tsv`` too; the training loader does not read them yet.
+one string with no line breaks, so it says nothing about a row's breaks.
 ``--hayai_kozh`` (``hayai_read.py --set kozh hito``): the same read and sort on the
 ``gelnote_ko`` / ``swaprelax_v5`` / ``hito_v4_*`` rows, against the label. hayai often slips
 kana or hanja into a Hangul line (and Hangul into a JA one): a read holding a script the
@@ -134,7 +130,6 @@ from project.ocr_reader.core.crop_dataset import (
     waiting_break,
     with_breaks,
 )
-from project.ocr_reader.core.crops import margin_box
 from project.ocr_reader.core.labels import agent_subs, ellipsis_fold
 from project.ocr_reader.core.paths import (
     ANIMA_LOWCONF,
@@ -244,7 +239,7 @@ const DATA = __DATA__;
 const MIN_DEFAULT = __MINRUN__;
 const SORT_DEFAULT = {"gelnote_ko": "nolf", "swaprelax_v5": "sus", "hito_v4_ja": "lp", "hito_v4_ko": "lp",
                       "doujin_sfx": "__DOUJIN_SORT__", "k3_ko": "__K3_SORT__", "k3_zh": "__K3_SORT__",
-                      "mainsub_det": "sus", "mainsub_speech": "sus", "mainsub_nolabel": "id", "anima_lowconf": "sc",
+                      "mainsub_det": "sus", "mainsub_speech": "sus", "anima_lowconf": "sc",
                       "reader_split": "ks"};
 // mainsub rows carry paths relative to the Manga109 folder
 const M109 = __M109__;
@@ -1009,60 +1004,6 @@ def hayai_kind(read: str, main: str, sub: str) -> int:
     return 1
 
 
-def nolabel_rows(d: Path, hayai: dict[str, dict]) -> dict[str, list[dict]]:
-    """``mainsub_nolabel``: the train boxes ``m109_mainsub.py`` has no row for
-    (``neg_other`` / ``drop``), each with hayai's read in its main box. The crop is cut
-    with the training margin on the first build (``crops_sfxp/det_nolabel/train/``)."""
-    xs = [
-        x
-        for x in hayai.values()
-        if x["cat"] in ("neg_other", "drop") and x["split"] == "train" and x["read"]
-    ]
-    if not xs:
-        return {}
-    import cv2
-
-    base, out_dir = d.parent, d / "crops_sfxp" / "det_nolabel" / "train"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    xs.sort(key=lambda x: (x["book"], x["page"], x["id"]))
-    rows, cur, img, n_cut = [], None, None, 0
-    for x in xs:
-        f = out_dir / f"{x['id']}.png"
-        if not f.exists():
-            if cur != (x["book"], x["page"]):
-                cur = (x["book"], x["page"])
-                img = cv2.imread(str(m109.page_path(*cur)))
-            if img is None:
-                continue
-            H, W = img.shape[:2]
-            x0, y0, x1, y1 = margin_box(*x["box"], W, H)
-            cv2.imwrite(str(f), img[y0:y1, x0:x1])
-            n_cut += 1
-        t = x["read"]
-        rows.append(
-            dict(
-                id=x["id"],
-                text=t,
-                run=0,
-                sus=0.0,
-                why="",
-                lf=0,
-                len=len(t),
-                status=x["cat"],
-                note="no label: the main box holds hayai v2.7's read of the whole crop"
-                + (" · an SFX cut by the box" if x["cat"] == "drop" else ""),
-                sub="",
-                part=0,
-                ms=1,
-                img=os.path.relpath(f, base),
-                page=os.path.relpath(m109.page_path(x["book"], x["page"]), base),
-                box=x["box"],
-            )
-        )
-    print(f"[review] mainsub_nolabel: {len(rows)} rows ({n_cut} crops cut)", flush=True)
-    return {"mainsub_nolabel": rows}
-
-
 def agent_votes(d: Path | None) -> dict[str, list[dict]]:
     """Every ``out.tsv`` under ``d`` (``label_agent.md``'s output, one folder per agent
     and batch): ``{id: [{main, sub, conf, note}, …]}``, ``\\n`` unescaped."""
@@ -1487,7 +1428,7 @@ def main():
         "--hayai",
         type=Path,
         help="hayai_read.py's output/ocr/hayai/<name>.jsonl: hayai's read per detector "
-        "box (shown on the mainsub rows; the main of the mainsub_nolabel rows)",
+        "box (shown on the mainsub rows)",
     )
     ap.add_argument(
         "--hayai_kozh",
@@ -1598,7 +1539,6 @@ def main():
     hayai = hayai_reads(a.hayai)
     applied = applied_state()
     data.update(mainsub_rows(d, a.mainsub, fur, hayai, applied))
-    data.update(nolabel_rows(d, hayai))
     data.update(anima_rows(a.anima_lowconf, applied, a.anima_agents))
     data.update(reader_split_rows(a.reader_split, applied, a.reader_split_min_conf))
     if a.ref_n:

@@ -34,7 +34,7 @@ from torch.utils.data import Dataset
 from . import manga109 as m109
 from . import textnorm
 from .augment import Augment
-from .paths import ASSETS, OUTPUT
+from .paths import ANIMA_LOWCONF, ASSETS, OUTPUT
 
 MAX_TARGET_CHARS = 150
 """Longest training target, in characters after :func:`normalize_target`. A longer label is
@@ -56,7 +56,7 @@ def cap_targets(out: pd.DataFrame, what: str) -> pd.DataFrame:
     return out[~long]
 
 
-TARGET_NORM = 11
+TARGET_NORM = 12
 """Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
 (every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
 (``vl16_b2_norm2``); 3 = ``textnorm.fold_glyphs`` first — hearts → ``♡``, dot
@@ -75,7 +75,9 @@ still fold); 8 = norm 7 with a Hangul string's dashes (``―`` / ``—`` / ``–
 (2026-11-20, ``textnorm`` fold 4); 10 = norm 9 with ``♡`` kept apart from ``♥`` (``❤`` →
 ``♥``), ``♡`` and ``💢`` trained as tokens of their own (``core/vocab_ext.py``,
 2026-11-25); 11 = norm 10 with a ``・`` run → ``…`` per three dots, at least one (``.`` runs and ``…`` as
-labelled; ``textnorm.MID_DOT_RUN_RE``, 2026-11-26)."""
+labelled; ``textnorm.MID_DOT_RUN_RE``, 2026-11-26); 12 = norm 11 with every ``―`` → ``-``, a
+``ー`` / ``-`` run → one ``-`` and a ``~`` run → one ``~``, a lone ``ー`` kept (``textnorm`` fold 7,
+2026-11-27; the scoring keys fold the same)."""
 
 
 def normalize_target(s: str) -> str:
@@ -331,8 +333,22 @@ def with_breaks(x: dict, filled: dict[str, str]) -> str:
 
 
 # 1 in RUBY_RAW_SHARE train sub rows headed by an unreviewed ruby read trains (a hash of
-# seed and id)
+# RUBY_RAW_HASH_SEED and id, not the run's seed: the quarter is fixed, the rest never
+# trains; the user, 2026-11-27). Seed 0's quarter is the one the 11-27 agent pass
+# (`subq1127`) checked.
 RUBY_RAW_SHARE = 4
+RUBY_RAW_HASH_SEED = 0
+
+
+def ruby_sub_out(x: dict) -> bool:
+    """A ``m109_mainsub.py`` train row whose proposed sub is an unreviewed ruby read outside
+    the fixed ``RUBY_RAW_SHARE`` quarter: its sub never trains unless a review or an agent
+    label replaces it."""
+    return (
+        bool(x.get("ruby_raw"))
+        and bool(x["subp"].strip())
+        and zlib.crc32(f"{RUBY_RAW_HASH_SEED}:{x['id']}".encode()) % RUBY_RAW_SHARE != 0
+    )
 
 
 def sfx_only(x: dict) -> bool:
@@ -370,10 +386,13 @@ def load_mainsub(
       takes its breaks from ``assets/m109_breaks.tsv`` (:func:`with_breaks`). An unreviewed
       main in ``assets/m109_break_held.tsv`` (breaks held by the agents, two ``<text>`` boxes
       on one line) is out of train ``OCR:`` the same way. Of the unreviewed train subs
-      headed by a ruby read no agent fixed (``ruby_raw``), one in ``RUBY_RAW_SHARE``
-      trains, picked by a hash of ``seed`` and the id.
+      headed by a ruby read no agent fixed (``ruby_raw``), one fixed quarter
+      (``RUBY_RAW_SHARE``) trains, picked by a hash of the id, the same for every seed.
     * KO / ZH (``manifest_sfxp_kozh``, train only): ``OCR:`` = the label; ``OCR2:`` =
       ``assets/sub_labels.tsv``'s sub, else ``assets/kozh_sfx.tsv``'s SFX text.
+    * Anima (``assets/anima_mainsub.tsv``, train only; the review page's ``anima_lowconf``
+      rows as applied, ``drop`` out): ``OCR:`` = the main, ``""`` a negative;
+      ``OCR2:`` = the sub, ``""`` a negative that goes in with the reviewed Manga109 ones.
     * Agent labels (``assets/m109_agent_subs.tsv``) take the place of an unreviewed
       proposal: ``typed`` gives the sub, ``empty`` an ``OCR2:`` negative in the SFX-only
       group, ``other`` (text the agent did not type) no ``OCR2:`` row; a ``main`` there
@@ -485,17 +504,9 @@ def load_mainsub(
                     source="m109_" + x["cat"],
                 )
             )
-        # an unreviewed ruby read heads the sub: a quarter of those rows trains, fixed per
-        # seed (``RUBY_RAW_SHARE``, the user, 2026-11-23)
-        if (
-            done
-            and split == "train"
-            and v is None
-            and a is None
-            and x.get("ruby_raw")
-            and sub.strip()
-            and zlib.crc32(f"{seed}:{x['id']}".encode()) % RUBY_RAW_SHARE
-        ):
+        # an unreviewed ruby read heads the sub: one fixed quarter of those rows trains, the
+        # same for every seed (``RUBY_RAW_SHARE``, the user, 2026-11-23 / 11-27)
+        if done and split == "train" and v is None and a is None and ruby_sub_out(x):
             done = False
             n_ruby += 1
         if done:
@@ -514,6 +525,42 @@ def load_mainsub(
                     neg_group=("m109" if rev_neg else "sfx_only") if neg else None,
                 )
             )
+    n_anima = 0
+    if split == "train" and (t := rd(ASSETS / "anima_mainsub.tsv")) is not None:
+        # the Anima training set's low-confidence v7 reads as reviewed on the page
+        # (``ok``) or applied from the agents' majority (``agent``); crops under
+        # ANIMA_LOWCONF/crops, cut with the training margin (the user, 2026-11-27)
+        from PIL import Image
+
+        for r in t.itertuples():
+            if r.status == "drop":
+                continue
+            p = ANIMA_LOWCONF / "crops" / f"{r.id}.png"
+            if not p.exists():
+                continue
+            w, h = Image.open(p).size
+            base = dict(
+                book="anima:" + r.id.split("__")[0],
+                page=0,
+                id=r.id,
+                orient="vertical" if h > w else "horizontal",
+                w=w,
+                h=h,
+                path=str(p),
+                source=r.source,
+            )
+            main, sub = un(r.main), un(r.sub)
+            recs.append(dict(base, text=main, task=OCR_TASK, kind="main"))
+            recs.append(
+                dict(
+                    base,
+                    text=sub,
+                    task=OCR2_TASK,
+                    kind="sub" if sub.strip() else "sub_neg",
+                    neg_group=None if sub.strip() else "anima",
+                )
+            )
+            n_anima += 1
     if split == "train":
         kozh = pd.read_parquet(d / "manifest_sfxp_kozh.parquet")
         kozh = kozh[kozh.split == split]
@@ -571,17 +618,18 @@ def load_mainsub(
         n = int(min(len(neg), cap * base))
         neg = neg.iloc[rng.permutation(len(neg))]
         group = neg.neg_group.fillna("m109")
-        # the reviewed Manga109 rows first, then the other groups in turn
+        # the reviewed rows (Manga109, Anima) first, then the other groups in turn
         rest = [neg[group == g] for g in ("sfx_only", "kozh")]
         turn = np.concatenate([np.arange(len(r)) * 2 + i for i, r in enumerate(rest)])
         rest = pd.concat(rest).iloc[np.argsort(turn, kind="stable")]
-        neg = pd.concat([neg[group == "m109"], rest])
+        neg = pd.concat([neg[group.isin(["m109", "anima"])], rest])
         parts += [pos, neg.iloc[:n]]
     out = pd.concat(parts, ignore_index=True)
     print(
         f"[data] mainsub {split}: reviewed {n_rev}, dropped {n_drop}, unreviewed trim "
         f"out {n_trim}, unreviewed empty main out {n_empty}, unreviewed "
-        f"waiting break main out {n_wait}, held break main out {n_held}, unreviewed ruby sub out {n_ruby}, empty sub out "
+        f"waiting break main out {n_wait}, held break main out {n_held}, unreviewed ruby sub out {n_ruby}, "
+        f"anima_lowconf crops {n_anima}, empty sub out "
         f"{int(no_sub.sum())}; {out.groupby(['task', 'metric']).size().to_dict()}",
         flush=True,
     )

@@ -34,7 +34,11 @@ SPLITS = ("train", "val", "test")
 def manga109s_root() -> Path:
     """``ANIMA_MANGA109S_ROOT`` (the daemon forwards only ``ANIMA_``-prefixed env
     to its jobs — ``anima_daemon.config.CAPTURED_ENV_PREFIXES``); bare
-    ``MANGA109S_ROOT`` accepted for inline runs."""
+    ``MANGA109S_ROOT`` accepted for inline runs. ``.env`` is read first, so a bare
+    ``.venv/bin/python`` run finds it too; a key already in the env wins."""
+    from library.env import load_dotenv
+
+    load_dotenv()
     env = os.environ.get("ANIMA_MANGA109S_ROOT") or os.environ.get("MANGA109S_ROOT")
     if not env:
         raise SystemExit(

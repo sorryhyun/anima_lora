@@ -19,15 +19,39 @@ leaves this file for a report.
 
 ## Work
 
+- `TARGET_NORM = 12` (2026-11-27, the user): every `―` → `-`, a `ー` / `-` run → one `-`, a
+  `~` run → one `~`, a lone `ー` kept (`ケーキ`; `core/textnorm.py` fold 7), in the target and
+  the scoring keys. On `mainsub_1126_2213`'s val reads 168 of 1,466 misses differed only in the
+  count of `ー` / `~` / `―` (140 short) and 198 read `ー` for a labelled `―`. The stored reads
+  rescored under the new keys (val main / Manga109 test SFX / speech / sincos SFX):
+  `mainsub_1124_1923` 92.9 % / 82.0 % / 92.1 % / 351, `mainsub_1126_2213` 93.0 % / 80.5 % /
+  91.8 % / 320. `cjk_rl`'s `sent_strings` takes the fold through `normalize_target`.
+  First run: `mainsub_1127_0028` (local, 4 × 4, 3 epochs, otherwise `mainsub_1126_2213`'s
+  recipe): val main 93.3 %, sub 55.4 % (ep3); Manga109 test SFX 81.4 %, speech 93.0 %; sincos SFX
+  312 (heart-blind 397 against 442); K3 KO 30, ZH 35. Its ep2 reads sincos SFX 285, Manga109
+  SFX 78.6 %. The sincos losses are hearts read as a glyph (`びく♥` → `びくん` / `びくっ`,
+  `ガク♥` → `ガクル`): 121 rows against 51 on `mainsub_1126_2213`. Not attributed (batch
+  recipe, epochs and the fold changed together).
 - `TARGET_NORM = 11` (2026-11-26): a `・` run is `…` per three dots, at least one, in the
   training target (`・・・・・` → `……`, the user; `.` runs and
   `…` as labelled; `core/textnorm.py` fold 6). Before it, `load_mainsub` main targets held
   2,343 train / 294 val labels with a `・` run against 21,818 / 2,146 with `…`. No run on it
   yet.
-- No-label boxes (`neg_other` 22,718, `drop` 2,678 train) are on the page as `mainsub_nolabel`
-  ([report](reports/hayai_first_pass_2026_11_24.md)). Pending: `load_mainsub` reading the
-  reviewed ones (their crops are cut; the loader reads `manifest_sfxp_det_all` only), and the val
-  boxes (1,955 + 168), which are not on the page.
+- Suspect subs (2026-11-27): the 903 flagged `OCR2:` rows that train, val included, fixed by
+  agents, pass `subq1127` ([report](reports/mainsub_subq_agents_2026_11_27.md)); the ruby quarter
+  no longer moves with the seed. Then all 5,138 unchecked ruby subs in the quarter, pass
+  `subr1127` (45.5 % content wrong, [report](reports/mainsub_subr_agents_2026_11_27.md)). Not
+  run: the ruby subs outside the quarter (they do not train), the 3,429 non-ruby unreviewed subs,
+  a rule for furigana group spacing. No run on the new labels yet; the local HF build of
+  `load_mainsub` predates them.
+- Anima low-confidence reads (2026-11-27, the user): `load_mainsub` trains
+  `assets/anima_mainsub.tsv`'s 326 applied rows (`ok` 168, `agent` 158): `OCR:` main 309, main
+  `""` 17; `OCR2:` sub 36, sub `""` 290 (they go in with the reviewed negatives, ahead of the
+  SFX-only and KO / ZH draws). No image shared with the K3 or doujin gates. No run on it yet.
+- No-label boxes (`neg_other` 22,718, `drop` 2,678 train,
+  [report](reports/hayai_first_pass_2026_11_24.md)): off the review page since 2026-11-27 (the
+  user: the page lists only sources that train; none had been applied). Their crops stay cut
+  under `crops_sfxp/det_nolabel/` (local).
 - `hayai disagrees` after tier 1 ([report](reports/hayai_agent_tier1_2026_11_24.md)): tier 2
   (distance ≤ 0.4, dakuten / longer / shorter read, about 620) and tier 3 (same length, other
   glyphs, about 2,900) not run. `BEMADER_P_047_27` and `ToutaMairimasu_037_11` (furigana untyped)
@@ -100,3 +124,14 @@ leaves this file for a report.
   2 epochs on RunPod (val main 91.9 %, sub 54.9 %; vs the first v7: doujin SFX 334 → 350, Manga109
   test SFX 80.8 → 81.9 %, K3 KO 29 → 32, ZH 36); shipped as Hub `v7/` in place (`169eacbc`),
   `anime_tools` v0.15.0.
+- [`mainsub_1127_0706.md`](reports/mainsub_1127_0706.md): LM full FT against LM LoRA r64 at 1k
+  (Manga109 test SFX 1,677 against 1,709, p 0.05; doujin SFX 176 against 155, p 0.02, speech 109
+  against 96, p 0.01; K3 level; 12.6 against 9.2 GB); the DoRA arms cancelled (peft DoRA ran an
+  extra fp32 matmul per Linear: 7.3 crops/s).
+- [`mainsub_subq_agents_2026_11_27.md`](reports/mainsub_subq_agents_2026_11_27.md): the training
+  set holds next to no duplicate crops (37 identical, 784 tight / loose pairs); 903 flagged subs
+  that train (val 79 included) through 16 Sonnet agents (ok 257, fixed 477, empty 142, unsure
+  27; 4 main fixes), pass `subq1127`; the ruby quarter fixed across seeds.
+- [`mainsub_subr_agents_2026_11_27.md`](reports/mainsub_subr_agents_2026_11_27.md): all 5,138
+  unchecked ruby subs of the training quarter through 103 Sonnet agents (ok 2,394; content wrong
+  2,340, 45.5 %; spacing only 369), pass `subr1127`.

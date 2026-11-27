@@ -72,6 +72,7 @@ the review page and its procedure are in the README's § Rules.
 |---|---|---|---|
 | Manga109 detector crops (`mainsub_det`: `manifest_sfxp_det_all`, labels `output/ocr/mainsub/m109_mainsub[_val].jsonl`) | train, val | main | sub; `""` on a row reviewed `ok` with an empty sub, and on an SFX-only crop (`sfx_only`: one SFX, no other annotated text whole or partly inside) |
 | KO / ZH (`manifest_sfxp_kozh`) | train | the label | `assets/sub_labels.tsv`, else `assets/kozh_sfx.tsv`; `""` on a `swaprelax_v5` crop with neither |
+| Anima low-confidence reads (`anima_lowconf`: `assets/anima_mainsub.tsv`, crops under `ANIMA_LOWCONF_ROOT`; since 2026-11-27) | train | the reviewed main (`""` = no text) | the reviewed sub; `""` when empty, with the reviewed Manga109 negatives |
 
 Not in the set: the COO polygons the detector misses, the `<text>`-box crops
 (`manifest_sfxp_speech`) and the older 12 % crops (`manifest.parquet`). The `<text>` labels
@@ -119,7 +120,9 @@ reviewed row (`assets/m109_mainsub.tsv`: source, id, status, main, sub) replaces
   and `swaprelax_v5` crops, each drawn at random.
 - Of the unreviewed train subs headed by a ruby read no agent fixed (`ruby_raw` in
   `m109_mainsub.jsonl`), a quarter trains (`RUBY_RAW_SHARE`; the user,
-  2026-11-23): 5,724 of 22,762 at seed 0, a hash of seed and id.
+  2026-11-23): one fixed quarter picked by a hash of the id, the same for every seed (the
+  user, 2026-11-27: the other three quarters never train); it is the quarter seed 0 took
+  before, which the `subq1127` agent pass checked.
 - Val reads `main` / `main_neg` / `sub`; the best checkpoint is picked by `main_exact`.
 
 Train rows on 2026-11-23, with the agent labels, the held line breaks out and a quarter of the

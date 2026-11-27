@@ -19,7 +19,7 @@ so ``ok`` writes it too; a row matches when its text equals ``orig`` blind to wh
 dot glyphs). Each manifest
 is copied to ``<name>.pre_review.parquet`` once, before its first change.
 
-mainsub_det / mainsub_speech (``--mainsub`` sources) and mainsub_nolabel (``--hayai``) → ``assets/m109_mainsub.tsv``
+mainsub_det / mainsub_speech (``--mainsub`` sources) → ``assets/m109_mainsub.tsv``
 (source, id, status, main, sub; ``\\n`` escaped), one row per crop, replaced whole on each
 export: ``ok`` / ``edit`` (or a sub typed without either) → status ``ok`` with the main box
 (``orig`` = the proposal for ``ok``) and the sub (the exported one, ``-`` = none); ``drop`` →
@@ -70,7 +70,7 @@ TARGETS = {
 DOUJIN = ASSETS / "sfx_labels_sincos_597.tsv"
 K3 = ASSETS / "k3_gelnote.tsv"
 GATES = {"doujin_sfx", "k3_ko", "k3_zh"}
-MAINSUB = {"mainsub_det", "mainsub_speech", "mainsub_nolabel"}
+MAINSUB = {"mainsub_det", "mainsub_speech"}
 ANIMA = {"anima_lowconf"}
 APPLY_OK = {"linebreak_suspicious", "dots_suspicious", "odd_dots"}
 """Sources whose page text is a proposal, not the manifest's text: ``ok`` applies it."""

@@ -135,10 +135,6 @@ so older commands still resolve.
   positive.
 - `ok` or an edit confirms both boxes as they stand, the proposed sub included. Emptying the main
   box makes a sub-only row.
-- `mainsub_nolabel` lists the detector boxes with no label (no annotation inside, or an SFX cut
-  by the box), the main box holding hayai v2.7's read as a first pass. hayai answers on every
-  box: a crop with no text is emptied by the reviewer. Its exports go to `m109_mainsub.tsv`;
-  the loader does not train them yet.
 - A `mainsub_*` row shows hayai's read (one string, no line breaks); the `hayai disagrees` sort
   lists the rows whose main it does not match, largest distance first.
 - A `mainsub_*` row in `assets/m109_mainsub.tsv` (the user's or an agent pass's) shows the applied
@@ -155,7 +151,8 @@ so older commands still resolve.
   2026-11-24), the main box holding the read; `sincos/` is left out, it is the doujin gate's
   source. Its crops and `rows.jsonl` are under `ANIMA_LOWCONF_ROOT`
   (`/media/sorryhyun/new/dataset/anima_ocr_lowconf`); apply writes its rows to
-  `assets/anima_mainsub.tsv` (the `m109_mainsub.tsv` columns). Training does not read it yet.
+  `assets/anima_mainsub.tsv` (the `m109_mainsub.tsv` columns), which `load_mainsub` trains (train
+  split, every status but `drop`; since 2026-11-27).
 - `reader_split` (the user, 2026-11-26) lists cjk_rl's `split_1126_0910`: 2,002 kana render
   crops that one reader (hayai v2.7 or the tuned reader) reads as the glyph the caption asked for
   and the other does not. Only the crops where both readers' confidence is 0.9 or over (both

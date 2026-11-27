@@ -40,6 +40,11 @@ full through the same fp32-master path at ``--lm_lr``; embed_tokens, the final
 norm and lm_head stay frozen. Those weights land in ``lm.safetensors`` beside
 the adapter, which ``Vl16Reader`` also loads after the merge.
 
+``--dora`` makes every LoRA target of the run a DoRA one (peft ``use_dora``: a
+trained per-output-channel magnitude over the normalised ``W + BA``): the tower
+alone under ``--lm_full``, tower and LM without it. ``merge_and_unload`` folds it
+into the base, so ``Vl16Reader`` reads the adapter dir unchanged.
+
 ``♡`` and ``💢`` are tokens of their own (``core/vocab_ext.py``, ``TARGET_NORM`` 10):
 their embedding and ``lm_head`` rows start from ``♥`` / ``×`` plus noise (or from
 ``--init_adapter``'s ``vocab.safetensors``), train at ``--vocab_lr`` through fp32
@@ -420,6 +425,12 @@ def main():
     )
     ap.add_argument("--lm_lr", type=float, default=1e-5)
     ap.add_argument(
+        "--dora",
+        action="store_true",
+        help="DoRA on every LoRA target (peft use_dora): the tower under --lm_full, "
+        "tower and LM without it",
+    )
+    ap.add_argument(
         "--vocab_lr",
         type=float,
         default=1e-4,
@@ -639,6 +650,7 @@ def main():
             rank_pattern={re.escape(t): a.tower_rank for t in tower_targets},
             alpha_pattern={re.escape(t): 2 * a.tower_rank for t in tower_targets},
             bias="none",
+            use_dora=a.dora,
         )
         model = get_peft_model(base, cfg)
     # (file, params, lr) per fully-trained block; each takes an fp32 master copy
@@ -704,6 +716,13 @@ def main():
                 flush=True,
             )
             assert on and off, "layer class names changed; --ckpt_lm_only did nothing"
+    if a.compile and a.dora:
+        # peft's dequantize_module_weight tests type(weight).__module__.startswith(…),
+        # a graph break inside every compiled layer that then fails the token axis's
+        # dynamic guard; the base Linears here are plain bf16, so it is the weight itself
+        import peft.tuners.lora.dora as peft_dora
+
+        peft_dora.dequantize_module_weight = lambda m: m.weight
     if a.compile:
         from project.ocr_reader.core.vl16_compile import compile_layers
 
@@ -987,6 +1006,7 @@ def main():
         f"# {a.run} — PaddleOCR-VL-1.6 crop LoRA (r {a.rank}, lr {a.lr}, bs {a.bs}x{a.grad_accum}, "
         + (f"tower full FT lr {a.tower_lr}, " if a.train_tower else "")
         + (f"tower LoRA r {a.tower_rank}, " if a.tower_rank else "")
+        + ("DoRA, " if a.dora else "")
         + (f"LM layers full FT lr {a.lm_lr}, " if a.lm_full else "")
         + (f"init {a.init_adapter}, " if a.init_adapter else "")
         + f"speech_ratio {a.speech_ratio}, train {len(tr)}, val {len(va)})\n",

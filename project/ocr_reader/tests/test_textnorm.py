@@ -26,13 +26,13 @@ def _mod():
         # hearts → ♡, wave → ~, fullwidth → ASCII
         ("ムフッ♥!", "ムフッ♡!"),
         ("えらいぞ❤\ufe0fアイー", "えらいぞ♡アイー"),
-        ("なっ...成島〜〜", "なっ…成島~~"),
+        ("なっ...成島〜〜", "なっ…成島~"),
         ("えっ！？　ほんと？", "えっ!? ほんと?"),
         ("あ‼", "あ!!"),
-        # long dashes → U+2015, runs keep their length
-        ("わ──っ", "わ――っ"),
-        ("だから――――", "だから――――"),
-        ("それは—人類", "それは―人類"),
+        # long dashes → "-", a run one "-" (TARGET_NORM 12)
+        ("わ──っ", "わ-っ"),
+        ("だから――――", "だから-"),
+        ("それは—人類", "それは-人類"),
         # curly double quotes → ASCII (TARGET_NORM 6)
         ("”ここ”って", '"ここ"って'),
         ("“그래”", '"그래"'),
@@ -70,7 +70,7 @@ def test_training_target_keeps_the_two_hearts():
         assert "♥" not in m.exact_key(raw)
         assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
     raw = "あ゛っ　……\n──"
-    assert m.training_target(raw) == "あ゙っ ……\n――"
+    assert m.training_target(raw) == "あ゙っ ……\n-"
     assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
 
 
@@ -126,25 +126,49 @@ def test_training_target_keeps_line_breaks(raw, target):
 
 
 def test_dash_glyphs_are_the_ones_the_corpus_uses():
-    # ― U+2015 (kept), ─ U+2500, — U+2014 (folded)
+    # ― U+2015, ─ U+2500, — U+2014: all one "-" (TARGET_NORM 12)
     m = _mod()
     assert ord("―") == 0x2015 and ord("─") == 0x2500 and ord("—") == 0x2014
-    assert m.exact_key("─") == m.exact_key("—") == "―"
+    assert m.exact_key("─") == m.exact_key("—") == m.exact_key("―") == "-"
 
 
 @pytest.mark.parametrize(
     "raw, target",
     [
         ("짜안―\n손님용", "짜안-\n손님용"),
-        ("촬영은 커녕——…", "촬영은 커녕--…"),
+        ("촬영은 커녕——…", "촬영은 커녕-…"),
         ("유즈–", "유즈-"),
         ("스기야마-참모-총장", "스기야마-참모-총장"),
-        ("だから――――", "だから――――"),
+        ("だから――――", "だから-"),
     ],
 )
 def test_korean_dashes_fold_to_hyphen(raw, target):
-    # TARGET_NORM 8: a Hangul string's dashes → "-", run length kept; Japanese keeps ―
+    # TARGET_NORM 8: a Hangul string's dashes → "-"; since 12 a run is one "-"
     assert _mod().training_target(raw) == target
+
+
+@pytest.mark.parametrize(
+    "raw, target",
+    [
+        ("むうーーーーーーーー~~", "むう-~"),
+        ("ケーキ", "ケーキ"),
+        ("あれー?", "あれー?"),
+        ("もう―――", "もう-"),
+        ("あれ―?", "あれ-?"),
+        ("――そう思って", "-そう思って"),
+        ("ゴオーー…", "ゴオ-…"),
+        ("ーー―~", "-~"),
+        ("そうか〜〜〜", "そうか~"),
+        ("ず~ん", "ず~ん"),
+        ("747-400D", "747-400D"),
+        ("---江戸---", "-江戸-"),
+    ],
+)
+def test_drawn_out_lines_fold(raw, target):
+    # TARGET_NORM 12: ― → "-", a ー / - run → one "-", a ~ run → one ~; a lone ー stays
+    m = _mod()
+    assert m.training_target(raw) == target
+    assert m.exact_key(raw) == m.exact_key(target) == "".join(target.split())
 
 
 @pytest.mark.parametrize(
