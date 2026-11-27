@@ -56,7 +56,7 @@ def cap_targets(out: pd.DataFrame, what: str) -> pd.DataFrame:
     return out[~long]
 
 
-TARGET_NORM = 12
+TARGET_NORM = 13
 """Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
 (every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
 (``vl16_b2_norm2``); 3 = ``textnorm.fold_glyphs`` first — hearts → ``♡``, dot
@@ -77,7 +77,11 @@ still fold); 8 = norm 7 with a Hangul string's dashes (``―`` / ``—`` / ``–
 2026-11-25); 11 = norm 10 with a ``・`` run → ``…`` per three dots, at least one (``.`` runs and ``…`` as
 labelled; ``textnorm.MID_DOT_RUN_RE``, 2026-11-26); 12 = norm 11 with every ``―`` → ``-``, a
 ``ー`` / ``-`` run → one ``-`` and a ``~`` run → one ``~``, a lone ``ー`` kept (``textnorm`` fold 7,
-2026-11-27; the scoring keys fold the same)."""
+2026-11-27, ``mainsub_1127_0028`` only; the scoring keys fold the same); 13 = norm 11 with,
+outside a Hangul string, every ``ー`` / ``―`` / hyphen run → one ``ー`` (Chinese included),
+``〰`` → ``~`` and a ``~`` run → one ``~``; the hyphen kept as one ``-`` beside an ASCII letter
+or digit and in a Hangul string (as norm 12 had it) (``textnorm`` fold 7, 2026-11-27; the
+scoring keys fold the same)."""
 
 
 def normalize_target(s: str) -> str:

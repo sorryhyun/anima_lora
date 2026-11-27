@@ -29,10 +29,10 @@ def _mod():
         ("なっ...成島〜〜", "なっ…成島~"),
         ("えっ！？　ほんと？", "えっ!? ほんと?"),
         ("あ‼", "あ!!"),
-        # long dashes → "-", a run one "-" (TARGET_NORM 12)
-        ("わ──っ", "わ-っ"),
-        ("だから――――", "だから-"),
-        ("それは—人類", "それは-人類"),
+        # long dashes → "ー", a run one "ー" (TARGET_NORM 13)
+        ("わ──っ", "わーっ"),
+        ("だから――――", "だからー"),
+        ("それは—人類", "それはー人類"),
         # curly double quotes → ASCII (TARGET_NORM 6)
         ("”ここ”って", '"ここ"って'),
         ("“그래”", '"그래"'),
@@ -70,7 +70,7 @@ def test_training_target_keeps_the_two_hearts():
         assert "♥" not in m.exact_key(raw)
         assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
     raw = "あ゛っ　……\n──"
-    assert m.training_target(raw) == "あ゙っ ……\n-"
+    assert m.training_target(raw) == "あ゙っ ……\nー"
     assert m.exact_key(m.training_target(raw)) == m.exact_key(raw)
 
 
@@ -126,10 +126,10 @@ def test_training_target_keeps_line_breaks(raw, target):
 
 
 def test_dash_glyphs_are_the_ones_the_corpus_uses():
-    # ― U+2015, ─ U+2500, — U+2014: all one "-" (TARGET_NORM 12)
+    # ― U+2015, ─ U+2500, — U+2014: all one "ー" (TARGET_NORM 13)
     m = _mod()
     assert ord("―") == 0x2015 and ord("─") == 0x2500 and ord("—") == 0x2014
-    assert m.exact_key("─") == m.exact_key("—") == m.exact_key("―") == "-"
+    assert m.exact_key("─") == m.exact_key("—") == m.exact_key("―") == "ー"
 
 
 @pytest.mark.parametrize(
@@ -139,33 +139,59 @@ def test_dash_glyphs_are_the_ones_the_corpus_uses():
         ("촬영은 커녕——…", "촬영은 커녕-…"),
         ("유즈–", "유즈-"),
         ("스기야마-참모-총장", "스기야마-참모-총장"),
-        ("だから――――", "だから-"),
+        ("아자\n-!!", "아자\n-!!"),
+        ("――…응읏♥", "-…응읏♥"),
+        ("하ー아", "하ー아"),
+        ("하ーー아", "하-아"),
     ],
 )
 def test_korean_dashes_fold_to_hyphen(raw, target):
-    # TARGET_NORM 8: a Hangul string's dashes → "-"; since 12 a run is one "-"
+    # TARGET_NORM 8: a Hangul string's dashes → "-"; since 12 a run is one "-"; 13 leaves
+    # a Hangul string as 12 had it
     assert _mod().training_target(raw) == target
 
 
 @pytest.mark.parametrize(
     "raw, target",
     [
-        ("むうーーーーーーーー~~", "むう-~"),
+        ("むうーーーーーーーー~~", "むうー~"),
         ("ケーキ", "ケーキ"),
         ("あれー?", "あれー?"),
-        ("もう―――", "もう-"),
-        ("あれ―?", "あれ-?"),
-        ("――そう思って", "-そう思って"),
-        ("ゴオーー…", "ゴオ-…"),
-        ("ーー―~", "-~"),
+        ("もう―――", "もうー"),
+        ("あれ―?", "あれー?"),
+        ("――そう思って", "ーそう思って"),
+        ("ゴオーー…", "ゴオー…"),
+        ("ーー―~", "ー~"),
         ("そうか〜〜〜", "そうか~"),
         ("ず~ん", "ず~ん"),
+        # a line of marks only, a dash between marks, kanji only
+        ("―――?", "ー?"),
+        ("!!―!", "!!ー!"),
+        ("ーーー\nーーー", "ー\nー"),
+        ("夢ーーー", "夢ー"),
+        ("聖子ー\n――", "聖子ー\nー"),
+        ("せっかく詰めたのに〰〰", "せっかく詰めたのに~"),
+        ("ピンポ〰ン", "ピンポ~ン"),
+        ("んんー〜〰", "んんー~"),
+        ("そろそろ\n行きま－す", "そろそろ\n行きまーす"),
+        ("も－ーう", "もーう"),
+        # kanji alone, and Chinese with it: the long mark
+        ("二年前──…", "二年前ー…"),
+        ("---江戸---", "ー江戸ー"),
+        ("——全部剪掉吧?", "ー全部剪掉吧?"),
+        ("我的终极技能\n正在充能——", "我的终极技能\n正在充能ー"),
+        # a drawn-out Latin shout is a long mark; a hyphen beside a letter or digit stays
+        ("ＮＯ――!!", "NOー!!"),
+        ("ＹＥ――Ｓ!!", "YEーS!!"),
         ("747-400D", "747-400D"),
-        ("---江戸---", "-江戸-"),
+        ("Ｇ－3!!", "G-3!!"),
+        ("tanθ/2=-2のとき", "tanθ/2=-2のとき"),
+        ("Just--do", "Just-do"),
     ],
 )
 def test_drawn_out_lines_fold(raw, target):
-    # TARGET_NORM 12: ― → "-", a ー / - run → one "-", a ~ run → one ~; a lone ー stays
+    # TARGET_NORM 13: outside a Hangul string a ー / ― / hyphen run → one "ー", a ~ run → one
+    # ~; hyphens alone beside an ASCII letter or digit → one "-"
     m = _mod()
     assert m.training_target(raw) == target
     assert m.exact_key(raw) == m.exact_key(target) == "".join(target.split())

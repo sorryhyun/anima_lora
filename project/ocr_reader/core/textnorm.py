@@ -22,7 +22,7 @@ Folds, in order:
 3. **Hangul jamo** (``TARGET_NORM = 6``) — a lone conjoining jamo after NFKC
    (``ᄏ`` U+110F, NFKC's image of the typed ``ㅋ``) → the compatibility jamo
    (``ㅋ`` U+314B), :data:`JAMO_FOLD`. Norm 3–5 taught ``ᄏᄏ`` for ``ㅋㅋ``.
-4. **Symbol table** — hearts ``♥`` / ``❤`` (+ U+FE0F) → ``♡``; wave dash ``〜``
+4. **Symbol table** — hearts ``♥`` / ``❤`` (+ U+FE0F) → ``♡``; wave dashes ``〜`` / ``〰``
    (U+301C) → ``~``; long dashes ``─`` (U+2500 box drawing) / ``—`` (U+2014) →
    ``―`` (U+2015, the JIS dash; 616 vs 412 vs 1 train rows), which fold 7 then
    writes ``-``. Curly
@@ -46,15 +46,34 @@ Folds, in order:
    main labels against 21,818 with ``…``), and under norm 7 the reader lost where a
    repeated-``・`` run ends (COO speech runaways 11 → 94 at ``sfxpc_1118_2037``). ``.``
    runs stay: the KO reviews keep ``..`` / ``...`` apart from ``…``.
-7. **Drawn-out lines** (``TARGET_NORM = 12``, 2026-11-27, the user) — every ``―`` → ASCII
-   ``-``; then a run of ``ー`` / ``-`` (mixed) → one ``-`` and a ``~`` run → one ``~``
-   (``むうーーーーーーーー~~`` → ``むう-~``, ``もう―――`` → ``もう-``). A lone ``ー`` is the
-   long-vowel mark of a word and stays (``ケーキ``). In vertical lettering ``ー`` and ``―`` are
-   one stroke, and the labels spell a drawn-out sound either way with any count: on
+7. **Drawn-out lines** (``TARGET_NORM = 13``, 2026-11-27, the user) — outside a Hangul
+   string, a run of ``ー`` / ``―`` / hyphens (any mix, any count, one included) → one ``ー``
+   (``むうーーーーーーーー~~`` → ``むうー~``, ``もう―――`` → ``もうー``, ``―――?`` → ``ー?``,
+   ``二年前──…`` → ``二年前ー…``); a ``~`` run → one ``~`` (``〰`` is ``~`` by fold 4). The
+   hyphen stays, as one ``-``, in two places:
+
+   * a run of hyphens alone that touches an ASCII letter or digit (``747-400D``, ``G-3!!``,
+     ``=-2``);
+   * a Hangul string, as fold 5 has it: its dashes and its ``ー`` / ``-`` runs are one ``-``,
+     a lone ``ー`` stays (``하ー아``).
+
+   A Chinese string folds as Japanese does (``——全部剪掉吧`` → ``ー全部剪掉吧``; 15 dash or
+   hyphen runs in ``gelnote_zh``'s 2,127 rows): a string of ideographs alone does not say
+   which language it is, and keeping ``-`` there split the Manga109 kanji-only strings 132
+   ``-`` against 139 ``ー`` for one stroke. The user, 2026-11-27: the long mark is what the
+   speech lines train a drawn-out sound as, and one spelling is worth more than the Chinese
+   dash.
+
+   In vertical lettering ``ー`` and ``―`` are one
+   stroke, and the labels spell a drawn-out sound either way with any count: on
    ``mainsub_1126_2213``'s val reads 168 of 1,466 misses differed only in the count (140 of
    them short) and 198 read ``ー`` for a labelled ``―``. In the target and every key.
+   ``TARGET_NORM = 12`` (one run only, ``mainsub_1127_0028``) wrote the run and the dash as
+   ``-`` and kept a lone ``ー``: the reader then chose between two tokens for one stroke and
+   read a lone ``ー`` on 276 of the 425 val mains whose target held ``-``
+   (``mainsub_plan.md``).
 
-The **training target** (:func:`training_target`, ``TARGET_NORM = 12``) keeps
+The **training target** (:func:`training_target`, ``TARGET_NORM = 13``) keeps
 the label's line breaks as ``\\n`` (one token, id 23; norm 4 collapsed them to a
 space, so v4 answers one line) and keeps the two hearts apart: ``♥`` (and ``❤``) for
 the filled one, ``♡`` for the outline. Norms 4–9 wrote every heart as ``♥``: in the
@@ -88,6 +107,7 @@ HEART_FOLD = str.maketrans(
         "❤": "♡",
         "\ufe0f": "",  # emoji variation selector riding on ❤
         "〜": "~",
+        "〰": "~",  # the wavy dash, 30 Manga109 speech labels (TARGET_NORM = 13)
         "─": "―",
         "—": "―",
         "“": '"',
@@ -106,10 +126,30 @@ KO_DASH_FOLD = str.maketrans({c: "-" for c in "―–‒‐"})
 """Fold 5: the dashes of a Hangul string → ``-`` (applied after :data:`HEART_FOLD`, so
 ``—`` / ``─`` arrive as ``―``)."""
 
-LINE_RUN_RE = re.compile(r"[ー-]{2,}")
+KO_LINE_RUN_RE = re.compile(r"[ー-]{2,}")
+"""Fold 7 in a Hangul string (after :data:`KO_DASH_FOLD`): a ``ー`` / ``-`` run → one ``-``."""
+
+HYPHENS = frozenset("-–‒‐")
+LINE_RUN_RE = re.compile(r"[ー―\-–‒‐]+")
 WAVE_RUN_RE = re.compile(r"~{2,}")
-"""Fold 7 (``TARGET_NORM = 12``): after ``―`` → ``-``, a run of drawn lines (``ー`` / ``-``,
-mixed) → one ``-`` and a ``~`` run → one ``~``. A lone ``ー`` stays (``ケーキ``)."""
+"""Fold 7 (``TARGET_NORM = 13``) outside a Hangul string: a run of drawn lines → one ``ー``
+(:func:`_line_run`), and a ``~`` run → one ``~``."""
+
+
+def _ascii_alnum(c: str) -> bool:
+    return c.isascii() and c.isalnum()
+
+
+def _line_run(m: re.Match) -> str:
+    """One drawn-line run → ``ー``; a run of hyphens alone with an ASCII letter or digit
+    on either side → ``-``."""
+    if HYPHENS.issuperset(m[0]):
+        s = m.string
+        before = s[m.start() - 1] if m.start() else ""
+        after = s[m.end()] if m.end() < len(s) else ""
+        if _ascii_alnum(before) or _ascii_alnum(after):
+            return "-"
+    return "ー"
 
 
 def _jamo_fold() -> dict[int, int]:
@@ -158,8 +198,10 @@ def fold_glyphs(s: str, *, dots: bool = True, hearts: bool = True) -> str:
     s = unicodedata.normalize("NFKC", s.translate(_DAKUTEN_FOLD)).translate(JAMO_FOLD)
     s = s.translate(HEART_FOLD if hearts else _SHAPE_KEEP_HEARTS)
     if HANGUL_RE.search(s):
-        s = s.translate(KO_DASH_FOLD)
-    s = WAVE_RUN_RE.sub("~", LINE_RUN_RE.sub("-", s.replace("―", "-")))
+        s = KO_LINE_RUN_RE.sub("-", s.translate(KO_DASH_FOLD))
+    else:
+        s = LINE_RUN_RE.sub(_line_run, s)
+    s = WAVE_RUN_RE.sub("~", s)
     if not dots:
         return s.translate(_DOT_RESTORE)
     return ELLIPSIS_RE.sub(ELLIPSIS, s)
@@ -178,7 +220,7 @@ def collapse_keep_lines(s: str) -> str:
 
 
 def training_target(s: str) -> str:
-    """The training target (``TARGET_NORM = 12``): :func:`fold_glyphs` without
+    """The training target (``TARGET_NORM = 13``): :func:`fold_glyphs` without
     the dot-run fold (``dots=False``) or the heart fold (``hearts=False``: ``♥`` and
     ``♡`` apart), a ``・`` run → ``…`` per three dots (:data:`MID_DOT_RUN_RE`), line breaks kept
     as ``\\n`` (:func:`collapse_keep_lines`). ``exact_key`` / ``space_key`` stay

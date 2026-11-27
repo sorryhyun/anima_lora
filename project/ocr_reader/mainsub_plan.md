@@ -19,7 +19,36 @@ leaves this file for a report.
 
 ## Work
 
-- `TARGET_NORM = 12` (2026-11-27, the user): every `―` → `-`, a `ー` / `-` run → one `-`, a
+- `TARGET_NORM = 13` (2026-11-27, the user): outside a Hangul string a run of `ー` / `―` /
+  hyphens (any mix, any count, one included) → one `ー`, Chinese included; `〰` → `~` and a `~`
+  run → one `~`. The hyphen stays, as one `-`, in a run of hyphens alone beside an ASCII letter
+  or digit (`747-400D`) and in a Hangul string, as norm 12 had it (dashes and `ー` / `-` runs
+  → one `-`, a lone `ー` kept). In the target and the scoring keys (`core/textnorm.py` fold 7).
+  No run on it yet.
+  - The user's decisions: "영어나 한글 사이에 있을때만 하이픈 보존"; `〰` → `~`, a run one; on
+    keeping `-` in Chinese against one spelling in kanji-only Japanese: "일본어 장음으로 하자.
+    왜냐하면 다른 많은 만화 대사에서 일본어 장음을 쓰고 있고, 그걸 '늘임'으로 학습하고 있으니까.
+    중국어에서의 호환성 문제는 있지만 적어도 대시 하이픈 장음이 들쭉날쭉 나오는거보단 나을거라
+    생각해".
+  - Facts, the stored reads rescored on the new key (`mainsub_1124_1923` / `mainsub_1126_2213`
+    / `mainsub_1127_0028`; `output/ocr/eval/*.jsonl`, `val_ep*.jsonl`, local): val main
+    11,086 / 11,086 / 11,083 of 11,634 (95.3 % each), sub 641 / 642 / 647 of 1,168; Manga109
+    test SFX 2,098 / 2,061 / 2,083 of 2,558 (82.0 / 80.6 / 81.4 %), speech 2,449 / 2,457 /
+    2,453 of 2,559 (95.7 / 96.0 / 95.9 %); sincos SFX 351 / 320 / 312 of 593; K3 KO 32 / 30 /
+    30, ZH 36 / 35 / 35. Paired `1923` → `0028`: val main +134 / −137, speech +25 / −21,
+    Manga109 SFX +100 / −115 (p 0.34), sincos +28 / −67.
+  - Facts, the runs it rewrites in `load_mainsub` train + val labels: kana strings `―` runs
+    1,394 and `ー` runs of two or more 1,366, hyphens not beside a letter or digit 18; `〰` in
+    30 labels; strings of ideographs alone, Manga109 132 dash or hyphen runs and 79 `ー` runs,
+    `gelnote_zh` 15 dash or hyphen runs (`——全部剪掉吧` trains as `ー全部剪掉吧`). Hyphens
+    kept beside a letter or digit: 66.
+  - Facts, the variant not taken (`-` kept in a string of ideographs with no kana and no `ー`):
+    the Manga109 kanji-only strings split 132 `-` against 139 `ー`; rescored, val main 11,062 /
+    11,061 / 11,082 and speech 2,441 / 2,447 / 2,451 before the `〰` fold.
+  - `anime_tools`: the same fold as `ocr.reader.fold_drawn_lines`, applied by `guard` after
+    its runaway and length tests, in the sibling checkout's working tree (not committed, no
+    release, pin unchanged). The local HF build of `load_mainsub` predates norm 13.
+- `TARGET_NORM = 12` (2026-11-27, the user; replaced by 13 the same day): every `―` → `-`, a `ー` / `-` run → one `-`, a
   `~` run → one `~`, a lone `ー` kept (`ケーキ`; `core/textnorm.py` fold 7), in the target and
   the scoring keys. On `mainsub_1126_2213`'s val reads 168 of 1,466 misses differed only in the
   count of `ー` / `~` / `―` (140 short) and 198 read `ー` for a labelled `―`. The stored reads
@@ -27,11 +56,36 @@ leaves this file for a report.
   `mainsub_1124_1923` 92.9 % / 82.0 % / 92.1 % / 351, `mainsub_1126_2213` 93.0 % / 80.5 % /
   91.8 % / 320. `cjk_rl`'s `sent_strings` takes the fold through `normalize_target`.
   First run: `mainsub_1127_0028` (local, 4 × 4, 3 epochs, otherwise `mainsub_1126_2213`'s
-  recipe): val main 93.3 %, sub 55.4 % (ep3); Manga109 test SFX 81.4 %, speech 93.0 %; sincos SFX
+  recipe): val main 92.6 %, sub 55.4 % (ep3); Manga109 test SFX 81.4 %, speech 91.8 %; sincos SFX
   312 (heart-blind 397 against 442); K3 KO 30, ZH 35. Its ep2 reads sincos SFX 285, Manga109
   SFX 78.6 %. The sincos losses are hearts read as a glyph (`びく♥` → `びくん` / `びくっ`,
-  `ガク♥` → `ガクル`): 121 rows against 51 on `mainsub_1126_2213`. Not attributed (batch
-  recipe, epochs and the fold changed together).
+  `ガク♥` → `ガクル`): 121 rows against 51 on `mainsub_1126_2213`. (Until 2026-11-27 this
+  entry gave val main 93.3 % and speech 93.0 %; the run's `summary.md` and
+  `reports/eval/ocr_eval_mainsub_1127_0028_cap4_ocr.md` hold 92.6 % and 91.8 %.)
+  - Facts, the stored reads (`output/ocr/eval/*.jsonl`, `val_ep*.jsonl`, local) paired row by
+    row on the norm 12 key, sign test; run-to-run spread unknown (no two runs of one recipe).
+    `mainsub_1124_1923` → `mainsub_1127_0028`: val main 10,806 → 10,768 of 11,634 (+164 / −202,
+    p 0.05); Manga109 test SFX 2,097 → 2,083 of 2,558 (+101 / −115, p 0.38), speech 2,357 →
+    2,348 of 2,559 (+36 / −45, p 0.37); sincos SFX 351 → 312 of 593 (+28 / −67): the 497 rows
+    with a heart 293 → 255, the 96 without 58 → 57; K3 KO +1 / −3, ZH +2 / −3.
+    `mainsub_1126_2213` on the same rows: val main 10,810, Manga109 SFX 2,060, speech 2,348,
+    sincos 320 (heart rows 263). Heart dropped or read as a glyph, of 497: 156 / 184 / 209
+    (`1923` / `2213` / `0028`).
+  - Facts, with every `ー` / `-` / `―` run scored as one mark: val main 11,065 / 11,065 /
+    11,062, speech 2,450 / 2,458 / 2,454. The 425 val mains whose keyed target holds `-`
+    (typed `―` 249, a `ー` run 169, `-` 7): exact 149 / 152 / 114, a read differing only by a
+    lone `ー` there 238 / 236 / 276. `0028`'s val reads hold `-` 293 times and no `ーー`;
+    the other two hold `ーー` 144 / 147 times and `-` twice.
+  - Facts, labels: no val main or Manga109 test label changed in content between the two
+    runs' evals (868 val targets differ by the folds only). Review exports after `review_1124k`
+    edit 655 `swaprelax_v5` rows of 20,327 (383 punctuation or dots, which the key folds) and
+    326 `mainsub_det` rows; no export edits a ZH training row. Claude's read of 36 sampled
+    crops among the 398 val mains all three runs miss: about 10 are the label's (`あつ` for
+    `あっ`, `カ` for `力`, `「」` for `『』`, `!` counts), about 4 a small-kana or `〰` call.
+  - Interpretation: the val main gap is the lone-`ー` against run / dash choice the fold
+    leaves in one token; the sincos loss sits on heart rows and is already in
+    `mainsub_1126_2213`, so it is not the third epoch; Manga109 SFX, speech and K3 are inside
+    the paired noise. Batch recipe and epochs are not separated from each other.
 - `TARGET_NORM = 11` (2026-11-26): a `・` run is `…` per three dots, at least one, in the
   training target (`・・・・・` → `……`, the user; `.` runs and
   `…` as labelled; `core/textnorm.py` fold 6). Before it, `load_mainsub` main targets held
