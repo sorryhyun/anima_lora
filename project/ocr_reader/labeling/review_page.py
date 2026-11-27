@@ -29,7 +29,7 @@ the sub box the proposed ``OCR2:`` sub (the other annotated text in the crop; on
 crop with ruby groups, the furigana source's reads first, and that row's sub edits carry
 over). The meta line lists each item's glyph size and the text only partly inside the
 crop (type what is visible into the sub). An emptied main box is a crop with only sub text.
-Rules: ``main-sub-approach.md``. The header's ``has`` filter (any source) lists rows by what their boxes
+Rules: ``README.md`` § Labeling. The header's ``has`` filter (any source) lists rows by what their boxes
 hold now: main only, sub only, both, or partly visible text.
 ``apply_review.py`` writes these rows to ``assets/m109_mainsub.tsv``.
 

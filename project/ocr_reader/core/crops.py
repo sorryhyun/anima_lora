@@ -72,12 +72,11 @@ def deskew_crop(
     * **Padding.** The polygons hug the glyphs, and the recogniser was trained
       on crops with a margin; a zero-pad crop clips strokes on the outer
       characters.
-    * **The margin stops at the page** (``trim``, 2026-11-08). Where the padded
-      box runs past the page edge, the lines that would sample outside it are
-      cut off, as the shipped reader's ``pad_box`` clips its box to the image.
-      ``trim=False`` is the old cut: those lines came back as ``BORDER_REPLICATE``
-      streaks (13 % of COO SFX crops; a full-height SFX got 180 px of them).
-      A crop that never leaves the page is byte-identical either way.
+    * **The margin stops at the page** (``trim``). Where the padded box runs past
+      the page edge, the lines that would sample outside it are cut off, as the
+      shipped reader's ``pad_box`` clips its box to the image. ``trim=False``
+      fills them with ``BORDER_REPLICATE`` streaks. A crop that never leaves the
+      page is the same either way.
     """
     import cv2
     import numpy as np
@@ -87,9 +86,8 @@ def deskew_crop(
     if angle > 45:
         # OpenCV >= 4.5 reports angle in (0, 90] with (w, h) measured along the
         # rotated axes: an axis-aligned 30x120 box comes back as (120, 30) @ 90°.
-        # Taking angle-90 without swapping the extents cropped a transposed
-        # rectangle (found 2026-09-06 on the plan_ocr sincos gate; every
-        # axis-aligned box was hit) — swap so the extents follow the rotation.
+        # Taking angle-90 without swapping the extents crops a transposed
+        # rectangle; swap so the extents follow the rotation.
         angle -= 90
         w, h = h, w
     w = max(w, 1.0)

@@ -1,19 +1,13 @@
-"""Shared training data for the O2 fine-tunes (``plan_ocr.md``): the O1 manifest as a
-torch ``Dataset`` of (BGR crop, target string) with train-time augmentation.
+"""Training data for the reader fine-tunes: the crop manifests as a torch ``Dataset`` of
+(BGR crop, target string) with train-time augmentation.
 
-* **Mix** — decision 2: COO ``sfx`` : Manga109 ``speech`` 1 : 1 *by count* (the
-  manifest is already count-matched per book; ``--speech_ratio`` rescales the
-  speech draw). Both kinds come from the same book split.
-* **Target rule** (findings § O1, corrected 2026-09-09, folded 2026-09-12) —
-  ``textnorm.fold_glyphs`` (dakuten, NFKC, hearts / wave / long dash / dot runs
-  to one spelling each), then **collapse** whitespace runs to one ASCII space,
-  not delete them: Manga109's ``<text>`` keeps line breaks and full-width
-  punctuation that manga-ocr's vocab lacks. Deleting whitespace was harmless
-  while every target was Japanese and is wrong the moment Korean enters —
-  띄어쓰기 is lexical there. The scorer's ``exact`` is whitespace-blind and
-  applies the same folds, so a target change moves no measured number by
-  itself; every checkpoint trained before the whitespace fix is spacing-dirty
-  (``whitespace_fixed.md``).
+* **Sets** — :func:`load_mainsub` (the main / sub mix, README § main / sub) and the
+  per-kind loaders (:func:`load_sfxp`; :func:`load_split`: COO ``sfx`` : Manga109 ``speech``
+  1 : 1 by count, ``--speech_ratio`` rescales the speech draw, both from one book split).
+* **Target rule** — :func:`normalize_target` (``textnorm.training_target``): the glyph
+  folds, whitespace runs inside a line collapsed to one ASCII space (never deleted:
+  띄어쓰기 is lexical in Korean), line breaks kept as ``\\n``. The scorer's ``exact`` is
+  whitespace-blind and applies the same folds.
 * **Augmentation** — ``augment.Augment`` on the train split only; per-worker
   seeding so DataLoader workers do not replay one RNG stream.
 """
@@ -38,9 +32,8 @@ from .paths import ANIMA_LOWCONF, ASSETS, OUTPUT
 
 MAX_TARGET_CHARS = 150
 """Longest training target, in characters after :func:`normalize_target`. A longer label is
-dropped, not cut (96 and sliced until 2026-11-20: 53 KO afterword / colophon paragraphs trained
-cut mid-sentence; 14 KO and 3 Manga109 speech rows are over 150). Stays under the reader's
-200-token decode cap."""
+dropped, not cut (a cut target trains a paragraph that stops mid-sentence). Stays under the
+reader's 200-token decode cap."""
 
 
 def cap_targets(out: pd.DataFrame, what: str) -> pd.DataFrame:
@@ -57,43 +50,14 @@ def cap_targets(out: pd.DataFrame, what: str) -> pd.DataFrame:
 
 
 TARGET_NORM = 13
-"""Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
-(every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
-(``vl16_b2_norm2``); 3 = ``textnorm.fold_glyphs`` first — hearts → ``♡``, dot
-runs → ``…``, ``〜`` → ``~``, long dashes → ``―``, spacing dakuten → combining
-(v2 taught ``あ ゙っ`` for ``あ゛っ`` because NFKC splits the spacing mark off
-with a space) — ``vl16_b2_norm3``; 4 = the same folds with the heart flipped
-to ``♥``, the single token (``♡`` is three bytes; norm3 lost every raw ``♥``
-and 31 sincos rows — plan_vl_respace R5b); 5 = norm 4 with the label's line
-breaks kept as ``\\n`` (v5; v4 trained on 4); 6 = norm 5 with curly double
-quotes ``“`` / ``”`` → ``"`` and lone conjoining jamo back to the typed
-compatibility jamo (``ᄏᄏ`` → ``ㅋㅋ``; norm 3–5 taught ``ᄏ``) (2026-11-17);
-7 = norm 6 without the dot-run fold — ``...`` / ``・・・`` / ``…`` trained as
-labelled, ``…`` kept from NFKC's ``...``, ``‥`` → ``..`` (2026-11-18; scoring keys
-still fold); 8 = norm 7 with a Hangul string's dashes (``―`` / ``—`` / ``–`` …) → ``-``
-(2026-11-20, ``textnorm`` fold 5); 9 = norm 8 with ``◯`` / ``〇`` → ``○`` and ``☓`` / ``✕`` … → ``×``
-(2026-11-20, ``textnorm`` fold 4); 10 = norm 9 with ``♡`` kept apart from ``♥`` (``❤`` →
-``♥``), ``♡`` and ``💢`` trained as tokens of their own (``core/vocab_ext.py``,
-2026-11-25); 11 = norm 10 with a ``・`` run → ``…`` per three dots, at least one (``.`` runs and ``…`` as
-labelled; ``textnorm.MID_DOT_RUN_RE``, 2026-11-26); 12 = norm 11 with every ``―`` → ``-``, a
-``ー`` / ``-`` run → one ``-`` and a ``~`` run → one ``~``, a lone ``ー`` kept (``textnorm`` fold 7,
-2026-11-27, ``mainsub_1127_0028`` only; the scoring keys fold the same); 13 = norm 11 with,
-outside a Hangul string, every ``ー`` / ``―`` / hyphen run → one ``ー`` (Chinese included),
-``〰`` → ``~`` and a ``~`` run → one ``~``; the hyphen kept as one ``-`` beside an ASCII letter
-or digit and in a Hangul string (as norm 12 had it) (``textnorm`` fold 7, 2026-11-27; the
-scoring keys fold the same)."""
+"""The version of :func:`normalize_target`, stamped on each run; bump it when a fold
+changes (the folds: ``core/textnorm.py``)."""
 
 
 def normalize_target(s: str) -> str:
     """:func:`textnorm.training_target` — folds, whitespace runs inside a line
     collapsed to one ASCII space, line breaks kept as ``\\n``, edges stripped,
-    ``♥`` and ``♡`` kept apart.
-
-    v1 joined the split with ``""``. Korean needs the spaces (``알고 있었어``
-    vs ``알고있었어``), and 3.80 % of the COO/Manga109 targets carried U+3000 or
-    a newline, so the versions differ on the Japanese rows as well —
-    ``TARGET_NORM`` records which one a run trained on.
-    """
+    ``♥`` and ``♡`` kept apart."""
     return textnorm.training_target(s)
 
 
@@ -338,8 +302,7 @@ def with_breaks(x: dict, filled: dict[str, str]) -> str:
 
 # 1 in RUBY_RAW_SHARE train sub rows headed by an unreviewed ruby read trains (a hash of
 # RUBY_RAW_HASH_SEED and id, not the run's seed: the quarter is fixed, the rest never
-# trains; the user, 2026-11-27). Seed 0's quarter is the one the 11-27 agent pass
-# (`subq1127`) checked.
+# trains).
 RUBY_RAW_SHARE = 4
 RUBY_RAW_HASH_SEED = 0
 
@@ -357,8 +320,7 @@ def ruby_sub_out(x: dict) -> bool:
 
 def sfx_only(x: dict) -> bool:
     """A ``m109_mainsub.py`` row whose crop holds one SFX main and no other annotated text,
-    whole or partly visible. An agent check of 200 random ones (2026-11-23): other text in 2
-    (a column cut by the edge, background numbers), marks that may be glyphs in 8."""
+    whole or partly visible."""
     return (
         bool(x["items"])
         and all(i["k"] == "sfx" for i in x["items"])
@@ -376,7 +338,7 @@ def load_mainsub(
     limit: int | None = None,
     seed: int = 0,
 ) -> pd.DataFrame:
-    """The main / sub mix (``main-sub-approach.md``): ``OCR:`` reads the main text of a
+    """The main / sub mix (README § main / sub): ``OCR:`` reads the main text of a
     crop, ``OCR2:`` the rest (furigana, smaller lettering), one item per line.
 
     * Manga109: the detector crops (``manifest_sfxp_det_all``) with ``m109_mainsub.py``'s
@@ -384,9 +346,8 @@ def load_mainsub(
       reads, the agents' fixes, other annotated items), a row reviewed on the page
       (``assets/m109_mainsub.tsv``) as reviewed, a dropped one out. An unreviewed ``trim``
       row (its main a box only partly inside) is out, and so is an unreviewed empty main
-      (mainsub_1121_1806 read text on all 59 val ones: a box cut under half, a sign).
-      An unreviewed main with line breaks waiting (:func:`waiting_break`) is out of
-      ``OCR:`` in train, not of ``OCR2:`` (the user, 2026-11-22). An unreviewed main
+      (such crops show text: a box cut under half, a sign). An unreviewed main with line
+      breaks waiting (:func:`waiting_break`) is out of ``OCR:`` in train, not of ``OCR2:``. An unreviewed main
       takes its breaks from ``assets/m109_breaks.tsv`` (:func:`with_breaks`). An unreviewed
       main in ``assets/m109_break_held.tsv`` (breaks held by the agents, two ``<text>`` boxes
       on one line) is out of train ``OCR:`` the same way. Of the unreviewed train subs
@@ -403,7 +364,7 @@ def load_mainsub(
       replaces the proposed main.
     * ``OCR2:`` only where there is a sub to read: a reviewed one, or a proposal on a crop
       with no partly visible text. An empty sub is no row, except the ``OCR2:`` negatives
-      (train only, the user, 2026-11-23): a Manga109 row reviewed ``ok`` with an empty sub,
+      (train only): a Manga109 row reviewed ``ok`` with an empty sub,
       an unreviewed Manga109 crop holding one SFX and nothing else annotated
       (:func:`sfx_only`), and a ``swaprelax_v5`` crop with no sub label (proofread KO
       speech lines).
@@ -411,7 +372,7 @@ def load_mainsub(
     Negatives (target ``""``) are at most ``neg_share`` of each prompt's rows (``OCR2:``:
     counted with the ruby subs the quarter leaves out). The reviewed
     Manga109 negatives go in first; the rest are drawn at random, alternating between the
-    SFX-only crops and the KO / ZH ones (1 : 1, the user, 2026-11-23). ``metric`` is
+    SFX-only crops and the KO / ZH ones (1 : 1). ``metric`` is
     ``main`` / ``main_kozh`` / ``main_neg`` / ``sub`` / ``sub_neg``. ``limit`` caps every
     ``metric`` group."""
     import json
@@ -439,7 +400,7 @@ def load_mainsub(
         }
     # unreviewed speech mains whose line breaks no one settled: the agents' held rows
     # (label and crop differ, columns unclear) and mains joining two <text> boxes on one
-    # line; out of train OCR: like the waiting rows (the user, 2026-11-23)
+    # line; out of train OCR: like the waiting rows
     held = set()
     if (t := rd(ASSETS / "m109_break_held.tsv")) is not None:
         held = {f"{r.source}:{r.id}" for r in t.itertuples()}
@@ -454,7 +415,7 @@ def load_mainsub(
     geo = {p: (w, h, o) for p, w, h, o in zip(det.path, det.w, det.h, det.orient)}
     name = "m109_mainsub.jsonl" if split == "train" else f"m109_mainsub_{split}.jsonl"
     recs = []
-    # train only: val keeps the rows earlier runs were read on
+    # train only: val keeps every row, so val reads stay comparable across runs
     proposals = break_proposals(d) if split == "train" else {}
     filled = filled_breaks()
     n_trim = n_drop = n_rev = n_empty = n_wait = n_held = n_ruby = 0
@@ -509,7 +470,7 @@ def load_mainsub(
                 )
             )
         # an unreviewed ruby read heads the sub: one fixed quarter of those rows trains, the
-        # same for every seed (``RUBY_RAW_SHARE``, the user, 2026-11-23 / 11-27)
+        # same for every seed (``RUBY_RAW_SHARE``)
         if done and split == "train" and v is None and a is None and ruby_sub_out(x):
             done = False
             n_ruby += 1
@@ -533,7 +494,7 @@ def load_mainsub(
     if split == "train" and (t := rd(ASSETS / "anima_mainsub.tsv")) is not None:
         # the Anima training set's low-confidence v7 reads as reviewed on the page
         # (``ok``) or applied from the agents' majority (``agent``); crops under
-        # ANIMA_LOWCONF/crops, cut with the training margin (the user, 2026-11-27)
+        # ANIMA_LOWCONF/crops, cut with the training margin
         from PIL import Image
 
         for r in t.itertuples():
@@ -616,8 +577,8 @@ def load_mainsub(
     for task in (OCR_TASK, OCR2_TASK):
         t = df[df.task == task]
         pos, neg = t[~t.metric.str.endswith("_neg")], t[t.metric.str.endswith("_neg")]
-        # OCR2: negatives are sized on the subs before the ruby quarter (the user,
-        # 2026-11-23: real negatives, kept at their number)
+        # OCR2: negatives are sized on the subs before the ruby quarter, so leaving
+        # ruby subs out does not cut the negatives
         base = len(pos) + (n_ruby if task == OCR2_TASK else 0)
         n = int(min(len(neg), cap * base))
         neg = neg.iloc[rng.permutation(len(neg))]
@@ -758,7 +719,7 @@ def token_batches(
     at the processor's min_pixels floor, a 24k budget costs only +0.6 % more steps.
 
     ``batch_size`` stays the upper bound on crops per batch, so a budget wider than
-    ``batch_size`` × median simply reproduces the old behaviour.
+    ``batch_size`` × median gives fixed-count batches.
 
     ``lm_budget`` > 0 also caps the batch's padded LM tokens (longest row of
     ``lm_tokens`` × crops): a long label pads the decoder's sequence for every row.

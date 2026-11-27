@@ -13,11 +13,9 @@ from pathlib import Path
 
 from .paths import REPO, VL16_BASE
 
-# Decode cap, ``--max_new_tokens``. manga-ocr's WordPiece is ~1 token / kana, so
-# the old 48 truncated every speech line past 47 chars — the sincos labels reach
-# 60 (``label_sheet.py``, user pass 2026-09-07). 96 = the training-side
-# ``crop_dataset.MAX_TARGET_CHARS`` of the time; greedy stops at EOS, so the headroom is
-# free except on a runaway, which ``scoring.is_runaway`` already counts.
+# Decode cap, ``--max_new_tokens``. manga-ocr's WordPiece is ~1 token / kana and the
+# sincos labels reach 60 characters; greedy stops at EOS, so the headroom is free
+# except on a runaway, which ``scoring.is_runaway`` already counts.
 MAX_NEW_TOKENS = 96
 
 VL16_TASKS = ("OCR:", "OCR2:", "SFX:")
@@ -48,7 +46,7 @@ class MangaOCR:
         self.model = VisionEncoderDecoderModel.from_pretrained(model_id)
         self.model.to(device).eval()
 
-        local = Path(model_id) / "vocab.txt"  # a fine-tuned dir (plan_ocr O2)
+        local = Path(model_id) / "vocab.txt"  # a fine-tuned dir
         vp = local if local.is_file() else Path(hf_hub_download(model_id, "vocab.txt"))
         vocab = vp.read_text(encoding="utf-8")
         self.vocab = vocab.splitlines()
@@ -362,8 +360,7 @@ class HayaiReader:
 
 
 class Hayai27Reader:
-    """hayai v2.7 Supernova — scored on request (discussion #1, 2026-11-16).
-    The card's own entry point ``model.ocr``: ``max_patches="auto"`` (per-crop
+    """hayai v2.7 Supernova. The card's own entry point ``model.ocr``: ``max_patches="auto"`` (per-crop
     routing over {128, 192, 256, 384}), ``escalate=False``, greedy, its own
     processor (``trust_remote_code``), ``batch_size=64`` so the auto planner
     buckets the list. Crops go in unrotated, as for every hayai row."""
@@ -413,8 +410,7 @@ class HunyuanReader:
     PaddleOCR-VL-1.6 here. ``--ckpt`` overrides the local weights dir.
 
     Upstream **locks the prompt per task** (`inference/utils/tasks.py`: "users
-    pick a task, not a prompt" — hand-edited instructions were observed to
-    silently degrade quality), so a crop is read with ``structured_parse`` =
+    pick a task, not a prompt"), so a crop is read with ``structured_parse`` =
     ``提取图中的文字。`` verbatim; ``ANIMA_HUNYUAN_TASK`` picks another key of
     :data:`TASKS`. Decode is the card's locked recipe — greedy,
     ``repetition_penalty=1.08`` (``ANIMA_HUNYUAN_REP_PENALTY``, ``1.0`` = off).
@@ -429,7 +425,7 @@ class HunyuanReader:
     name = "hunyuan"
     max_tokens = MAX_NEW_TOKENS
     DEFAULT = "models/hunyuan_ocr"
-    TASKS = {  # verbatim from inference/utils/tasks.py @ main, 2026-09-08
+    TASKS = {  # verbatim from upstream inference/utils/tasks.py
         "structured_parse": "提取图中的文字。",
         "doc_parse": (
             "提取文档图片中正文的所有信息用markdown格式表示，其中页眉、页脚部分忽略，"

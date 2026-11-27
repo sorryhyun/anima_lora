@@ -23,9 +23,8 @@ with the ``pl100k`` tables and the K0 voter matrix:
   copies from the pre-step state, which is the intended beam search.
 
 The KV cache is reordered by the true parents either way, as upstream does.
-Precision is a separate knob: ``amp=False`` runs fp32 end to end (2026-09-09
-decision for the K1 screen — bs 128 fp32), ``amp=True`` is upstream's fp16
-autocast.
+Precision is a separate knob: ``amp=False`` runs fp32 end to end, ``amp=True`` is
+upstream's fp16 autocast.
 """
 
 from __future__ import annotations
@@ -199,8 +198,8 @@ def generate(
         # hypotheses while its batch-mates run (and its read depends on
         # them). Here a row leaves the batch the moment it has B, and the
         # rows still running are compacted so late steps cost only what is
-        # still decoding — reads median 5 tokens, a bs-64 batch used to run
-        # 41 steps for its longest row.
+        # still decoding (most reads are a few tokens; without it a batch runs
+        # as many steps as its longest row).
         result = torch.full((b, L + 1), pad_id, dtype=torch.long, device=device)
         act = torch.arange(b, device=device)  # active row → original row
 

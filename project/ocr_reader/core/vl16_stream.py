@@ -9,8 +9,7 @@ wrapper registered here, ``vl16_compile``'s tower forwards through their own cas
 residual stream, norms, RoPE, activations, the tower's embeddings and the projector are
 fp32. ``embed_tokens`` and ``lm_head`` keep bf16 weights (in fp32 each weight, and its
 gradient while the vocab rows train, is 404 MiB): the embedding's output is cast up, the
-head runs as one more bf16 GEMM. The checkpoint the trainer saves is bf16
-as before.
+head runs as one more bf16 GEMM. The checkpoint the trainer saves is bf16.
 
 ``lean=True`` casts up only what is written to the stream: the linears whose output is
 added to it (``out_proj`` / ``o_proj``, ``fc2`` / ``down_proj``) return fp32, so a LoRA

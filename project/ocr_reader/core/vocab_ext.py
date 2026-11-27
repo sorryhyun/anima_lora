@@ -1,15 +1,14 @@
 """Two glyphs as their own tokens in PaddleOCR-VL-1.6's LM: ``♡`` and ``💢``.
 
 The tokenizer spells ``♡`` in three byte-fallback tokens (``E2 99 A1``) and ``💢`` in
-four (``F0 9F 92 A2``), while ``♥`` is one token (99252). ``TARGET_NORM = 3`` trained
-the three-byte heart and lost every raw ``♥`` (plan_vl_respace R5), so norms 4–9 folded
-the outline heart into ``♥``. With ``♡`` a token of its own the two hearts are trained
-apart (``TARGET_NORM = 10``, :func:`textnorm.training_target`).
+four (``F0 9F 92 A2``), while ``♥`` is one token (99252); a three-byte heart trains
+badly against the one-token one. With ``♡`` a token of its own the two hearts are trained
+apart (:func:`textnorm.training_target`).
 
 The LM's embedding table and ``lm_head`` hold 103,424 rows against the tokenizer's
 101,316, so the new tokens take spare rows (101316, 101317) and nothing is resized.
 A row starts from its source token's row plus Gaussian noise at ``NOISE`` × that row's
-element std (``♡`` from ``♥``; ``💢`` from ``×``, the user's call 2026-11-25), in both
+element std (``♡`` from ``♥``; ``💢`` from ``×``), in both
 the embedding and ``lm_head``. Training updates only these rows
 (:class:`RowTrainer`); they are saved beside the adapter as :data:`FILE`, and a reader
 that finds the file adds the tokens and loads the rows (:func:`load`). A checkpoint

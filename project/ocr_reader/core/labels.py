@@ -12,9 +12,9 @@ DOT_RUN = re.compile(r"\.{3,}|．{3,}|・{3,}|･{3,}")
 
 def ellipsis_fold(t: str) -> str:
     """A run of one dot glyph (``.`` ``．`` ``・`` ``･``) whose length is a multiple of
-    three → length / 3 × ``…``; in a label with text, a run of four → one ``…`` (the
-    user's review edits, 11-18: ``そりゃ・・・・`` → ``そりゃ…``; dot-only labels are
-    spelled per printed column by ``linebreak_auto.py dots``). A run a line break splits
+    three → length / 3 × ``…``; in a label with text, a run of four → one ``…``
+    (``そりゃ・・・・`` → ``そりゃ…``; dot-only labels are spelled per printed column by
+    ``linebreak_auto.py dots``). A run a line break splits
     (``火薬・・\n・・・・・・？``) stays as written. Idempotent."""
     has_text = bool(re.sub(r"[\s.．・･…‥]", "", t))
 

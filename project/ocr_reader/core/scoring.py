@@ -3,9 +3,8 @@
 * :func:`exact_key` — :func:`textnorm.exact_key` (NFKC, whitespace-blind, glyph folds);
 * :func:`linebreak_blind` — :func:`textnorm.linebreak_blind` (``lb``: spacing counts, line
   breaks do not);
-* :func:`norm` / :func:`sim` / :func:`is_runaway` — the A/B's keys, from the pilot
-  (``finished/cjk_aware_anima/datasets/build_ocr_records.py``, bodies unchanged);
-* :func:`normalize_ja` — the ``ー`` put-back, vendored (see its section);
+* :func:`norm` / :func:`sim` / :func:`is_runaway` — similarity and runaway keys;
+* :func:`normalize_ja` — the ``ー`` put-back (see its section);
 * :func:`score` / :func:`summary` — a Manga109-manifest frame + reads → scored rows and the
   report table.
 """
@@ -69,10 +68,8 @@ def is_runaway(text: str, *, ngram_repeats: int = 3, run: int = 8) -> bool:
 
 
 # --------------------------------------------------------------------------- ja normaliser
-# Vendored verbatim from anime_tools.ocr._text @ 62f6fc3^ (the ``ー`` put-back that
-# PP-OCRv6 needed). The package retired it with the CTC recognizer on 2026-09-07
-# (anime-tools 62f6fc3); it stays here so every eval row scores on the same
-# normaliser as O0–O3 — a re-based scorer would not be comparable.
+# The ``ー`` put-back for CTC readers that write the prolonged sound mark as a stroke
+# or a digit. Every eval row scores through it, so scores stay comparable across readers.
 
 CHOON = "ー"
 """The prolonged sound mark. PP-OCRv6's vocabulary is Chinese-first: set

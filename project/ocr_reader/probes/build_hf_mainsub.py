@@ -110,7 +110,7 @@ configs:
 # Manga109 main / sub OCR crops (local build)
 
 Built {datetime.date.today()} by `project/ocr_reader/probes/build_hf_mainsub.py`
-from `crop_dataset.load_mainsub`; rules in `project/ocr_reader/main-sub-approach.md`.
+from `crop_dataset.load_mainsub`; rules in `project/ocr_reader/README.md` § main / sub.
 `OCR:` reads the crop's main text, `OCR2:` the rest (one item per line); `text == ""` is a
 negative. Train rows are shuffled with the config's seed.
 

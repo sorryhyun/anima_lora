@@ -1,7 +1,7 @@
-"""Manga109-s + COO access for the SFX-reader line (``plan_ocr.md``).
+"""Manga109-s + COO access for the OCR reader line.
 
-Roots come from the environment, never from a literal path in a tracked file
-(``plan.md`` principle 9): ``ANIMA_MANGA109S_ROOT`` is the unzipped
+Roots come from the environment, never from a literal path in a tracked file:
+``ANIMA_MANGA109S_ROOT`` is the unzipped
 ``Manga109s_released_*`` directory (``images/``, ``annotations/``,
 ``annotations_COO/``, ``books.txt``). Derived data (crops, manifests,
 colorized pages) goes under ``$MANGA109S_ROOT/../derived/`` and never in-tree.

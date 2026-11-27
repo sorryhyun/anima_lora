@@ -1,190 +1,186 @@
 # ocr_reader — PaddleOCR-VL manga reader (JA + KO + ZH), main / sub
 
-PaddleOCR-VL 1.6 fine-tuned on manga crops, shipped as Hub `sorryhyun/paddleocr-vl-1.6-manga-lora`
-and read by `anime_tools.ocr.reader`. The record before main / sub (v4–v6, the two-prompt reader)
-is in `_archive/ocr_reader/history/` (local; `README.md` there). In git, the same files are at
-`73050123` under `project/finished/ocr_reader/` and `docs/proposal/`.
+PaddleOCR-VL 1.6 fine-tuned on manga crops (Hub `sorryhyun/paddleocr-vl-1.6-manga-lora`, read by
+`anime_tools.ocr.reader`). This file holds the main / sub approach, how labels are made and how
+text is normalized. Open work: [`mainsub_plan.md`](mainsub_plan.md). Versions, gates, reports and
+earlier versions of this file: `_archive/ocr_reader/` (local).
 
-## State
+## main / sub
 
-- Shipped: v7 = `mainsub_1124_1923` (RunPod retrain of `mainsub_1124_0151` on the 11-24
-  labels, 8 × 2), swapped into Hub `v7/` in place (`57c8dfd1`, cards `169eacbc`); the default
-  reader of `anime_tools` v0.15.0 under `OCR:` only. `OCR2:` is not read there (the user,
-  2026-11-24: "일단은 ocr만 쓰는식으로 하자"); v6 is its opt-in. 0.15.0 dropped the two-prompt
-  v7 preview (`SFX:`); Hub `v4/`, `v5/`, `v7_preview/` left the head on 2026-11-24.
-- Now: the user reviews labels on the local page (§ Rules); exports are applied as they come.
-- Definitions and the dataset: [`main-sub-approach.md`](main-sub-approach.md). Open questions,
-  pending work and the report index: [`mainsub_plan.md`](mainsub_plan.md).
+### The task
 
-## Versions
+- Input: one crop, an AnimeText detector box cut with a 4 px margin. The reader reads the
+  detector's output, so the detector box is the unit, not the annotation's polygon or box.
+- `OCR:` reads the crop's main text, `OCR2:` its sub text. Either can be speech or SFX: the prompt
+  does not carry the kind, the kind of a line comes from the text (`line_kind`).
 
-| Hub dir | run | `anime_tools` pin | change | against the previous | report |
-|---|---|---|---|---|---|
-| `v3/` | `vl16_b2_norm4` | — | JA only: tower + projector full, LM r16 LoRA | sincos SFX strict 289 / 597, ♡-blind 336 | `finished/cjk_aware_anima_dit/findings.md` |
-| `v4/` | `vl16_p2b_kozh_ep2` | 0.7.12 | tower r64 LoRA + LM full FT, gelnote KO/ZH pseudo rows, 2 epochs | sincos SFX strict 289 → 346; KO 1 → 26 / 48 | `history/reports/p3_kozh_ep2.md` |
-| `v5/` (`fb08a10b`) | `vl16_p2b_kozh_nl` | 0.9.5 | line breaks kept (`TARGET_NORM` 5), crops trimmed at the page edge | sincos ♡-blind 386 → 414 (z +3.0); K3 KO 26 → 22 (z −1.4) | `history/README.md` § v5 |
-| `v6/` (`57e7c650`) | `vl16_p2b_kozh_nl_swaprelax` | 0.9.8 | + `pseudo_swaprelax_v5` (20,745 KO speech lines) | K3 KO 22 → 28 (z +2.1); JA flat | `history/README.md` § v6 |
-| `v7_preview/` (`1987992e`, off the head) | `sfxpc_1118_0412` | opt-in until 0.15.0 | two prompts, `OCR:` speech / `SFX:` SFX | — | `history/proposals/ocr_sfx_prefix.md` |
-| `v7/` (`59768fc6`) | `mainsub_1124_0151` | 0.14.0 | main / sub (`OCR:` / `OCR2:`), detector boxes at 4 px | vs v6: doujin SFX strict 294 → 334 (+95 / −55); Manga109 test SFX 85.2 → 80.8 % (+83 / −196), speech 88.4 → 89.0 %; K3 KO 28 → 30, ZH 30 → 33 | [`mainsub_1124_0151.md`](reports/mainsub_1124_0151.md) |
-| `v7/` (`169eacbc`) | `mainsub_1124_1923` | 0.15.0 | the same recipe on the 11-24 labels, batch 8 × 2 (RunPod) | vs the first v7, paired on today's labels: doujin SFX 334 → 350 (+58 / −42, p 0.13); Manga109 test SFX 80.8 → 81.9 % (+118 / −89, p 0.05), speech 89.0 → 89.1 %; K3 KO 29 → 32, ZH 36 → 36 | [`mainsub_1124_1923.md`](reports/mainsub_1124_1923.md) |
+### main
 
-K3 figures in the table are on the labels before the 2026-11-24 review (`assets/k3_gelnote.pre_review.tsv`).
-On the reviewed labels (`review_1124b`: 53 edits, mostly line breaks, 91 rows → `checked`; 48 KO + 48 ZH
-scored), `eval_k3.py --compare` rescores v6 → v7 as KO 26 → 29 (+5 / −2), ZH 31 → 35 (+6 / −2).
-`spaced` now counts line breaks on ZH (a break is a space there and ZH labels had none), so ZH
-`spaced` is not comparable across the review.
+- The text with the largest glyphs in the crop (the size of the printed characters, not the
+  length of the text or the area of the block).
+- Several items count as one main when they are of the same kind and their glyphs are at least
+  0.7× the largest, or when they repeat the same text at any size. They are written one per
+  line, right to left, then top to bottom.
+- Line breaks are the printed lines: one per column of vertical text (right to left), one per
+  row of horizontal text.
 
-Report paths under `history/` are in `_archive/ocr_reader/` (local). Sincos figures are on the 597-row gate below; v5 is paired against v4 rescored on the rebuilt crops.
+### sub
 
-## Layout
+- Every other text visible in the crop, one item per line, in reading order: furigana, smaller
+  speech or SFX, hand-lettered asides, smaller lettering that the annotation joins into the same
+  `<text>` box, text cut by the crop edge, numbers drawn in the art (a clock face, a floor
+  display).
+- A label that leaves out visible text teaches the reader to skip text, so a sub is complete or
+  it is not trained (§ What trains).
 
-| path | holds |
-|---|---|
-| `core/` | the library every script imports (package `project.ocr_reader.core`): `paths.py` (repo and dataset paths, `ANIMA_*_ROOT` overrides), `manga109.py` (corpus access), `crop_dataset.py` (`load_mainsub`, the training set) + `augment.py`, `textnorm.py` (targets and keys), `readers.py` (`READERS`, `Vl16Reader` with its `task` prompt), `scoring.py` (`score` / `summary` / `exact_key` / `normalize_ja`), `crops.py` (`deskew_crop`, `margin_box`, ink projection), `labels.py` (`ellipsis_fold`, `line_broken`, `agent_subs`), `regions.py` (main / sub `Item`), `det_types.py` (detector-box `classify`), `hayai_beam.py`, `vl16_compile.py`, `vocab_ext.py` (`♡` / `💢` as LM tokens on spare rows; `vocab.safetensors` beside the adapter, loaded by `Vl16Reader` when present) |
-| `ocr/` | training and eval scripts: `finetune_vl16_lora.py`, `finetune_ovis3_lora.py` (OvisOCR3 LoRA on the main / sub set; `--compile` marks B / L / S dynamic with the GDN chunk rule as a custom op, `core/ovis3_compile.py`; `--fa2` tower, `--fa2_lm` LM full attention, head dim 256, on the repo's FlashAttention wheel), `build_sfx_prefix.py` (the detector crops and their manifests), `build_manga109_crops.py` (the grey `manifest.parquet` the others start from), `eval_sfx.py` / `eval_k3.py` / `eval_manga109.py`, `rescore_eval.py`, `eval_jmb_hard.py` (JMangaBench_Hard's 3 015 crops read by the shipped reader; data in `eval_data/jmb_hard/`, scored by the benchmark's own `score.py`) |
-| `labeling/` | the review page and the label pipeline: `review_page.py` (builds the page), `apply_review.py` (applies an export), `m109_mainsub.py` (Manga109 main / sub proposals), `furigana_find.py`, `linebreak_auto.py`, `hayai_read.py`, `ko_read.py` (reader flags for the KO rows), `anima_lowconf.py` (the Anima training set's v7 reads at score <= 0.85 as a label source, `sincos/` left out), `label_agent.md` (the labeling-review agent prompt: crop + context zoom, the label rules, `out.tsv` with a confidence) |
-| `probes/` | main / sub measurements: `eval_mainsub.py`, `eval_subneg.py`, `sfxonly_suspect.py`, `mainsub_text.py`, `sfxp_crop_sheet.py` (sheets of the `core.det_types` types), `build_hf_mainsub.py` (the local HF dataset build) |
-| `gate/` | builders of the frozen gate sets: `build_eval_data.py`, `k3_gelnote.py` |
-| `assets/` | label TSVs; local except `k3_gelnote.tsv`, `kozh_sfx.tsv`, `sfx_labels_sincos_597.tsv` |
-| `eval_data/` | frozen gate images (local) |
-| `reports/` | written reports (`mainsub_*`, `hayai_*`, `manga_error_review.md`); `reports/eval/` holds the eval scripts' generated tables (local) |
-| `tests/` | `textnorm`, `deskew_crop` |
+### The crop decides
 
-Names that outlived their meaning:
+- The label follows the crop as shown, not the page and not the annotation.
+- Text cut by the crop edge is typed as far as it shows. What only the page shows (the rest of a
+  cut line, a neighbouring balloon outside the box) is not typed.
+- A mark that cannot be told apart from drawing (a stroke cut by the edge, a symbol in the art)
+  is not typed; a crop whose only other marks are of that kind has an empty sub.
 
-- `sfxp` / `sfxpc` come from the two-prompt reader. The main / sub set still lives in its
-  manifests and crop trees on disk (`manifest_sfxp_det_all.parquet`, `crops_sfxp/`), built by
-  `ocr/build_sfx_prefix.py`; `sfxpc_*` runs are two-prompt runs.
-- The review page keeps the name `ko_label_review` wherever the browser state hangs on it: the page
-  folder `~/ko_label_review/`, the localStorage key `ko_label_review_v1` and the export
-  `~/Downloads/ko_label_review.tsv`. Renaming any of them loses the saved edits.
+### Empty labels
 
-## The gate — sincos 597
+- Empty main: a crop with only sub text. It trains as `OCR:` `""` only when reviewed as such.
+- Empty sub: the crop has no sub. It trains as `OCR2:` `""` only where that is known (§ Sources,
+  the negatives). Anywhere else an empty sub means "not known" and gives no `OCR2:` row.
 
-This line scores sincos with
-**`--labels project/ocr_reader/assets/sfx_labels_sincos_597.tsv`** (933 rows,
-597 scored SFX). It is the finished line's 617-row file minus the 8 pages that
-were deliberately removed from the dataset (2026-10-10). Every arm, v3
-included, is scored on it. Never mix it with the `/ 617` figures in
-`finished/cjk_aware_anima_dit/eval.md`. v3 on this basis: strict 289, ♡-blind 336.
+### Examples
 
-Metrics (since 2026-11-24, the user: heart-blind retired, line-break-blind added): `exact`
-(`textnorm.exact_key`, whitespace-blind) and `lb` (`textnorm.linebreak_blind`: the same glyphs,
-the same 띄어쓰기, a line break on either side matching a space or none) in every eval;
-`eval_k3` keeps `spaced` (a break counts as a space). The ♡-blind figures in the Versions table
-predate this. v7 on sincos: exact 334, lb 334.
+| crop | shows | main | sub | from |
+|---|---|---|---|---|
+| `UchuKigekiM774_020_24` | a title, two balloons cut by the edge | `第4幕 宇宙さそりの逆襲 前編` | the cut speech as far as it shows (`もうよ` / `なよ` / `体に毒` …) | reviewed |
+| `LoveHina_vol01_051_29` | `いてっ`; the next balloon's `…` is on the page only | `いてっ` | empty | reviewed |
+| `JijiBabaFight_045_17` | the SFX `わはは` over a balloon | `わはは` | `もうけ` / `もうけ` | proposal |
+| `AkkeraKanjinchou_051_11` | speech with ruby and a small SFX | `変なの…` | `へん` / `ヒソ` | proposal |
+| `GarakutayaManta_006_34` | an English paragraph and a large `ひ～` | the paragraph | `ひ～` | reviewed (overrides glyph size) |
+
+### Sources
+
+| source | split | `OCR:` | `OCR2:` |
+|---|---|---|---|
+| Manga109 detector crops (`mainsub_det`: `manifest_sfxp_det_all`, labels `output/ocr/mainsub/m109_mainsub[_val].jsonl`) | train, val | main | sub; `""` on a row reviewed `ok` with an empty sub, and on an SFX-only crop (one SFX, no other annotated text whole or partly inside) |
+| KO / ZH (`manifest_sfxp_kozh`) | train | the label | `assets/sub_labels.tsv`, else `assets/kozh_sfx.tsv`; `""` on a `swaprelax_v5` crop with neither |
+| Anima low-confidence reads (`anima_lowconf`: `assets/anima_mainsub.tsv`, crops under `ANIMA_LOWCONF_ROOT`) | train | the reviewed main (`""` = no text) | the reviewed sub; `""` when empty, with the reviewed Manga109 negatives |
+
+Not in the set: the COO polygons the detector misses, the `<text>`-box crops
+(`manifest_sfxp_speech`) and the older 12 % crops (`manifest.parquet`). The `<text>` labels
+still label the speech inside the detector crops.
+
+### What trains
+
+`crop_dataset.load_mainsub`, per Manga109 crop:
+
+| state | `OCR:` | `OCR2:` |
+|---|---|---|
+| reviewed `drop` | out | out |
+| reviewed | the main as reviewed | the sub as reviewed; `""` if empty (train) |
+| agent `typed` | the agent's main if set, else the proposed main | the agent's sub |
+| agent `empty` | the same | `""` (train, SFX-only group) |
+| agent `other` (text inside, not typed) | the same | out |
+| unreviewed `trim` | out | out |
+| unreviewed, main empty | out | out |
+| unreviewed, line breaks waiting on review or held (`m109_break_held.tsv`) (train) | out | as the rows below |
+| unreviewed, partly visible text in the crop | the proposed main | out |
+| unreviewed, SFX only (train) | the proposed main | `""` |
+| unreviewed, other | the proposed main | the proposed sub, if not empty |
+
+- Negatives (target `""`) are at most `--neg_share` (0.2) of each prompt's rows. The reviewed
+  Manga109 negatives go in first; the rest of the share is split 1 : 1 between SFX-only crops
+  and `swaprelax_v5` crops, each drawn at random.
+- Of the unreviewed train subs headed by a ruby read no agent fixed (`ruby_raw` in
+  `m109_mainsub.jsonl`), one fixed quarter trains (`RUBY_RAW_SHARE`, picked by a hash of the id,
+  the same for every seed); the other three quarters never train.
+- A target over 150 normalized characters is dropped, main and sub each on their own.
+- Val reads `main` / `main_neg` / `sub`; the best checkpoint is picked by `main_exact`.
+
+## Labeling
+
+### Proposals
+
+Manga109 rows are proposed by `labeling/m109_mainsub.py` from the annotations. An agent label
+(`assets/m109_agent_subs.tsv`: source, id, verdict, main, sub, pass) replaces the proposal, and a
+reviewed row (`assets/m109_mainsub.tsv`: source, id, status, main, sub) replaces both.
+
+- An annotated item (COO SFX polygon or `<text>` box) is in the crop at 0.8 of its convex hull
+  or more, partly visible from 0.05 to 0.8.
+- main and sub follow § main / sub over the items in the crop; glyph size is
+  `sqrt(hull area / glyphs)`.
+- sub (`subp`): per `<text>` box, the furigana first (the agents' fix where they reviewed it, else
+  the ruby read), then the other items in the crop.
+- With no item whole inside, a speech box at least 0.3 inside becomes the main, cut to the
+  columns and glyphs that show (`trim`).
+- An unreviewed main takes the line breaks agents read off its crop (`assets/m109_breaks.tsv`);
+  its characters stay the proposal's.
+- The annotations do not cover unannotated text (signs, titles, asides outside a box) or smaller
+  lettering inside one `<text>` box; only review adds those.
+
+Rebuilding the proposals (after a change to the annotations, the ruby reads or `m109_mainsub.py`):
 
 ```
-ANIMA_MANGA109S_ROOT=/media/sorryhyun/new/dataset/manga109s/Manga109s_released_2026_05_21 make daemon-run ARGS="--stall-timeout 900 \
-  project/ocr_reader/ocr/eval_sfx.py --reader vl16 --ckpt output/ocr/<run>/ep1 \
-  --name <run>_597 --labels project/ocr_reader/assets/sfx_labels_sincos_597.tsv"
+python project/ocr_reader/ocr/build_sfx_prefix.py --det_all
+python project/ocr_reader/labeling/m109_mainsub.py \
+    --out output/ocr/mainsub/m109_mainsub.jsonl \
+    --ruby output/ocr/furigana/ruby_m109_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent
 ```
 
-## Gate images — `eval_data/` (gitignored)
+### Label sources
 
-Labels stay in the tracked `assets/` TSVs. The images every gate reads are
-frozen under `project/ocr_reader/eval_data/` by `gate/build_eval_data.py`:
+- hayai-ocr v2.7 Supernova reads are allowed as first-pass labels (`labeling/hayai_read.py`;
+  Apache-2.0 weights, the user's call).
+- Never label from `animetext-ocr`, and never train on AnimeText rows or pseudo rows derived from
+  them (CC-BY-NC-SA; a shipped reader is built without them).
+- `swaprelax_v5` was audited by agents and the user read every gelnote KO row: neither set is
+  "unreviewed".
+- Which sources give `OCR2:` negatives is the user's call (§ Sources).
+- Mains waiting on a line-break proposal stay out of training; agents do not fill them.
+- Merged blocks go.
 
-- `sincos/crops/<row>.png` + `index.tsv`: the 933 label rows cut at pad 0.12,
-  the same cut `eval_sfx.py` makes. `sincos/pages/` holds the 155 pages behind
-  them. `eval_sfx.py` reads the frozen crops first (at pad 0.12), then the
-  frozen pages; the gate does not depend on `post_image_dataset/`.
-- `k3_gelnote/crops/` + `pages/`: the 100 K3 rows of `assets/k3_gelnote.tsv`.
+### The review page
 
-Manga109-s (corpus + `derived/` manifests and crops) lives at
-`/media/sorryhyun/new/dataset/manga109s/`. `~/manga109s` is a symlink to it,
-so older commands still resolve.
-
-## Inherited — read before any arm
-
-- Baseline ledger (rescored key, on 617 rows): `finished/cjk_aware_anima_dit/findings.md`
-  § "The reader ledger". On a sincos-sized set the binomial SE is about 12 lines, so a gap
-  smaller than that is not a finding.
-- The "Do not re-propose" list in that same `findings.md` still applies. Most
-  relevant here:
-  - Never screen or size a KO/ZH pool with B′.
-  - Never label from `animetext-ocr` (those reads come from hayai, and they
-    carry no 띄어쓰기).
-  - Never judge a KO/ZH arm on the JA gates alone.
-  - Never strip whitespace from training targets.
-  - Check the tokenizer before choosing any target spelling.
-- Licence: AnimeText is CC-BY-NC-SA. A shipped reader must be built without
-  it, and without any pseudo rows derived from it.
-- Code: shared code goes in `core/`; a script imports `project.ocr_reader.core.*` and never another
-  script. Scripts run by path (`make daemon-run ARGS="project/ocr_reader/ocr/eval_sfx.py …"`).
-  The Ovis / PP-OCRv6 / package readers, the pseudo-labeller, the page-detector and hito evals
-  are in `_archive/ocr_reader/code/` (local; in git before the 2026-11-24 split). `eval_sfx.py`
-  defaults to the 597 labels; every eval script writes its table to `reports/eval/`. Every GPU
-  step goes through the daemon.
-- Hardware: RTX 5070 Ti 16 GB. No bitsandbytes on cu132.
-
-## Rules — the label review loop (v7, main / sub)
-
-### The page
-
-- `~/ko_label_review/index.html` is a local page (the user's call: not an Artifact). Its state is
-  in the browser's localStorage; Export writes `~/Downloads/ko_label_review.tsv`. Tab in a main
-  box marks the row `ok` as the box stands and moves to the next row.
+- `~/ko_label_review/index.html`, built by `labeling/review_page.py`, is a local page (not an
+  Artifact). Its state is in the browser's localStorage; Export writes
+  `~/Downloads/ko_label_review.tsv`. The `ko_label_review` name stays on the folder, the
+  localStorage key `ko_label_review_v1` and the export: renaming any of them loses the saved edits.
+- Tab in a main box marks the row `ok` as the box stands and moves to the next row. `ok` or an
+  edit confirms both boxes as they stand, the proposed sub included (a wrong ruby read becomes a
+  reviewed positive). Emptying the main box makes a sub-only row.
+- The page lists only sources that train. Rows over the training cap (main > 150 normalized
+  characters) are hidden and still export.
 - The export holds changed rows only, against the assets and manifests at build time: rebuild the
-  page after each apply.
-- A fix made outside the page is undone by the browser's saved edit at the next export. Drop the
-  row from a later export if it carries the old text again.
+  page after each apply. A fix made outside the page is undone by the browser's saved edit at the
+  next export; drop the row from a later export if it carries the old text again.
 - From every export, filter `3261138_279400` and the stale `軍神か……` edit
   (`Nekodama_007_0004b534` → `…`).
-- A reviewed row exports its sub proposal untouched, so a wrong ruby read becomes a reviewed
-  positive.
-- `ok` or an edit confirms both boxes as they stand, the proposed sub included. Emptying the main
-  box makes a sub-only row.
 - A `mainsub_*` row shows hayai's read (one string, no line breaks); the `hayai disagrees` sort
-  lists the rows whose main it does not match, largest distance first.
-- A `mainsub_*` row in `assets/m109_mainsub.tsv` (the user's or an agent pass's) shows the applied
-  main and sub and starts reviewed; hayai's distance is to them, and an applied drop leaves the
-  hayai sorts. Before 2026-11-24 the page showed the annotation's proposal on these rows. The
-  page shows no proposal text.
+  lists the rows whose main it does not match, largest distance first. A row already in
+  `assets/m109_mainsub.tsv` shows the applied main and sub and starts reviewed. The page shows no
+  proposal text.
 - The `has` filter lists rows by what the boxes hold (main only, sub only, both, partly visible
   text). The default `suspicion` sort puts `trim`, then partly visible text, first.
 - A row holding one `<text>` box with ruby starts from its furigana row's sub edits.
-- Apply writes `mainsub_*` rows to `assets/m109_mainsub.tsv` and other sources' subs to
-  `assets/sub_labels.tsv`. `k3_ko` / `k3_zh` are the K3 gate's rows: apply writes them back to
-  `assets/k3_gelnote.tsv` (`ok` / edit → `checked`, drop → `skip`); the K3 figures move with them. The manifests are not touched by `mainsub_*` rows.
-- `anima_lowconf` lists the v7 reads of the Anima training set at score <= 0.85 (the user,
-  2026-11-24), the main box holding the read; `sincos/` is left out, it is the doujin gate's
-  source. Its crops and `rows.jsonl` are under `ANIMA_LOWCONF_ROOT`
-  (`/media/sorryhyun/new/dataset/anima_ocr_lowconf`); apply writes its rows to
-  `assets/anima_mainsub.tsv` (the `m109_mainsub.tsv` columns), which `load_mainsub` trains (train
-  split, every status but `drop`; since 2026-11-27).
-- `reader_split` (the user, 2026-11-26) lists cjk_rl's `split_1126_0910`: 2,002 kana render
-  crops that one reader (hayai v2.7 or the tuned reader) reads as the glyph the caption asked for
-  and the other does not. Only the crops where both readers' confidence is 0.9 or over (both
-  sure, one wrong) are listed: 303 of the 2,002 (`--reader_split_min_conf`). The main box holds the read that
-  matched. The default `ks` sort puts the hayai-only crops first, grouped by asked glyph, the
-  surer reader's confidence highest first. Apply writes these rows to
-  `assets/reader_split_mainsub.tsv`; training does not read that file yet. hayai is not trained on
-  this set.
-- Agent first pass (the user, 2026-11-24): three Sonnet agents per batch of ~32 rows run
-  `labeling/label_agent.md`, each in its own `output/ocr/anima_lowconf/agents/b<NN>_a<k>/`
-  folder (`batch.tsv` in, `out.tsv` out). The page puts the majority main in the box where two
-  agree and lists every agent's read; the `agents unsure` sort puts the rows that were not
-  unanimous at `high` first, Hangul first. On the user's first 13 edits the agents matched 7–9:
-  the non-text crops, signatures and Latin right, hand-lettered Korean SFX wrong (챱 → 잡,
-  루 → 르).
-- After the user's first page (47 rows, 11-24) the rest took the agents' majority:
-  `labeling/anima_agents_apply.py` writes every row where two agents agree to
-  `anima_mainsub.tsv` with status `agent` (206 rows); the 64 split rows stay unreviewed on the
-  page. A touched `agent` row exports and becomes the user's `ok` / edit; an untouched one does
-  not export. On those 47 rows the agent main matched the user's 11/16 (unanimous), 10/17
-  (2 of 3), 0/14 (split).
+- Where apply writes: `mainsub_*` → `assets/m109_mainsub.tsv`; other sources' subs →
+  `assets/sub_labels.tsv`; `k3_ko` / `k3_zh` (the K3 gate) → `assets/k3_gelnote.tsv` (`ok` / edit
+  → `checked`, drop → `skip`); `anima_lowconf` → `assets/anima_mainsub.tsv`; `reader_split` →
+  `assets/reader_split_mainsub.tsv` (not trained yet). The manifests are not touched.
+- `anima_lowconf`: the v7 reads of the Anima training set at score <= 0.85, the main box holding
+  the read; `sincos/` is left out (the doujin gate's source). Crops and `rows.jsonl` under
+  `ANIMA_LOWCONF_ROOT` (`/media/sorryhyun/new/dataset/anima_ocr_lowconf`).
+- `reader_split`: cjk_rl kana render crops that one reader (hayai v2.7 or the tuned reader) reads
+  as the asked glyph and the other does not, both at confidence 0.9 or over
+  (`--reader_split_min_conf`); the main box holds the read that matched; the `ks` sort puts the
+  hayai-only crops first, grouped by asked glyph.
 
 ### After each export
 
-1. Copy it to `assets/`, run `labeling/apply_review.py <tsv>` with `ANIMA_MANGA109S_ROOT`
-   exported (earlier edits show as "stale": already applied). The user deletes the Downloads
-   file. Name the copy `review_<MMDD><letter>.tsv`; once applied it may be deleted (the exports up
-   to 11-22 are in `_archive/ocr_reader/assets_applied_exports/`, local). The gate / mark / sub /
-   mainsub TSVs stay.
+1. Copy it to `assets/review_<MMDD><letter>.tsv`, run `labeling/apply_review.py <tsv>` with
+   `ANIMA_MANGA109S_ROOT` exported (earlier edits show as "stale": already applied), then move it
+   to `_archive/ocr_reader/assets_applied_exports/`. The user deletes the Downloads file.
 2. Check the crops of a small export and report suspected typos with paste-ready text. Fix only
    on the user's word.
-3. Retrain only when asked; export `ANIMA_MANGA109S_ROOT` at submit.
+3. Retrain only when asked.
 4. Rebuild the page:
 
    ```
@@ -197,41 +193,48 @@ so older commands still resolve.
        --hayai_kozh output/ocr/hayai/hayai27_kozh_hito.jsonl --anima_lowconf --reader_split
    ```
 
-   The `--flags`, `--doujin_reads` and `--k3_reads` files are v7's (`ko_read.py`, `eval_sfx.py`,
-   `eval_k3.py` on `mainsub_1124_0151`); a new reader swaps them.
+   The `--flags`, `--doujin_reads` and `--k3_reads` files are v7's reads; a new reader swaps them.
 
-   Rebuilding the Manga109 proposals (after a change to the annotations, the ruby reads or
-   `m109_mainsub.py`):
+### Agent passes
 
-   ```
-   python project/ocr_reader/ocr/build_sfx_prefix.py --det_all
-   python project/ocr_reader/labeling/m109_mainsub.py \
-       --out output/ocr/mainsub/m109_mainsub.jsonl \
-       --ruby output/ocr/furigana/ruby_m109_read_u3p12.jsonl --ruby_fix output/ocr/furigana/agent
-   ```
+- Three Sonnet agents per batch of ~32 rows run `labeling/label_agent.md`, each in its own
+  `output/ocr/<source>/agents/b<NN>_a<k>/` folder (`batch.tsv` in, `out.tsv` out) and with no
+  shared script: agents sharing a scratchpad overwrote each other's files.
+- The page puts the majority main in the box where two agree and lists every agent's read; the
+  `agents unsure` sort puts the non-unanimous rows first, Hangul first.
+- `labeling/anima_agents_apply.py` writes every row where two agents agree with status `agent`;
+  split rows stay on the page. A touched `agent` row exports as the user's `ok` / edit.
+- Agents miss hand-lettered Korean SFX most, and split sub lines by label line or by printed
+  column inconsistently.
 
-### Labels (the user's rules)
+## Normalization
 
-- What a label holds (the crop decides, empty labels, spelling): `main-sub-approach.md`
-  § Definitions.
-- Merged blocks go.
-- `swaprelax_v5` was audited by agents and the user read every gelnote KO row: neither set is
-  "unreviewed".
-- hayai-ocr v2.7 Supernova reads are allowed as first-pass labels (`labeling/hayai_read.py`). Its
-  card lists AnimeText-derived training sets and an Apache-2.0 licence for the weights; the user,
-  2026-11-24: "hayai는 아파치 라이센스라고 하니 뭐 라이센스 이슈는 괜찮을듯 문제가 생기면 hayai가
-  알아서 하겠지". The rules under "Inherited" on `animetext-ocr` labels and AnimeText rows stand
-  for those sources themselves.
-- Which sources give `OCR2:` negatives is the user's call (`main-sub-approach.md` § Sources).
-- Mains waiting on a line-break proposal stay out of training; agents do not fill them.
-- Rows over the training cap (main > 150 normalized characters) are hidden on the page and
-  still export.
+One fold (`core/textnorm.py`, `fold_glyphs`) feeds the training target, the scoring keys and
+`anime_tools`' read form, so the reader never learns a spelling the pipeline discards. The current
+version is `TARGET_NORM = 13`.
 
-### Traps
+- Training target (`training_target`): keeps line breaks as `\n` and keeps `♥` (filled) and `♡`
+  (outline) apart; `♡` and `💢` are LM tokens of their own (`core/vocab_ext.py`).
+- Scoring key (`exact_key`): the same folds plus every heart → `♡`, every dot run → `…`,
+  whitespace deleted. `linebreak_blind` also accepts a break against a space or none.
 
-- A 2-epoch run runs out of memory on 16 GB without `--ckpt_lm_only` or `--grad_ckpt`.
-- Eval `exact` is whitespace-stripped, so line breaks never move it.
-- There is no KO val split; K3's 48 KO rows are the only KO gate.
-- Parallel agents sharing one scratchpad overwrote each other's helper scripts and outputs: each
-  agent gets a private output directory and no shared script.
-- Agents split sub lines by label line or by printed column inconsistently.
+Decided folds, in order:
+
+1. Spacing dakuten `゛` / `゜` → the combining marks, before NFKC.
+2. NFKC (fullwidth `！？．～` → ASCII, halfwidth kana composed, `‼` → `!!`).
+3. A lone Hangul conjoining jamo → the compatibility jamo (`ㅋㅋ`, not `ᄏᄏ`).
+4. Symbols: `❤` → `♥` (key: every heart → `♡`); `〜` / `〰` → `~`; `─` / `—` → `―`; curly
+   quotes → `"`; `◯` / `〇` → `○`; `☓✕✖╳✗✘` → `×`. Latin `O` / `x` / `X` stay.
+5. In a string holding Hangul, every dash → `-`.
+6. Dots: a `・` run → `…` per three dots, at least one (`・・・・・` → `……`); a lone `・` stays.
+   `...` / `…` / `……` stay as labelled in the target; `.` runs stay (Korean keeps `..` / `...`
+   apart from `…`). Japanese speech labels take `ellipsis_fold` (`core/labels.py`).
+7. Drawn-out lines: outside a Hangul string, a run of `ー` / `―` / hyphens (any mix, any count) →
+   one `ー`, Chinese included; a `~` run → one `~`. A hyphen run touching an ASCII letter or digit
+   stays one `-` (`747-400D`); in a Hangul string a `ー` / `-` run is one `-` and a lone `ー`
+   stays. The user: the long mark is what the speech lines train a drawn-out sound as, and one
+   spelling is worth more than Chinese dash compatibility.
+
+Spelling rules on the label side: Japanese lettering left under a Korean label stays Japanese;
+never strip whitespace from a target; check the tokenizer before choosing a target spelling.
+A change of fold bumps `TARGET_NORM` and is mirrored in `anime_tools.ocr.reader`.

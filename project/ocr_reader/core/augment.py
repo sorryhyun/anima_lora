@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Train-time crop augmentation for the SFX reader (``plan_ocr.md`` O1, decided here).
+"""Train-time crop augmentation for the OCR reader.
 
-The O1 crops are cut once at 12 % pad, orientation preserved, and stay fixed
+The crops are cut once at 12 % pad, orientation preserved, and stay fixed
 (the eval reads the same files). Everything that varies is applied here, in
 the training loader, on the BGR ``uint8`` crop:
 
