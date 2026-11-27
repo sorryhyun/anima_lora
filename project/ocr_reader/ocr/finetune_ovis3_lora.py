@@ -20,10 +20,10 @@ LoRA (α = 2r) on every Linear of the vision tower + merger at ``--tower_rank`` 
 the LM decoder layers' GDN ``in_proj_qkv`` / ``in_proj_z`` / ``out_proj``, attention
 q / k / v / o and MLP at ``--rank``; embeddings, ``lm_head`` and the GDN
 ``in_proj_a`` / ``in_proj_b`` gates stay frozen. No gradient checkpointing unless
-``--grad_ckpt``. ``--compile`` runs the tower on token bands (``BANDS``,
-``install_banded_tower``), pads the LM's S to a multiple of 64 and wraps each vision
-block and LM decoder layer in ``torch.compile(dynamic=False)`` for grad-on calls;
-generation runs eager (on the banded tower).
+``--grad_ckpt``. ``--compile`` runs the tower on a padded ``(B, L, D)`` layout, pads the
+LM's S to a multiple of 8 and compiles each vision block and LM decoder layer with B, L
+and S marked dynamic, the GDN chunk rule as a custom op (``core/ovis3_compile.py``);
+generation runs eager (on the padded tower).
 
 Writes ``output/ocr/<run>/final/`` (peft adapter), ``history.jsonl``,
 ``val_final.jsonl`` (scored like the VL trainer's) and ``mem.jsonl`` under ``--mem_log``.
@@ -46,6 +46,7 @@ from PIL import Image
 from torch.utils.data import DataLoader
 
 from project.ocr_reader.core import crop_dataset as cd
+from project.ocr_reader.core import ovis3_compile as oc
 from project.ocr_reader.core.paths import OUTPUT, OVIS3_BASE
 from project.ocr_reader.core.readers import MAX_NEW_TOKENS
 from project.ocr_reader.core.scoring import score
@@ -66,7 +67,6 @@ LM_LEAVES = {
     "up_proj",
     "down_proj",
 }
-COMPILE_CLASSES = ("Qwen3_5VisionBlock", "Qwen3_5DecoderLayer")
 
 
 def lora_targets(model) -> tuple[list[str], list[str]]:
@@ -95,124 +95,6 @@ def ovis_tokens(w: np.ndarray, h: np.ndarray, max_px: int) -> np.ndarray:
         ],
         dtype=np.int64,
     )
-
-
-BANDS = (840, 896, 1024)
-"""Tower-token bands: every crop of a batch is padded to the band of its largest crop
-(train crops at ``--max_tokens`` 1024: 66.7 % ≤ 840, 98.3 % ≤ 896). Multiples of 4, so
-the merger's 2 × 2 groups never mix real and pad tokens."""
-
-
-def band_of(tokens: np.ndarray) -> np.ndarray:
-    """The band of each count; above the top band (val reads at the card's 2880² cap,
-    eager) the count rounded up to a multiple of 64."""
-    tokens = np.asarray(tokens)
-    b = np.array(BANDS)
-    i = np.minimum(np.searchsorted(b, tokens), len(b) - 1)
-    return np.where(tokens <= b[-1], b[i], -(-tokens // 64) * 64)
-
-
-def install_banded_tower(model) -> None:
-    """Run the vision tower on a padded ``(B · L, D)`` layout, L = the batch's band.
-
-    The stock SDPA path splits the packed tokens per image (``lengths.tolist()``), one
-    graph per crop size and count. Here each crop's tokens sit at ``[i · L, i · L + n_i)``,
-    pad rows carry zeros and an identity rotary (cos 1, sin 0), attention is one batched
-    SDPA with a key mask, and the merger's output is gathered back to the real rows, so
-    the LM receives the stock ``pooler_output``. Each block then sees shapes that depend
-    on (B, L) alone."""
-    import types
-
-    import torch.nn.functional as F
-    from transformers.modeling_outputs import BaseModelOutputWithPooling
-    from transformers.models.qwen3_5 import modeling_qwen3_5 as q35
-    from transformers.vision_utils import (
-        get_vision_interpolation_indices_and_weights,
-        get_vision_position_ids,
-    )
-
-    def attn_forward(self, hidden_states, cu_seqlens, position_embeddings=None, **kw):
-        mask = kw.pop("pad_mask")
-        T = hidden_states.shape[0]
-        B, L = mask.shape[0], mask.shape[-1]
-        q, k, v = (
-            self.qkv(hidden_states)
-            .reshape(T, 3, self.num_heads, -1)
-            .permute(1, 0, 2, 3)
-            .unbind(0)
-        )
-        cos, sin = position_embeddings
-        q, k = q35.apply_rotary_pos_emb_vision(q, k, cos, sin)
-        q, k, v = (
-            t.reshape(B, L, self.num_heads, -1).transpose(1, 2) for t in (q, k, v)
-        )
-        o = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, scale=self.scaling)
-        return self.proj(o.transpose(1, 2).reshape(T, -1))
-
-    def vision_forward(self, hidden_states, grid_thw, **kw):
-        interp, weights = get_vision_interpolation_indices_and_weights(
-            grid_thw,
-            num_grid_per_side=self.num_grid_per_side,
-            mode=self.interpolation_mode,
-            align_corners=self.interpolation_align_corners,
-            spatial_merge_size=self.config.spatial_merge_size,
-        )
-        pos_ids = get_vision_position_ids(grid_thw, self.spatial_merge_size)
-        hs = self.patch_embed(hidden_states)
-        hs = hs + (self.pos_embed(interp) * weights[:, :, None]).sum(1).to(hs.dtype)
-        rot = self.rotary_pos_emb(pos_ids).reshape(hs.shape[0], -1)
-        emb = torch.cat((rot, rot), dim=-1)
-
-        n = grid_thw.prod(-1).cpu()
-        B, L = len(n), int(band_of(n.max().numpy()[None])[0])
-        dev = hs.device
-        idx = torch.cat([i * L + torch.arange(int(c)) for i, c in enumerate(n)]).to(dev)
-        midx = torch.cat(
-            [i * (L // 4) + torch.arange(int(c) // 4) for i, c in enumerate(n)]
-        ).to(dev)
-        pad = hs.new_zeros(B * L, hs.shape[1]).index_copy(0, idx, hs)
-        cos = emb.new_ones(B * L, emb.shape[1]).index_copy(0, idx, emb.cos())
-        sin = emb.new_zeros(B * L, emb.shape[1]).index_copy(0, idx, emb.sin())
-        mask = (torch.arange(L)[None] < n[:, None]).view(B, 1, 1, L).to(dev)
-        cu = torch.zeros(1, dtype=torch.int32, device=dev)  # unused by attn_forward
-        for blk in self.blocks:
-            pad = blk(pad, cu_seqlens=cu, position_embeddings=(cos, sin), pad_mask=mask)
-        merged = self.merger(pad)
-        return BaseModelOutputWithPooling(
-            last_hidden_state=pad.index_select(0, idx),
-            pooler_output=merged.index_select(0, midx),
-        )
-
-    vis = model.model.visual
-    vis.forward = types.MethodType(vision_forward, vis)
-    for blk in vis.blocks:
-        blk.attn.forward = types.MethodType(attn_forward, blk.attn)
-
-
-def compile_layers(model) -> int:
-    """``torch.compile(dynamic=False)`` per block for grad-on calls; grad-off calls
-    (generation) take the eager forward. Static shapes come from the banded tower
-    (``install_banded_tower``) and the LM's S padded to a multiple of 64.
-
-    Every block of a class shares one code object: the GDN and full-attention LM layers
-    and each (B, band) / (B, S) shape cost a graph, past the default ``recompile_limit``
-    of 8 (``smoke_ovis3_compile_1127`` hit it and ran the rest eager)."""
-    from library.runtime.dynamo import pin_dynamo_limit
-
-    pin_dynamo_limit("recompile_limit", 64)
-    n = 0
-    for m in model.modules():
-        if type(m).__name__ not in COMPILE_CLASSES:
-            continue
-        eager = m.forward
-        comp = torch.compile(eager, dynamic=False)
-
-        def fwd(*args, _e=eager, _c=comp, **kw):
-            return _c(*args, **kw) if torch.is_grad_enabled() else _e(*args, **kw)
-
-        m.forward = fwd
-        n += 1
-    return n
 
 
 @torch.no_grad()
@@ -290,6 +172,17 @@ def main():
     ap.add_argument("--val_bs", type=int, default=16)
     ap.add_argument("--grad_ckpt", action="store_true")
     ap.add_argument("--compile", action="store_true")
+    ap.add_argument(
+        "--fa2",
+        action="store_true",
+        help="tower attention on FlashAttention varlen (head dim 64)",
+    )
+    ap.add_argument(
+        "--fa2_lm",
+        action="store_true",
+        help="the LM's full-attention layers on causal FlashAttention varlen (head dim "
+        "256: needs the stock wheel, the sm120 fork holds 64 / 96 / 128)",
+    )
     ap.add_argument("--mem_log", action="store_true")
     ap.add_argument("--largest_first", action="store_true")
     ap.add_argument("--workers", type=int, default=6)
@@ -354,9 +247,15 @@ def main():
         )
         base.enable_input_require_grads()
     if a.compile:
-        install_banded_tower(base)
+        oc.install_padded_tower(base, flash=a.fa2)
+        if a.fa2_lm:
+            oc.install_lm_flash()
+        n_t, n_l = oc.compile_layers(base)
         print(
-            f"banded tower {BANDS}; compiled {compile_layers(base)} blocks (static)",
+            f"padded tower (L to x{oc.PAD}, {'fa2' if a.fa2 else 'sdpa'}), LM full "
+            f"attention {'fa2' if a.fa2_lm else 'sdpa'}; compiled "
+            f"{n_t} tower + {n_l} LM blocks "
+            "(B / L / S marked, GDN as ocr_ovis3::gdr)",
             flush=True,
         )
     params = [p for p in model.parameters() if p.requires_grad]
@@ -376,13 +275,13 @@ def main():
     tr_prompt = [chats[t] for t in tr_df.task]
     va_prompt = [chats[t] for t in va_df.task]
     max_px = a.max_tokens * PATCH_PX
-    # --compile: the LM's S padded to a multiple of 64 (a handful of static shapes)
+    # --compile: S padded to x8 for the SDPA backward's S % 8 guard (ovis3_compile)
     collate = vl.Collate(
-        proc, tr_prompt, MIN_PX, max_px, pad_to_multiple_of=64 if a.compile else None
+        proc, tr_prompt, MIN_PX, max_px, pad_to_multiple_of=8 if a.compile else None
     )
     tr_tokens = ovis_tokens(tr_df.w.to_numpy(), tr_df.h.to_numpy(), max_px)
-    if a.compile:  # a batch pads to its largest crop's band
-        tr_tokens = band_of(tr_tokens)
+    if a.compile:  # a batch pads to its largest crop, rounded up to oc.PAD
+        tr_tokens = oc.pad_len(tr_tokens)
 
     def padded_cost(b: list[int]) -> int:
         return int(tr_tokens[b].max()) * len(b)
