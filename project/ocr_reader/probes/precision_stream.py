@@ -56,25 +56,29 @@ BF = torch.bfloat16
 
 
 class Stream:
-    """The stream arm's wrappers; ``on`` toggles them, ``calls`` counts what they caught."""
+    """The stream arm's wrappers. ``on`` is False, ``"all"``, ``"lm"`` (LM decoder layers
+    only) or ``"tower"`` (vision blocks only); ``calls`` counts what they caught."""
 
     def __init__(self, model, model_kind: str):
         from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
-        self.on = False
+        self.on: bool | str = False
+        self.tower_ids = {
+            id(m) for n, m in model.named_modules() if "language_model" not in n
+        }
         self.calls = {"linear": 0, "attn": 0, "gdn": 0}
         self.linears = [
             (n, m)
             for n, m in model.named_modules()
             if isinstance(m, torch.nn.Linear) and BLOCK.search(n + ".")
         ]
-        for _, m in self.linears:
-            m.forward = self._linear(m)
+        for n, m in self.linears:
+            m.forward = self._linear(m, "lm" if "language_model" in n else "tower")
 
         orig = ALL_ATTENTION_FUNCTIONS["sdpa"]
 
         def attn(module, query, key, value, attention_mask, *args, **kw):
-            if not self.on:
+            if not self.active("tower" if id(module) in self.tower_ids else "lm"):
                 return orig(module, query, key, value, attention_mask, *args, **kw)
             self.calls["attn"] += 1
             dt = query.dtype
@@ -99,9 +103,12 @@ class Stream:
             for name in ("torch_chunk_gated_delta_rule", "torch_recurrent_gated_delta_rule"):
                 setattr(q35, name, self._gdn(getattr(q35, name)))
 
-    def _linear(self, m):
+    def active(self, part: str) -> bool:
+        return self.on == "all" or self.on == part
+
+    def _linear(self, m, part: str):
         def forward(x):
-            if not self.on:
+            if not self.active(part):
                 return F.linear(x, m.weight, m.bias)
             self.calls["linear"] += 1
             b = None if m.bias is None else m.bias.to(BF)
@@ -111,7 +118,7 @@ class Stream:
 
     def _gdn(self, rule):
         def wrapped(query, key, value, g, beta, **kw):
-            if not self.on:
+            if not self.active("lm"):
                 return rule(query, key, value, g=g, beta=beta, **kw)
             self.calls["gdn"] += 1
             dt = query.dtype
@@ -138,13 +145,19 @@ def head32(model):
 # --- measurements -----------------------------------------------------------------
 
 
-def teacher_forced(model, batches, params):
-    """Target logits (fp32, CPU) and the summed CE gradient of ``params`` (fp32, CPU)."""
+def teacher_forced(model, batches, params, jitter: float = 0.0):
+    """Target logits (fp32, CPU) and the summed CE gradient of ``params`` (fp32, CPU).
+    ``jitter`` adds Gaussian noise at that fraction of ``pixel_values``' std (seed 0)."""
+    gen = torch.Generator(device="cuda").manual_seed(0)
     for p in params:
         p.grad = None
     logits, tgts = [], []
     for enc in batches:
         enc = {k: v.to("cuda") if torch.is_tensor(v) else v for k, v in enc.items()}
+        if jitter:
+            px = enc["pixel_values"]
+            noise = torch.randn(px.shape, generator=gen, device="cuda", dtype=px.dtype)
+            enc["pixel_values"] = px + jitter * px.std() * noise
         labels = enc.pop("labels")
         enc.pop("n_boundary_fallback", None)
         K = int((labels != -100).sum(1).max()) + 1
@@ -194,6 +207,17 @@ def main():
     ap.add_argument("--val_bs", type=int, default=16)
     ap.add_argument("--max_tokens", type=int, default=1024)
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument(
+        "--arms",
+        default="fp32,stream,bf16,bf16_head32",
+        help="fp32 first; also stream_lm / stream_tower (the stream arm's bf16 ops in one "
+        "part only, the other part fp32), fp32_twin (fp32 again: the kernels' own "
+        "run-to-run gap), jitter_<eps> (fp32, pixel_values + eps x std noise)",
+    )
+    ap.add_argument("--no_decode", action="store_true", help="teacher-forced only")
+    ap.add_argument(
+        "--per_linear", action="store_true", help="every linear's distance in the json"
+    )
     a = ap.parse_args()
 
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -260,37 +284,47 @@ def main():
         p.requires_grad_(True)
     print(f"{len(params)} block linears, {sum(p.numel() for p in params) / 1e6:.0f}M", flush=True)
 
-    arms = {}
-    convert = {"fp32": model.float, "bf16": lambda: model.to(BF)}
-    ref = None
-    for arm in ("fp32", "stream", "bf16", "bf16_head32"):
-        convert.get(arm, lambda: None)()
-        stream.on = arm == "stream"
+    arms, ref = {}, None
+    arm_list = a.arms.split(",")
+    assert arm_list[0] == "fp32", "the fp32 reference runs first"
+    for arm in arm_list:
+        model.to(BF if arm.startswith("bf16") else torch.float32)
+        stream.on = {"stream": "all", "stream_lm": "lm", "stream_tower": "tower"}.get(
+            arm, False
+        )
         stream.calls = dict.fromkeys(stream.calls, 0)
         t0 = time.time()
         with head32(model) if arm == "bf16_head32" else nullcontext():
             model.eval()  # predict() leaves the model in train(); no dropout either way
-            z, tgt, grads = teacher_forced(model, batches, params)
+            jit = float(arm.split("_", 1)[1]) if arm.startswith("jitter_") else 0.0
+            z, tgt, grads = teacher_forced(model, batches, params, jit)
             calls = dict(stream.calls)
-            preds = decode(model, prompts, va)
-        scored = score(va_df, preds)
-        rec = {
-            "ce": F.cross_entropy(z, tgt).item(),
-            "val": vl.val_metrics(scored),
-            "wall": round(time.time() - t0, 1),
-        }
-        if arm == "stream":
+            preds = None if a.no_decode else decode(model, prompts, va)
+        rec = {"ce": F.cross_entropy(z, tgt).item(), "wall": round(time.time() - t0, 1)}
+        if preds is not None:
+            rec["val"] = vl.val_metrics(score(va_df, preds))
+        if stream.on:
             rec["calls"] = calls
         if ref is None:
             ref = {"z": z, "grads": grads, "preds": preds}
             rec["floor"] = grad_stats(names, [g.to(BF).float() for g in grads], grads)
+            if a.per_linear:
+                rec["grad_norm"] = {n: g.norm().item() for n, g in zip(names, grads)}
         else:
             rec["logit_rel"] = rel(z, ref["z"])
             rec["top1_agree"] = (z.argmax(-1) == ref["z"].argmax(-1)).float().mean().item()
             rec["grad_rel"] = grad_stats(names, grads, ref["grads"])
-            rec["decode_same"] = float(np.mean([p == q for p, q in zip(preds, ref["preds"])]))
+            if a.per_linear:
+                rec["per_linear"] = {
+                    n: rel(g, r) for n, g, r in zip(names, grads, ref["grads"])
+                }
+            if preds is not None:
+                rec["decode_same"] = float(
+                    np.mean([p == q for p, q in zip(preds, ref["preds"])])
+                )
         arms[arm] = rec
-        print(f"[{arm}] {json.dumps(rec)}", flush=True)
+        short = {k: v for k, v in rec.items() if k not in ("per_linear", "grad_norm")}
+        print(f"[{arm}] {json.dumps(short)}", flush=True)
         del z, grads
         torch.cuda.empty_cache()
 
