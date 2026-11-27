@@ -25,11 +25,7 @@ curl -LsSf https://github.com/sorryhyun/anima_lora/releases/latest/download/inst
 irm https://github.com/sorryhyun/anima_lora/releases/latest/download/install.ps1 | iex
 ```
 
-Sign in to Hugging Face and download models from the GUI. 
-
-### move
-[Advanced installation](#advanced-installation).
-
+Sign in to Hugging Face and download models from the GUI. Requirements, checksum-verified and pinned installs, and the manual clone path: [installation guide](docs/installation/README.md).
 
 ## Features
 
@@ -90,54 +86,6 @@ make test                 # sample with the latest LoRA
 ```
 
 Config chain: `configs/base.toml → configs/presets.toml[<preset>] → configs/methods/<method>.toml → CLI args`. Flags: [training.md](docs/anima/guidelines/training.md), [inference.md](docs/anima/guidelines/inference.md). All docs: [docs/](docs/README.md).
-
-## Advanced installation
-
-**Requirements:** NVIDIA Ampere or newer with driver ≥595 (Python 3.13 + PyTorch 2.14 + CUDA 13.2). Windows ROCm targets RDNA 4 (`gfx1200` / `gfx1201`; certified on RX 9060 XT / 9070 XT) with PyTorch 2.13 + ROCm 10.0.
-
-The installer writes to `./anima_lora/` (`ANIMA_DIR` overrides) and, on Windows, adds an "Anima LoRA GUI" desktop shortcut. Force the backend with `$env:ANIMA_BACKEND='cuda'` or `'rocm'`. Pin a release with `ANIMA_VERSION=<tag>`. Update in place with `make update`.
-
-<details>
-<summary><b>Safer install</b> — verify the script before running</summary>
-
-Every release ships a `checksums.txt` (SHA-256 of the installers and source archives).
-
-```bash
-# Linux / macOS
-curl -fLO https://github.com/sorryhyun/anima_lora/releases/latest/download/install.sh
-curl -fLO https://github.com/sorryhyun/anima_lora/releases/latest/download/checksums.txt
-grep install.sh checksums.txt | sha256sum -c -    # must print "install.sh: OK"
-less install.sh
-sh install.sh
-```
-```powershell
-# Windows (PowerShell)
-iwr https://github.com/sorryhyun/anima_lora/releases/latest/download/install.ps1 -OutFile install.ps1
-iwr https://github.com/sorryhyun/anima_lora/releases/latest/download/checksums.txt -OutFile checksums.txt
-(Get-FileHash install.ps1 -Algorithm SHA256).Hash.ToLower()   # compare against checksums.txt
-notepad install.ps1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-</details>
-
-### Manual (from a clone)
-
-```bash
-make sync                                                  # uv sync with the torch stack picked from the GPU (below)
-uv sync                                                    # CUDA (default, every platform)
-uv sync --no-group cuda-windows --group rocm-windows       # Windows AMD only
-uv sync --no-default-groups --group torch-213              # older torch (or torch-212)
-uv sync --no-default-groups --group fa2-sm120              # RTX 50-series only: patched FlashAttention in the venv
-
-hf auth login             # or sign in from the GUI
-make download-models      # DiT, TE, VAE, PE-Spatial, CJK vocab pack, tagger, tag DB → models/
-make download-list        # installed vs missing; SAM3 and OCR are opt-in
-```
-
-- A plain `uv sync` installs the default stack. `make sync` and `make update` sync the stack saved in `.anima_torch`; with no file yet they pick it from the hardware (Linux x86_64 with an RTX 50-series card: `fa2-sm120`, or `fa2-sm120-fp32div` when libstdc++ is new enough for the kitchen wheel below) and save it. `ANIMA_TORCH=2.13 make sync` picks one by hand. ROCm users repeat the same `--group` flags on every later manual `uv sync`.
-- The manual CUDA path does not install the CUDA 13.2 toolkit that `torch.compile` / Triton needs: see [installation guide, Appendix B](docs/installation/README.md#appendix-b-manual-cuda-install).
-- Install with `uv sync` against the committed `uv.lock`, not `pip install`: pip ignores uv's index strategy and the prebuilt flash-attn wheels.
-- Optional, Linux x86_64: `comfy-kitchen` with the INT8 activation fix ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289)). The int8 DiT linears then skip their fp32 input copy at the same output, and the int8 backward and the MOSS int8 text encoder divide in fp32. The trainer detects the kernel at runtime; the stock one keeps working. Needs libstdc++ from GCC 13+ (Ubuntu 24.04+). It ships in the `fa2-sm120-fp32div` stack (`uv sync --no-default-groups --group fa2-sm120-fp32div`, or `ANIMA_TORCH=2.14-sm120-fp32div make sync`), which `make sync` picks by itself on an RTX 50-series Linux box that meets the libstdc++ floor.
 
 ## Try it in the browser
 

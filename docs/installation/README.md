@@ -15,6 +15,8 @@ Setup shared by every line in this repo (Anima, MOSS-Image): requirements, insta
 | Python | 3.13 required | - |
 | NVIDIA driver | 595 or newer (CUDA 13.x requirement) | - |
 
+The default stack is Python 3.13 + PyTorch 2.14 + CUDA 13.2 on NVIDIA Ampere or newer. Windows ROCm targets RDNA 4 (`gfx1200` / `gfx1201`; certified on RX 9060 XT / 9070 XT) with PyTorch 2.13 + ROCm 10.0.
+
 MOSS-Image is measured on a 16 GB card; its memory plan is in [MOSS guidebook §4.2](../guidelines/moss-guidebook.md#42-memory-plan-16-gb).
 
 ---
@@ -35,6 +37,30 @@ curl -LsSf https://github.com/sorryhyun/anima_lora/releases/latest/download/inst
 - Installs into `.\anima_lora\` (change with `$env:ANIMA_DIR`, pin a version with `$env:ANIMA_VERSION='v2.0.0'`).
 - If it asks for a reboot (common after the CUDA step), reboot and re-run the same one-liner — it picks up where it left off.
 - To reopen it later, use the "Anima LoRA GUI" desktop shortcut.
+- On Windows the installer picks CUDA or ROCm from the card; force one with `$env:ANIMA_BACKEND='cuda'` or `'rocm'`.
+
+<details>
+<summary><b>Safer install</b> — verify the script before running</summary>
+
+Every release ships a `checksums.txt` (SHA-256 of the installers and source archives).
+
+```bash
+# Linux / macOS
+curl -fLO https://github.com/sorryhyun/anima_lora/releases/latest/download/install.sh
+curl -fLO https://github.com/sorryhyun/anima_lora/releases/latest/download/checksums.txt
+grep install.sh checksums.txt | sha256sum -c -    # must print "install.sh: OK"
+less install.sh
+sh install.sh
+```
+```powershell
+# Windows (PowerShell)
+iwr https://github.com/sorryhyun/anima_lora/releases/latest/download/install.ps1 -OutFile install.ps1
+iwr https://github.com/sorryhyun/anima_lora/releases/latest/download/checksums.txt -OutFile checksums.txt
+(Get-FileHash install.ps1 -Algorithm SHA256).Hash.ToLower()   # compare against checksums.txt
+notepad install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+</details>
 
 > Prefer to `git clone` yourself, or the automatic install failed? See [Appendix A](#appendix-a-manual-install-uv--git) / [Appendix B](#appendix-b-manual-cuda-install).
 
@@ -75,6 +101,7 @@ uv sync --no-default-groups --group fa2-sm120
 - A plain `uv sync` puts the stock wheel back. `python tasks.py sync` (`make sync`) and `python tasks.py update` sync the stack saved in `.anima_torch`. On Linux x86_64 with no saved stack, they detect an RTX 50-series card and pick this build by themselves. On Windows, run the sync once with `ANIMA_TORCH=2.14-sm120` set (PowerShell: `$env:ANIMA_TORCH='2.14-sm120'; python tasks.py sync`); later syncs and updates keep it.
 - It holds sm_120 kernels only: on any other card, stay on the stock wheel.
 - ComfyUI running on the same venv gets the build too.
+- Linux x86_64 only: the `fa2-sm120-fp32div` stack (`uv sync --no-default-groups --group fa2-sm120-fp32div`, or `ANIMA_TORCH=2.14-sm120-fp32div make sync`) adds `comfy-kitchen` with the INT8 activation fix ([comfy-kitchen#289](https://github.com/Comfy-Org/comfy-kitchen/issues/289)). The int8 DiT linears then skip their fp32 input copy at the same output, and the int8 backward and the MOSS int8 text encoder divide in fp32. The trainer detects the kernel at runtime; the stock one keeps working. It needs libstdc++ from GCC 13+ (Ubuntu 24.04+); `make sync` picks this stack by itself on an RTX 50-series Linux box that meets that floor.
 
 Details: [fa2_sm120.md](../moss/optimization/fa2_sm120.md).
 
@@ -92,10 +119,23 @@ irm https://astral.sh/uv/install.ps1 | iex   # 1) Install uv (check `uv --versio
 git clone https://github.com/sorryhyun/anima_lora.git   # 2) Clone
 cd anima_lora
 winget install ezwinports.make                          # 3) (Optional) make
-uv sync                                                 # 4) Install dependencies
+make sync                                               # 4) Install dependencies (torch stack picked from the GPU)
+hf auth login                                           # 5) Or sign in from the GUI
+make download-models                                    # 6) Anima set: DiT, TE, VAE, PE-Spatial, CJK vocab pack, tagger, tag DB → models/
+make download-list                                      #    installed vs missing; SAM3 and OCR are opt-in
 ```
 
-`uv sync` installs everything into `.venv/` inside `anima_lora/`; you don't need `pip install`.
+`make sync` syncs the torch stack saved in `.anima_torch`; with no file yet it picks one from the hardware ([§5](#5-rtx-50-series-patched-flashattention-optional)) and saves it. `ANIMA_TORCH=2.13 make sync` picks one by hand. A plain `uv sync` installs the default stack; other stacks by hand:
+
+```bash
+uv sync                                                    # CUDA (default, every platform)
+uv sync --no-group cuda-windows --group rocm-windows       # Windows AMD only
+uv sync --no-default-groups --group torch-213              # older torch (or torch-212)
+```
+
+ROCm users repeat the same `--group` flags on every later manual `uv sync`. The manual path does not install the CUDA 13.2 toolkit that `torch.compile` / Triton needs: see [Appendix B](#appendix-b-manual-cuda-install).
+
+`uv sync` installs everything into `.venv/` inside `anima_lora/`, against the committed `uv.lock`. Don't `pip install`: pip ignores uv's index strategy and the prebuilt flash-attn wheels.
 
 Running `python tasks.py ...` in a fresh terminal uses the *system* Python and fails with `ModuleNotFoundError`. Fix it either way:
 
