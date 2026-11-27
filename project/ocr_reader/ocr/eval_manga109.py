@@ -58,7 +58,7 @@ def main():
     ap.add_argument("--kind", choices=["sfx", "speech"], action="append")
     ap.add_argument("--limit", type=int, help="first N crops per kind (smoke)")
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--bs", type=int, default=32)
+    ap.add_argument("--bs", type=int, default=64)
     ap.add_argument(
         "--max_new_tokens",
         type=int,

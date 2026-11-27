@@ -121,14 +121,24 @@ class Vl16Reader:
     """PaddleOCR-VL 1.6, the line's reader. ``ckpt`` is a full model dir, or a peft
     adapter dir merged onto :data:`VL16_BASE` (plus its ``tower.safetensors`` /
     ``lm.safetensors`` full-finetuned weights when present). ``task`` is the prompt
-    (:data:`VL16_TASKS`); callers set it per read."""
+    (:data:`VL16_TASKS`); callers set it per read.
+
+    ``tower_attn``: the vision tower's attention. ``auto`` = FlashAttention (one varlen
+    call per layer) when ``flash_attn`` imports, else SDPA, which transformers runs one
+    image at a time; the LM stays on SDPA."""
 
     name = "vl16"
     max_tokens = MAX_NEW_TOKENS
     LONGEST = 1280 * 28 * 28
     """The processor's ``longest_edge`` (pixels)."""
 
-    def __init__(self, ckpt: str | None, device: str, task: str = "OCR:"):
+    def __init__(
+        self,
+        ckpt: str | None,
+        device: str,
+        task: str = "OCR:",
+        tower_attn: str = "auto",
+    ):
         import torch
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
@@ -157,8 +167,19 @@ class Vl16Reader:
                 assert not unexpected, unexpected[:5]
                 print(f"loaded {full} ({len(sd)} tensors)")
         self.model = model.to(device).eval()
+        if tower_attn == "auto":
+            import importlib.util
+
+            tower_attn = (
+                "flash_attention_2"
+                if importlib.util.find_spec("flash_attn")
+                else "sdpa"
+            )
+        if tower_attn != "sdpa":
+            self.model.set_attn_implementation({"vision_config": tower_attn})
+        self.tower_attn = tower_attn
         self.proc = AutoProcessor.from_pretrained(path)
-        # ♡ / 💢 as tokens (TARGET_NORM 10) when the checkpoint carries their rows
+        # ♡ / 💢 as tokens when the checkpoint carries their rows
         from .vocab_ext import load as load_vocab_ext
 
         load_vocab_ext(adapter or ckpt, self.model, self.proc.tokenizer)
@@ -173,15 +194,16 @@ class Vl16Reader:
         bs: int = 32,
         *,
         caps: list[int] | None = None,
-        budget: float | None = None,
-        prefetch: int = 0,
+        budget: float | None = 65536,
+        prefetch: int = 1,
         min_pixels: int = 0,
         progress: bool = False,
     ) -> list[str]:
         """Greedy reads of ``crops`` (BGR) with :attr:`task`, batched in crop-area order.
 
         A batch closes at ``bs`` crops or, with ``budget``, at that many tower patches
-        (bs 64 at the stock size OOMed on the largest crops). ``caps`` (one per crop)
+        (bs 64 at the stock size OOMed on the largest crops without one; 65,536 by
+        default, about 0.6 GB of tower MLP activations). ``caps`` (one per crop)
         caps ``max_new_tokens`` per batch at its largest entry instead of the flat
         :attr:`max_tokens`, so a batch of short columns does not run the full cap for one
         runaway. ``prefetch`` batches are prepared on a thread while the GPU generates.

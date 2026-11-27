@@ -475,7 +475,7 @@ def main():
     ap.add_argument(
         "--mainsub",
         action="store_true",
-        help="main / sub data (crop_dataset.load_mainsub, main-sub-approach.md): OCR: "
+        help="main / sub data (crop_dataset.load_mainsub, README § main / sub): OCR: "
         "reads the main text, OCR2: the sub; best by val main exact",
     )
     ap.add_argument(
@@ -492,6 +492,11 @@ def main():
         "(sfxp_missed, build_sfx_prefix.py --missed) as SFX: rows",
     )
     ap.add_argument("--max_train", type=int, help="rows per kind (subsample)")
+    ap.add_argument(
+        "--train_frac",
+        type=float,
+        help="train on this share of the train rows, drawn per metric group (seed --seed)",
+    )
     ap.add_argument("--val_limit", type=int)
     ap.add_argument("--val_bs", type=int, default=16)
     ap.add_argument("--no_augment", action="store_true")
@@ -550,13 +555,21 @@ def main():
     )
     ap.add_argument(
         "--stream",
-        default="bf16",
+        default="fp32_lean",
         choices=["bf16", "fp32", "fp32_lean"],
         help="fp32: the residual stream, norms, activations, tower embeddings and "
         "projector in fp32 around bf16 block GEMMs and attention cores "
-        "(core/vl16_stream.py); fp32_lean: only the stream and the norms, the tensors "
-        "between two GEMMs of a block stay bf16",
+        "(core/vl16_stream.py); fp32_lean (default): only the stream and the norms, "
+        "the tensors between two GEMMs of a block stay bf16; bf16: the whole model",
     )
+    ap.add_argument(
+        "--eva",
+        action="store_true",
+        help="init every lora_A from its input: the top-r principal directions of "
+        "--eva_crops unaugmented training crops, orthogonal to the input's mean and "
+        "whitened (core/vl16_eva.py); --mainsub only, not with --init_adapter",
+    )
+    ap.add_argument("--eva_crops", type=int, default=300)
     ap.add_argument(
         "--loss_mean",
         default="token",
@@ -592,6 +605,7 @@ def main():
         a.max_train, a.val_limit, a.epochs = a.max_train or 480, 64, 1
     if a.ckpt_lm_only:
         a.grad_ckpt = True
+    assert not (a.eva and a.init_adapter), "--eva inits a fresh adapter"
 
     torch.manual_seed(a.seed)
     random.seed(a.seed)
@@ -678,6 +692,34 @@ def main():
             use_dora=a.dora,
         )
         model = get_peft_model(base, cfg)
+        if a.eva:
+            from project.ocr_reader.core import vl16_eva
+
+            assert a.mainsub, "--eva draws its crops from the --mainsub training set"
+            # a draw from the rows the run trains on, so the kinds keep their shares
+            ev_df = cd.load_mainsub(
+                "train", neg_share=a.neg_share, limit=a.max_train, seed=a.seed
+            ).sample(a.eva_crops, random_state=a.seed)
+            ev_ds = cd.CropDataset(ev_df, augment=False)
+            ev_chat = {t: chat(t) for t in (cd.OCR_TASK, cd.OCR2_TASK)}
+
+            def eva_batches():
+                for i, task in enumerate(ev_df.task):
+                    yield proc(
+                        text=[ev_chat[task]],
+                        images=[Image.fromarray(ev_ds[i][0][:, :, ::-1])],
+                        return_tensors="pt",
+                        images_kwargs={
+                            "size": {
+                                "shortest_edge": min_edge,
+                                "longest_edge": a.max_tokens * 196,
+                            }
+                        },
+                    ).to("cuda")
+
+            (out / "eva_init.json").write_text(
+                json.dumps(vl16_eva.init(model, eva_batches()), indent=1)
+            )
     # (file, params, lr) per fully-trained block; each takes an fp32 master copy
     full_groups: list[tuple[str, list[tuple[str, torch.nn.Parameter]], float]] = []
     for on, file, pick, lr in (
@@ -815,6 +857,13 @@ def main():
             extra_replace=a.extra_replace,
         )
         va_df = cd.load_split("val", limit=a.val_limit, seed=a.seed)
+    if a.train_frac:
+        g = "metric" if "metric" in tr_df else "kind"
+        tr_df = (
+            tr_df.groupby(g, group_keys=False)
+            .sample(frac=a.train_frac, random_state=a.seed)
+            .reset_index(drop=True)
+        )
     # --sfx_prefix crops carry the 4 px margin: no pad jitter, rotation on an expanded canvas
     tr = cd.CropDataset(
         tr_df,

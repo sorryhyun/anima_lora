@@ -164,7 +164,7 @@ def main():
         help="pad fraction, or cap4 = min(0.12 · long, 0.3 · short, 4 px)",
     )
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--bs", type=int, default=32)
+    ap.add_argument("--bs", type=int, default=64)
     ap.add_argument("--max_new_tokens", type=int, default=MAX_NEW_TOKENS)
     a = ap.parse_args()
     name = a.name or (
