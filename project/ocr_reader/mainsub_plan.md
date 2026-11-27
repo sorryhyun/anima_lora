@@ -189,3 +189,10 @@ leaves this file for a report.
 - [`mainsub_subr_agents_2026_11_27.md`](reports/mainsub_subr_agents_2026_11_27.md): all 5,138
   unchecked ruby subs of the training quarter through 103 Sonnet agents (ok 2,394; content wrong
   2,340, 45.5 %; spacing only 369), pass `subr1127`.
+- [`blank_tokens_2026_11_27.md`](reports/blank_tokens_2026_11_27.md): the reader's bf16
+  gradient error by token (blank patches: 37 % of the block-0 gradient, 93 % of its error; 65 %
+  off in bf16, 46 % with `fp32_lean`, the other tokens 13 % and 8.6 %); reads under noise on the
+  blank patches and with the blank tokens replaced at the tower's output (exact level with
+  clean); `mainsub_1127_1418` (no gradient through blank tokens) against `mainsub_1127_1419` at
+  1k: Manga109 test SFX 1,681 against 1,675 (level), speech 2,389 against 2,406 (p 0.04). The
+  probe arms and the trainer flag are not in the tree.
