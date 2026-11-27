@@ -126,6 +126,7 @@ def _vision_attn_forward(
     v = self.v_proj(hidden_states).view(n, self.num_heads, self.head_dim)
     cos, sin = position_embeddings
     q, k = apply_rotary_pos_emb_vision(q, k, cos, sin)
+    q, k, v = (t.to(self.out_proj.weight.dtype) for t in (q, k, v))  # bf16 core
     o = tower_attn(
         q.contiguous(), k.contiguous(), v.contiguous(), cu_seqlens, self.scaling
     )
@@ -150,6 +151,7 @@ def _vision_attn_forward_fa2(
     v = self.v_proj(hidden_states).view(n, self.num_heads, self.head_dim)
     cos, sin = position_embeddings
     q, k = apply_rotary_pos_emb_vision(q, k, cos, sin)
+    q, k, v = (t.to(self.out_proj.weight.dtype) for t in (q, k, v))  # bf16 core
     if cu_seqlens.shape[0] == 2:
         o = flash_attn_func(q[None], k[None], v[None], softmax_scale=self.scaling)[0]
     else:

@@ -737,6 +737,8 @@ def token_batches(
     rng: random.Random,
     *,
     padded: bool = False,
+    lm_tokens: np.ndarray | None = None,
+    lm_budget: int = 0,
 ) -> list[list[int]]:
     """Batches capped by **total packed tokens**, not crop count.
 
@@ -753,25 +755,50 @@ def token_batches(
 
     ``batch_size`` stays the upper bound on crops per batch, so a budget wider than
     ``batch_size`` × median simply reproduces the old behaviour.
+
+    ``lm_budget`` > 0 also caps the batch's padded LM tokens (longest row of
+    ``lm_tokens`` × crops): a long label pads the decoder's sequence for every row.
     """
     key = tokens * np.exp(np.array([rng.gauss(0, 0.15) for _ in range(len(tokens))]))
     order = np.argsort(key)
     batches: list[list[int]] = []
     cur: list[int] = []
-    run = top = 0
+    run = top = lm_top = 0
     for i in order:
         t = int(tokens[i])
+        lm = int(lm_tokens[i]) if lm_budget else 0
         cost = max(top, t) * (len(cur) + 1) if padded else run + t
-        if cur and (cost > budget or len(cur) >= batch_size):
+        over = cost > budget or max(lm_top, lm) * (len(cur) + 1) > lm_budget > 0
+        if cur and (over or len(cur) >= batch_size):
             batches.append(cur)
-            cur, run, top = [], 0, 0
+            cur, run, top, lm_top = [], 0, 0, 0
         cur.append(int(i))
         run += t
         top = max(top, t)
+        lm_top = max(lm_top, lm)
     if cur:
         batches.append(cur)
     rng.shuffle(batches)
     return batches
+
+
+def lm_row_tokens(
+    tok,
+    prompts: list[str],
+    image_tokens: np.ndarray,
+    targets: list[str],
+    pad_to: int = 1,
+) -> np.ndarray:
+    """LM input tokens per row, for ``token_batches``' ``lm_budget``: the row's prompt
+    with its one image placeholder expanded to ``image_tokens``, then the label and the
+    end token, rounded up to ``pad_to``. Exact on the unaugmented crop."""
+    n_prompt = {
+        p: len(tok(p, add_special_tokens=False).input_ids) - 1 for p in set(prompts)
+    }
+    labels = tok([t + tok.eos_token for t in targets], add_special_tokens=False)
+    n = np.array([n_prompt[p] for p in prompts]) + np.asarray(image_tokens)
+    n = n + np.array([len(i) for i in labels.input_ids])
+    return -(-n // pad_to) * pad_to
 
 
 def collate_raw(items):

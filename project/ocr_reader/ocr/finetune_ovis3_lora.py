@@ -9,12 +9,12 @@ Data = ``crop_dataset.load_mainsub`` (the same rows, neg share and val split as
 ``finetune_vl16_lora.py --mainsub``). Prompts: ``OCR:`` rows take the card's
 ``plain_ocr`` turn (the model's own crop-OCR task, as ``OCR:`` is VL's), ``OCR2:`` rows
 the literal ``OCR2:``; thinking off. Target = the normalised text + ``<|im_end|>``, loss
-on the target tokens only (``finetune_vl16_lora.target_loss``).
+on the target tokens only, the head on their rows (``finetune_vl16_lora.target_loss``).
 
 Pixels: the card's floor 448² (99.6 % of the train crops sit at or near it, 784–900
 tower tokens of 16 px), training capped at ``--max_tokens`` × 256 px; val reads at the
 card's 2880² cap. Batches are cut at ``--token_budget`` padded tower tokens
-(``crop_dataset.token_batches``).
+(``crop_dataset.token_batches``) and, with ``--lm_budget``, at that many padded LM tokens.
 
 LoRA (α = 2r) on every Linear of the vision tower + merger at ``--tower_rank`` and on
 the LM decoder layers' GDN ``in_proj_qkv`` / ``in_proj_z`` / ``out_proj``, attention
@@ -168,6 +168,13 @@ def main():
         default=4096,
         help="cap each batch's padded tower tokens (largest crop x crops); 4 x 1,024",
     )
+    ap.add_argument(
+        "--lm_budget",
+        type=int,
+        default=0,
+        help="also cap each batch's padded LM tokens (longest row x crops; a row = "
+        "prompt + tower tokens / 4 + label); 0 = off",
+    )
     ap.add_argument("--val_limit", type=int, default=500)
     ap.add_argument("--val_bs", type=int, default=16)
     ap.add_argument("--grad_ckpt", action="store_true")
@@ -280,21 +287,40 @@ def main():
         proc, tr_prompt, MIN_PX, max_px, pad_to_multiple_of=8 if a.compile else None
     )
     tr_tokens = ovis_tokens(tr_df.w.to_numpy(), tr_df.h.to_numpy(), max_px)
+    # image tokens = the merger's 2 x 2 groups; --compile pads S to x8
+    tr_lm = cd.lm_row_tokens(
+        tok, tr_prompt, tr_tokens // 4, tr.targets, 8 if a.compile else 1
+    )
     if a.compile:  # a batch pads to its largest crop, rounded up to oc.PAD
         tr_tokens = oc.pad_len(tr_tokens)
 
     def padded_cost(b: list[int]) -> int:
         return int(tr_tokens[b].max()) * len(b)
 
+    def lm_cost(b: list[int]) -> int:
+        return int(tr_lm[b].max()) * len(b)
+
+    def cut(r: random.Random) -> list[list[int]]:
+        return cd.token_batches(
+            tr_tokens,
+            a.token_budget,
+            a.bs,
+            r,
+            padded=True,
+            lm_tokens=tr_lm,
+            lm_budget=a.lm_budget,
+        )
+
     rng = random.Random(a.seed)
-    probe = cd.token_batches(
-        tr_tokens, a.token_budget, a.bs, random.Random(a.seed), padded=True
-    )
+    probe = cut(random.Random(a.seed))
     cost = np.array([padded_cost(b) for b in probe])
+    lm_costs = np.array([lm_cost(b) for b in probe])
     print(
         f"train {len(tr)} val {len(va)}; batches {len(probe)} (budget {a.token_budget}, "
-        f"max_tokens {a.max_tokens}): padded tower tokens max {cost.max()} median "
-        f"{int(np.median(cost))}; {int((np.array([len(b) for b in probe]) < a.bs).sum())} short",
+        f"lm_budget {a.lm_budget}, max_tokens {a.max_tokens}): padded tower tokens max "
+        f"{cost.max()} median {int(np.median(cost))}, LM tokens max {lm_costs.max()} median "
+        f"{int(np.median(lm_costs))}; "
+        f"{int((np.array([len(b) for b in probe]) < a.bs).sum())} short",
         flush=True,
     )
 
@@ -321,9 +347,9 @@ def main():
     step, micro, seen, t0 = 0, 0, 0, time.time()
     losses: list[torch.Tensor] = []
     while step < a.steps:
-        batches = cd.token_batches(tr_tokens, a.token_budget, a.bs, rng, padded=True)
-        if a.largest_first:
-            batches.sort(key=lambda b: -padded_cost(b))
+        batches = cut(rng)
+        if a.largest_first:  # the LM's tokens set this reader's peak; tower breaks ties
+            batches.sort(key=lambda b: (-lm_cost(b), -padded_cost(b)))
         dl = DataLoader(
             tr,
             batch_sampler=batches,

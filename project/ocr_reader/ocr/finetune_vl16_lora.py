@@ -236,20 +236,24 @@ class Collate:
 
 
 def target_loss(model, enc, K: int | None = None) -> torch.Tensor:
-    """CE on the target suffix only: keep the last K logits (K = longest label
-    run + 1), shift, ignore -100. Pass ``K`` from the CPU labels to skip the
-    device sync of reading it off the GPU."""
+    """CE on the target tokens only, the head run on their rows alone: the decoder's
+    last K hidden states (K = longest label run + 1), shifted, the non-target positions
+    dropped before ``lm_head``. Pass ``K`` from the CPU labels to skip the device sync
+    of reading it off the GPU."""
     labels = enc.pop("labels")
     enc.pop("n_boundary_fallback", None)
     if K is None:
         K = int((labels != -100).sum(1).max()) + 1
-    out = model(**enc, logits_to_keep=K)
-    logits = out.logits[:, :-1]  # positions seq-K .. seq-2 predict seq-K+1 .. seq-1
+    base = model.get_base_model() if hasattr(model, "get_base_model") else model
+    hidden = base.model(**enc)[0]
+    # positions seq-K .. seq-2 predict seq-K+1 .. seq-1
     tgt = labels[:, -(K - 1) :]
-    # upcast the target positions only, not B x K x 103k (one long label among
-    # short ones made that the largest fp32 tensor of the step)
     keep = tgt != -100
-    return torch.nn.functional.cross_entropy(logits[keep].float(), tgt[keep])
+    # one long label among short ones pads K for every row (8 crops, K 80, the others
+    # 8 tokens: the head on B x K took 10.4 ms and 666 MiB, on the 135 target rows 4.0
+    # ms and 448 MiB)
+    logits = base.lm_head(hidden[:, -K:-1][keep])
+    return torch.nn.functional.cross_entropy(logits.float(), tgt[keep])
 
 
 def train_loss(model, enc, K: int, crop_mean: bool = False) -> torch.Tensor:
@@ -314,13 +318,13 @@ def train_loss(model, enc, K: int, crop_mean: bool = False) -> torch.Tensor:
     ).pooler_output
     image = torch.cat(image, dim=0).to(embeds.dtype)
     embeds = embeds.flatten(0, 1).index_copy(0, up(at), image).view_as(embeds)
-    out = model(
+    hidden = m(
         inputs_embeds=embeds,
         position_ids=up(pos),
         attention_mask=None if mask is None else up(mask),
-        logits_to_keep=K,
-    )
-    picked = out.logits[:, :-1][up(row), up(col)]
+    ).last_hidden_state
+    # the head on the target rows only, as in target_loss
+    picked = model.get_base_model().lm_head(hidden[:, -K:-1][up(row), up(col)])
     if not crop_mean:
         return torch.nn.functional.cross_entropy(picked.float(), up(tgt[row, col]))
     # weights from the CPU labels: 1 / (the crop's target tokens × crops holding a target)
@@ -538,6 +542,22 @@ def main():
         "crop_dataset.token_batches); 0 = fixed --bs area batches",
     )
     ap.add_argument(
+        "--lm_budget",
+        type=int,
+        default=0,
+        help="with --token_budget, also cap each batch's padded LM tokens (longest row "
+        "x crops; a row = prompt + patch tokens / 4 + label); 0 = off",
+    )
+    ap.add_argument(
+        "--stream",
+        default="bf16",
+        choices=["bf16", "fp32", "fp32_lean"],
+        help="fp32: the residual stream, norms, activations, tower embeddings and "
+        "projector in fp32 around bf16 block GEMMs and attention cores "
+        "(core/vl16_stream.py); fp32_lean: only the stream and the norms, the tensors "
+        "between two GEMMs of a block stay bf16",
+    )
+    ap.add_argument(
         "--loss_mean",
         default="token",
         choices=["token", "crop"],
@@ -615,6 +635,11 @@ def main():
         missing, unexpected = base.load_state_dict(sd, strict=False)
         assert not unexpected, unexpected[:5]
         print(f"init tower {a.init_tower} ({len(sd)} tensors)", flush=True)
+    if a.stream != "bf16":
+        from project.ocr_reader.core import vl16_stream
+
+        n = vl16_stream.install(base, lean=a.stream == "fp32_lean")
+        print(f"{a.stream} stream: {n} bf16 block linears", flush=True)
     for p in base.parameters():
         p.requires_grad_(False)
     targets = [] if a.lm_full else lm_lora_targets(base)
@@ -830,23 +855,45 @@ def main():
         tr_df.w.to_numpy(), tr_df.h.to_numpy(), min_edge, max_pixels
     )
 
+    # image tokens = the projector's 2 x 2 groups; --compile pads S to x8
+    tr_lm = cd.lm_row_tokens(
+        proc.tokenizer,
+        tr_prompt if isinstance(tr_prompt, list) else [tr_prompt] * len(tr),
+        tr_tokens // 4,
+        tr.targets,
+        8 if a.compile else 1,
+    )
+
     def make_batches(r: random.Random) -> list[list[int]]:
         if a.token_budget:
-            return cd.token_batches(tr_tokens, a.token_budget, a.bs, r, padded=True)
+            return cd.token_batches(
+                tr_tokens,
+                a.token_budget,
+                a.bs,
+                r,
+                padded=True,
+                lm_tokens=tr_lm,
+                lm_budget=a.lm_budget,
+            )
         return cd.area_batches(tr.area, a.bs, r)
 
     def padded_cost(b: list[int]) -> int:
         return int(tr_tokens[b].max()) * len(b)
 
+    def lm_cost(b: list[int]) -> int:
+        return int(tr_lm[b].max()) * len(b)
+
     probe = make_batches(random.Random(a.seed))
     cost = np.array([padded_cost(b) for b in probe])
+    lm_costs = np.array([lm_cost(b) for b in probe])
     n_rows = np.array([len(b) for b in probe])
     print(
         f"batches {len(probe)} (token_budget {a.token_budget or 'off'}, min_pixels {min_edge}, "
         f"max_tokens {a.max_tokens}): "
         f"padded tokens max {cost.max()} p99 {int(np.percentile(cost, 99))} "
-        f"median {int(np.median(cost))}; {int((n_rows < a.bs).sum())} short "
-        f"(min {n_rows.min()} crops)",
+        f"median {int(np.median(cost))}, LM tokens (lm_budget {a.lm_budget or 'off'}) "
+        f"max {lm_costs.max()} median {int(np.median(lm_costs))}; "
+        f"{int((n_rows < a.bs).sum())} short (min {n_rows.min()} crops)",
         flush=True,
     )
     steps_per_epoch = len(probe) // a.grad_accum
@@ -924,8 +971,8 @@ def main():
     best_key = "main_exact" if a.mainsub else "sfx_exact"
     for ep in range(1, a.epochs + 1):
         batches = make_batches(rng)
-        if a.largest_first:
-            batches.sort(key=lambda b: -padded_cost(b))
+        if a.largest_first:  # the tower's tokens set this reader's peak; LM breaks ties
+            batches.sort(key=lambda b: (-padded_cost(b), -lm_cost(b)))
         dl = DataLoader(
             tr,
             batch_sampler=batches,
