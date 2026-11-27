@@ -287,7 +287,7 @@ These carry routing and token insertion rather than a plain weight delta, so the
 
 Everything the GUI does is also available from the CLI. `make <target>` and `python tasks.py <target>` are equivalent, and since the one-line install does not install `make`, use `python tasks.py` if `make` is missing (or `winget install ezwinports.make`).
 
-> Getting `ModuleNotFoundError`? Prefix commands with `uv run` or activate the venv — see [installation guide, Appendix A](../installation/README.md#appendix-a-manual-install-uv--git).
+> Getting `ModuleNotFoundError`? Prefix commands with `uv run` or activate the venv — see [manual installation](../installation/manual.md#1-install-from-a-clone-uv--git).
 
 Model download
 
@@ -377,13 +377,13 @@ make update                                        # = python tasks.py update
 
 ## Appendix B. Manual Install (uv · git)
 
-> Moved to the shared [installation guide](../installation/README.md#appendix-a-manual-install-uv--git).
+> Moved to the shared [manual installation guide](../installation/manual.md#1-install-from-a-clone-uv--git).
 
 ---
 
 ## Appendix C. Manual CUDA Install
 
-> Moved to the shared [installation guide](../installation/README.md#appendix-b-manual-cuda-install).
+> Moved to the shared [manual installation guide](../installation/manual.md#2-manual-cuda-install).
 
 ---
 

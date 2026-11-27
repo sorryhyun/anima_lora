@@ -25,7 +25,7 @@ curl -LsSf https://github.com/sorryhyun/anima_lora/releases/latest/download/inst
 irm https://github.com/sorryhyun/anima_lora/releases/latest/download/install.ps1 | iex
 ```
 
-Sign in to Hugging Face and download models from the GUI. Requirements, checksum-verified and pinned installs, and the manual clone path: [installation guide](docs/installation/README.md).
+Sign in to Hugging Face and download models from the GUI. Requirements and checksum-verified or pinned installs: [installation guide](docs/installation/README.md). From a clone: [manual.md](docs/installation/manual.md).
 
 ## Features
 
