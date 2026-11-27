@@ -56,6 +56,7 @@ The user's calls and what earlier reads on this line showed.
 - Before a target is built on, check the interval it is applied over. A ceiling probe is not a
   ranking of training targets.
 - A run is proposed once, and not again while the user is still asking what the method is.
+- A micro arm on this line is 250 DM iterations, about 25 min.
 - Sheets for the user: the student column only, two columns 0 / 1 shuffled per row, one file per
   row at the probe PNGs' size; picks come back as a 0 / 1 string (a missing row is no pick). Rows
   are p0 group, p1 café, p2 guitarist × seeds 1–4; read `key.json`'s `cell` before naming a row.

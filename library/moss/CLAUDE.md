@@ -80,3 +80,11 @@ Spectrum pack's KSampler (Spectrum for MOSS) (`custom-nodes` skill).
   and a cache pass re-encodes when one changes; generate's `prompt_tail auto` follows the LoRA's
   stamp.
 - Decode with the DiT off the card: the fp32 VAE decode at ~2 MP does not fit beside it.
+- **A probe that patches, swaps or masks activations carries three controls from its first run**:
+  an `own` arm (must read 0; store the fed rows at the stream's precision, since bf16 storage on
+  an fp32 stream reads the floor), a `jitter` arm and an equal-norm isotropic arm. Arms are
+  compared against those, not against 0. Any nonzero change re-draws the rounding inside the
+  blocks: a 1e-3 relative jitter of the text rows moves the velocity by 1e-4…2e-4 (σ 0.95) to
+  5e-4…1e-3 (σ 0.3), as much as a change 10–30 times larger, on bf16 and on int8 + fp32 stream
+  alike (`docs/moss/findings/text_stream_page_state.md`). Probes run on generation's DiT (int8 +
+  fp32 stream).

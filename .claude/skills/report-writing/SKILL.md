@@ -11,9 +11,9 @@ Applies to `project/*/reports/`, `project/*/findings/`, plan entries and state s
 
 ## Facts and interpretation are separate sections
 
-- **Facts:** what ran (named by its config file), data, numbers, tables, probe and eval outputs, recorded verdicts,
-  shipped artifacts, and the user's own reads and decisions, attributed to the user ("The user read
-  1403's composition as better than 1020's").
+- **Facts:** what ran (named by its config file), data, numbers, tables, probe and eval outputs,
+  recorded verdicts, shipped artifacts, and the user's own reads and decisions, attributed to the
+  user ("The user read 1403's composition as better than 1020's").
 - **Interpretation:** what the numbers suggest, mechanisms, hypotheses, conclusions, the reasoning
   for the next step.
 
@@ -29,13 +29,12 @@ right:  Facts           anchor MSE 0.131 against 0.070.
         Interpretation  The GAN term pulled the student away from the anchor target.
 ```
 
-Recorded verdicts and the user's reads are part of the record. When restructuring an existing
-report, keep them word for word in Facts; do not reword, soften or re-judge them.
+When restructuring an existing report, recorded verdicts and the user's reads stay word for word
+in Facts.
 
 Claude's own read of renders goes in Facts under its own label ("Claude's read"), with whether the
-arm labels were visible when it was made. It is an observation to check, not a verdict: no plan
-entry or later report gives it as the reason an arm passed. Going on from it on an easy read is
-covered in the `experiment-planning` skill (Gate).
+arm labels were visible when it was made. No plan entry or later report gives it as the reason an
+arm passed (`experiment-planning` skill, Gate, for going on from an easy read).
 
 Where a probe verdict and the user's read differ, both are written on adjacent lines in Facts
 ("Probe: not passed. The user's read: composition better than 1020's, the line goes on."), and
@@ -52,8 +51,9 @@ or decided; a comparison names the two config files.
 - The run id and checkpoint (EMA step), the script or log tag it came from, and n: pairs, prompts,
   seeds.
 - Its conditions when they differ from the named config (an eval on another teacher or data).
-- For a comparison, the spread it is read against and that spread's source, or "spread unknown".
-  A gap is called a gain, a loss or a tie only against a spread.
+- For a comparison, the bar it is read against and the bar's source: a twin gap, the floor on
+  record, or "spread unknown" (`experiment-planning` skill, Gate). A gap is called a gain or a loss
+  only against a twin gap; against the floor alone it is above the floor or level.
 - Where the output lives. `output/`, `results/`, `_archive/` and paths outside the repo are local:
   mark them "(local)".
 
@@ -68,8 +68,8 @@ emphasis for the writer's own stress.
 ## Index files
 
 `README.md` maps, the `README.md` of a line's `reports/`, `configs/` and `findings/` folders, and
-run tables stay lists and tables: each entry says what the file or run is, plus a number or a recorded verdict where
-one exists. Readings go in a short note under the table, not in its cells.
+run tables stay lists and tables: each entry says what the file or run is, plus a number or a
+recorded verdict where one exists. Readings go in a short note under the table, not in its cells.
 
 A verdict cell uses one of: baseline, passed, not passed, level, adopted on the user's read,
 shipped, stopped at <step>, failed (<what was observed>). A cell that explains ("not the cause",
