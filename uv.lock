@@ -286,7 +286,7 @@ dependencies = [
     { name = "accelerate" },
     { name = "aiohttp" },
     { name = "alembic" },
-    { name = "anime-tools" },
+    { name = "anime-tools", extra = ["all"] },
     { name = "av" },
     { name = "blake3" },
     { name = "chardet" },
@@ -452,7 +452,7 @@ requires-dist = [
     { name = "accelerate", specifier = ">=1.13.0" },
     { name = "aiohttp", specifier = ">=3.13.5" },
     { name = "alembic", specifier = ">=1.18.4" },
-    { name = "anime-tools", git = "https://github.com/sorryhyun/anime_tools?tag=v0.15.1" },
+    { name = "anime-tools", extras = ["all"], git = "https://github.com/sorryhyun/anime_tools?tag=v0.16.0" },
     { name = "av", specifier = ">=17.0.1" },
     { name = "blake3", specifier = ">=1.0.8" },
     { name = "chardet" },
@@ -620,23 +620,29 @@ torch-214 = [
 
 [[package]]
 name = "anime-tools"
-version = "0.15.1"
-source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.15.1#e6699c217b6734c5213c9455756741cc060fcd6e" }
+version = "0.16.0"
+source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.16.0#e01f0f091c22423303df2252e1ca07c553180005" }
 dependencies = [
-    { name = "einops" },
     { name = "fastapi" },
     { name = "huggingface-hub" },
-    { name = "matplotlib" },
     { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "peft" },
     { name = "pillow" },
-    { name = "psutil" },
-    { name = "pyarrow" },
-    { name = "pycocotools" },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "safetensors" },
+    { name = "tqdm" },
+    { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "einops" },
+    { name = "matplotlib" },
+    { name = "opencv-python" },
+    { name = "peft" },
+    { name = "psutil" },
+    { name = "pyarrow" },
+    { name = "pycocotools" },
     { name = "sam3" },
     { name = "sentencepiece" },
     { name = "setuptools" },
@@ -651,11 +657,9 @@ dependencies = [
     { name = "torchvision", version = "0.29.0a0+rocm10.1.0", source = { registry = "https://stable.repo.amd.com/rocm/whl-next/" }, marker = "(sys_platform == 'win32' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'win32' and extra != 'group-10-anima-lora-cuda-windows' and extra != 'group-10-anima-lora-fa2-sm120' and extra != 'group-10-anima-lora-fa2-sm120-fp32div' and extra != 'group-10-anima-lora-torch-212' and extra != 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-fa2-sm120') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-fa2-sm120-fp32div') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-fa2-sm120-fp32div') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-torch-213' and extra == 'group-10-anima-lora-torch-214')" },
     { name = "torchvision", version = "0.29.1", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-fa2-sm120' and extra != 'group-10-anima-lora-fa2-sm120-fp32div' and extra != 'group-10-anima-lora-torch-212' and extra != 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-fa2-sm120') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-fa2-sm120-fp32div') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-fa2-sm120-fp32div') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-torch-213' and extra == 'group-10-anima-lora-torch-214')" },
     { name = "torchvision", version = "0.29.1+cu132", source = { registry = "https://download.pytorch.org/whl/cu132" }, marker = "(sys_platform != 'darwin' and sys_platform != 'win32' and extra != 'group-10-anima-lora-fa2-sm120' and extra != 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'darwin' and sys_platform != 'win32' and extra != 'group-10-anima-lora-fa2-sm120' and extra != 'group-10-anima-lora-fa2-sm120-fp32div' and extra != 'group-10-anima-lora-torch-212' and extra != 'group-10-anima-lora-torch-213') or (sys_platform != 'darwin' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-212') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-213') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-212') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-213') or extra == 'group-10-anima-lora-fa2-sm120' or extra == 'group-10-anima-lora-fa2-sm120-fp32div' or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-213') or (extra != 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-213') or (extra != 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-214') or (extra != 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-213' and extra == 'group-10-anima-lora-torch-214')" },
-    { name = "tqdm" },
     { name = "transformers" },
     { name = "triton-windows", version = "3.7.1.post27", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'win32' and extra == 'group-10-anima-lora-torch-212') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-torch-213' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-fa2-sm120') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-fa2-sm120-fp32div') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-fa2-sm120-fp32div') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-214')" },
     { name = "triton-windows", version = "3.8.0.post29", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'win32' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-fa2-sm120') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-fa2-sm120-fp32div') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'win32' and extra != 'group-10-anima-lora-torch-212' and extra != 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-fa2-sm120') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-fa2-sm120-fp32div') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-fa2-sm120-fp32div') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-fa2-sm120-fp32div' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-212') or (extra == 'group-10-anima-lora-rocm-windows' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-213') or (extra == 'group-10-anima-lora-torch-212' and extra == 'group-10-anima-lora-torch-214') or (extra == 'group-10-anima-lora-torch-213' and extra == 'group-10-anima-lora-torch-214')" },
-    { name = "uvicorn" },
 ]
 
 [[package]]

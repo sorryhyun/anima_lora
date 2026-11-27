@@ -54,6 +54,9 @@ or regenerate the source, then update the copy.
 
 ## Publishing
 
+- MOSS Toolkit and the Anima Tagger node install `anime-tools` through their
+  `requirements.txt`, one extra each (`[ocr]`, `[tagger]`) pinned to a release tag. When a
+  release changes what a node imports, move its pin and republish.
 - Run `make vendor-sync` first for a node with a `_vendor/` tree (root `CLAUDE.md`).
 - Spectrum (`~/ComfyUI-Spectrum-KSampler`): check `git status` and ask before
   vendor-sync or publish; always bump the version. Its `pyproject.toml` is CRLF, so an

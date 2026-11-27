@@ -99,8 +99,9 @@ dependencies = [
     "scikit-learn>=1.9.0",
     "peft>=0.20.0",
     # Curation package (caption grammar, Anima Tagger, caption stages — split
-    # out 2026-08-30); pinned to a release tag in [tool.uv.sources].
-    "anime-tools",
+    # out 2026-08-30); pinned to a release tag in [tool.uv.sources]. [all]: since
+    # 0.16 the bare package is the torch-free core.
+    "anime-tools[all]",
     # LyCORIS LoKr / LoHa weight math for the MOSS adapters (library/moss/lora.py).
     "lycoris-lora==4.0.0",
     "flash-linear-attention>=0.5.2 ; sys_platform == 'linux'",
@@ -196,7 +197,7 @@ diffusers = { git = "https://github.com/huggingface/diffusers", rev = "80c7ed262
 # lock would then reference ../anime_tools, and a flagless `uv sync` fails on
 # every machine without one. Test an unreleased change with
 # PYTHONPATH=../anime_tools instead.
-anime-tools = { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.15.1" }
+anime-tools = { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.16.0" }
 torch = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
