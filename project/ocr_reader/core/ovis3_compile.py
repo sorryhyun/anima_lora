@@ -310,7 +310,7 @@ def install_padded_tower(model, flash: bool = False) -> None:
 def install_lm_flash() -> None:
     """Run the LM's full-attention layers on causal ``flash_attn_varlen_func`` in
     training forwards (grad on); generation keeps SDPA. Needs a FlashAttention build
-    with head dim 256 (the stock wheel; the sm120 fork holds 64 / 96 / 128).
+    with head dim 256 (the stock wheel, or the sm120 fork from its hdim64-96-128-256 release).
 
     Training pads on the left, so each row is a pad segment then a real one:
     ``cu_seqlens`` = ``[0, p0, S, S + p1, 2S, …]`` with p_i the row's pad count, read in

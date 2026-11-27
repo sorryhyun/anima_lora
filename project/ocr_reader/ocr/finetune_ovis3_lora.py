@@ -181,7 +181,7 @@ def main():
         "--fa2_lm",
         action="store_true",
         help="the LM's full-attention layers on causal FlashAttention varlen (head dim "
-        "256: needs the stock wheel, the sm120 fork holds 64 / 96 / 128)",
+        "256: the stock wheel, or the sm120 fork from its hdim64-96-128-256 release)",
     )
     ap.add_argument("--mem_log", action="store_true")
     ap.add_argument("--largest_first", action="store_true")
