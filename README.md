@@ -1,5 +1,9 @@
 # anima_lora
 
+[![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![PyTorch 2.14](https://img.shields.io/badge/PyTorch-2.14-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![CUDA 13.2](https://img.shields.io/badge/CUDA-13.2-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-13-2-0-download-archive)
+
 > **New: [MOSS-Image LoRA](docs/moss/README.md).** Train LoRAs for OpenMOSS's 5B [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base) on a 16 GB card at 1.1 s/step.
 
 🛠️ Install: [English](docs/installation/README.md) · [한국어](docs/installation/설치.md) · [日本語](docs/installation/インストール.md) · [中文](docs/installation/安装.md)
