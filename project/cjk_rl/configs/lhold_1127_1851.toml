@@ -1,0 +1,38 @@
+# Layout hold (probes/layout_hold.py, forward only) on kmix_1126_1158's rows:
+#   tswap_1126_1209 with A and B of different lengths (2 glyphs against 5 - 8, both ways),
+#   k = 1 and 2, the own renders at 4 seeds, and each page's boxes and bubble kept.
+#   The user, 11-27, on a layout scaffold for the sentence loop (a bank of screened
+#   (scene, seed), or a LoRA / cached state on the steps before σ 0.75): "어차피 검증되면
+#   새로운 방법에 리더만 올리면 되니까 probe 해볼수있음 해보자".
+# Question: what fixes a page's bubble: the (scene, seed), the string, or the steps before
+#   σ 0.75?
+#   - own pages of one (scene, seed) agree across strings well over the level of another
+#     seed -> a list of screened (scene, seed) holds a layout, with the string still on
+#     every step; the micro arm on such a list is proposed.
+#   - at the level of another seed -> the seed does not carry it; a seed list is scene
+#     screening and no more.
+#   - a k = 2 swap page keeps A's bubble (IoU to A's own over IoU to B's own) -> the layout
+#     is set by σ 0.75 and a scaffold on the first two steps holds it; B's positions on
+#     that page against B's own say what a bubble made for another length costs.
+#   - it follows B's -> the last two steps redraw the bubble; a first-steps scaffold does
+#     not hold a layout.
+#   Not separable where short and long strings already share a bubble on their own pages
+#   (the short-long row of the pair table at the same scene and seed).
+# Read: the three tables (own pages by length; pairs of own pages by level; swap pages
+#   against A's and B's own). The bubble is a new meter (the bright region under the picked
+#   box): its null is the pair table's "another scene" row, its misses are the leak and
+#   no-bright counts, and the row sheets are viewed. Claude's read, sent to the user.
+# Bars: spread unknown.
+# Cost: 768 renders and reads at about 0.54 s (wread_1126_1207), 7 min.
+
+rows = "seed_1008"
+words_file = "output/cjk_rl/pool/words_wread_1126_1207.json"  # local; its 12 strings of 2 glyphs and 12 of 5 - 8
+frame = "bubble"
+read_scenes = [6, 12, 45, 15]
+own_seeds = [0, 1, 2, 3]
+swap_seeds = [0, 1]
+ks = [1, 2]
+
+[table]
+run = "kmix_1126_1158"
+save = "mix"

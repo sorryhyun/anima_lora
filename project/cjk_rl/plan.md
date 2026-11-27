@@ -100,6 +100,13 @@ The sentence stage:
   (`orient`). Levers named and not tried: a render weighted by whether its box stands that
   way, `back_steps = 4`, scenes with tall bubbles. The tall pages' lower count is the model's
   lettering, not the reader's (the user, 11-26), so no reader-side fix comes first.
+- A layout bank for the loop ([idea.md](idea.md); the user, 11-27: "아이디어 자체는
+  좋은거같아"): the gradient taken only on (scene, seed) pairs with room for the string. A
+  pair holds the bubble's place across strings and reads long strings at 0.12 – 0.55 of
+  their positions; the bubble is set by σ 0.75
+  ([layout_hold](reports/layout_hold_2026_11_27.md)). Its steps (the screen, then a micro
+  arm against unscreened seeds) are in the idea file; none is queued, and they come after
+  the reader's retrain.
 - Half the backward by reading the loss off the σ 0.75 step's own x̂₀
   ([sentw](reports/sentw_2026_11_26.md), last part). Not looked at.
 
@@ -207,6 +214,7 @@ report table.
 | 7 | the same from a space's row: the pack's U+3000, T5's `▁` | `bgradw_1126_1815`, `bgradt_1126_1815` | [sent_scale](reports/sent_scale_2026_11_26.md), last part | all four steps: 0.000 ± 0.003, −0.002 ± 0.003; the read breaks after the asked glyph on 0 and 2 of 96 | – |
 | 7 | a page's own wrap as the label of a break's place: the denoising error by place, and its gradient on a break row | `bplace_1126_1840` | [sent_scale](reports/sent_scale_2026_11_26.md), last part | 17 pages kept of 480; the error at the true place under another place's on 0.560 / 0.577 / 0.578 of the pairs (a row, a line feed, the literal spelling; null 0.513 / 0.496 / 0.481); the row's gradient across strings −0.012 ± 0.014 | – |
 | 7 | the sentence run at scale: 8 000 strings at a seed, 64 renders a row, the window loss | `sents_1126_1856` | [sents](reports/sents_2026_11_26.md) | val strings' positions hit 0.345 → 0.385 → 0.391 of 288 pages at 4 000 groups and the end (sentw 0.422); kana alone 351 → 361 of 656 | – |
+| – | what fixes a page's bubble: the (scene, seed), the string, the steps before σ 0.75 | `lhold_1127_1851` | [layout_hold](reports/layout_hold_2026_11_27.md) | own pages' picked boxes within 0.1 of the side: 0.80 – 0.83 at one (scene, seed), 0.18 – 0.20 at another seed; a k = 2 swap page's bubble IoU 0.97 to A's, 0.64 – 0.68 to B's | – |
 | 7 | the break-place probe on the run at scale's rows | `bplace_1126_2131` | [sents](reports/sents_2026_11_26.md), last part | 5 pages kept of 144 when stopped | stopped at 36 of 120 strings |
 
 - The verdicts on items 2, 3 and 3c are the user's, in each report's Facts. Item 3c's is the

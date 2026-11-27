@@ -7,7 +7,8 @@ string, in order, at its length, with no invented dialogue around it.
 
 The method (the reader's loss carried by gradient through the turbo's last steps to the rows,
 which the base model then reads) is written up in [turbo_refl.md](turbo_refl.md). The next step
-and the runs done are in [plan.md](plan.md).
+and the runs done are in [plan.md](plan.md). [idea.md](idea.md) is a proposal for the sentence
+stage: a bank of (scene, seed) pairs whose layout has room for the string.
 
 ## Stages
 
@@ -161,6 +162,8 @@ The sentence stage:
   ([sentw](reports/sentw_2026_11_26.md)).
 - A line break in the quote does not move the wrap, and the reader's line break gives a break
   row no shared direction ([sent_scale](reports/sent_scale_2026_11_26.md)).
+- A (scene, seed) holds a page's bubble across strings, and the last two steps' text does
+  not move it ([layout_hold](reports/layout_hold_2026_11_27.md)).
 - At 64 renders a row the window loss lifts the read of strings less than the micro arm did
   and leaves the kana alone where they were; the row budget ends the run before the strings
   do ([sents](reports/sents_2026_11_26.md)).
@@ -229,6 +232,7 @@ The sentence stage (the user's calls, 2026-11-26):
 | [sent_prep](reports/sent_prep_2026_11_26.md) | `wread_1126_1207`, `tswap_1126_1209` | kana strings on kmix's rows; a render's text swapped at a step; the quote's characters and the labels |
 | [multi_read](reports/multi_read_2026_11_26.md) | `wmulti_1126_1252`, `enmulti_1126_1258`, `tread_1126_1306` | a clause of two or three short strings: no kana pair page of 288 with both read |
 | [sentm](reports/sentm_2026_11_26.md) | `sentm_1126_1331` | the sentence micro arm on the string's cross-entropy: val positions hit 0.345 → 0.331; pages wide where labels stand in columns |
+| [layout_hold](reports/layout_hold_2026_11_27.md) | `lhold_1127_1851` | a (scene, seed) holds the bubble's place across strings; the bubble is set by σ 0.75 |
 | [sentw](reports/sentw_2026_11_26.md) | `sgrad_*`, `aloc_1126_1501`, `sentw_1126_1528` | the window loss and its micro arm: val positions hit 0.345 → 0.422; passed |
 | [sent_scale](reports/sent_scale_2026_11_26.md) | `qbreak_1126_1751`, `bgrad*_1126_18*`, `bplace_1126_1840` | before the run at scale: line breaks in the quote, a break row's gradient, a page's own wrap as label (17 pages of 480) |
 | [sents](reports/sents_2026_11_26.md) | `sents_1126_1856`, `bplace_1126_2131` | the run at scale: val positions hit 0.345 → 0.391 (sentw 0.422), kana alone 351 → 361; its rows as a pack; the break-place probe on them, stopped |
@@ -276,6 +280,7 @@ The sentence stage (the user's calls, 2026-11-26):
 | `probes/plain_scenes.py` | scenes screened by their EN count (the screen a multi-string scene pool would reuse) |
 | `probes/base_sign.py` | a save's rows on another model of the ruler's table, in a prompt of its config (the transfer read) |
 | `probes/row_line.py`, `g2_rows.py` (CPU) | a run's saved rows read with no training (`wread_1126_1207` ran on it); a run's rows sorted into the plan's groups with labelled sheets |
+| `probes/layout_hold.py` | own and swapped-text pages with each page's boxes and bubble kept: what a (scene, seed) and the early steps fix of a layout |
 | `probes/word_read.py`, `multi_read.py` (CPU), `templ_read.py` | string pages per position; clauses of several strings; pool templates of two dialogue strings |
 | `probes/sent_strings.py` (CPU), `orient_read.py`, `text_swap.py` | the sentence loop's strings from the reader's labels; which way string pages are lettered; a render's text swapped at a step |
 | `probes/sent_grad.py`, `attn_loc.py` | a row's gradient a render by step and by loss; whether a quote token's attention window holds its glyph |
