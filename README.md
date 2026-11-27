@@ -1,6 +1,6 @@
 # anima_lora
 
-> **New: [MOSS-Image LoRA](docs/moss/README.md).** Train LoRAs for OpenMOSS's 5B [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base) on a 16 GB card at 1.1 s/step, with Spectrum sampling (2.6×) — `make gui`, Model set to MOSS-Image. A separate line from Anima.
+> **New: [MOSS-Image LoRA](docs/moss/README.md).** Train LoRAs for OpenMOSS's 5B [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base) on a 16 GB card at 1.1 s/step.
 
 🛠️ Install: [English](docs/installation/README.md) · [한국어](docs/installation/설치.md) · [日本語](docs/installation/インストール.md) · [中文](docs/installation/安装.md)
 
@@ -14,7 +14,7 @@ LoRA / T-LoRA training and inference engine for the [Anima](https://huggingface.
 
 ## Install
 
-One line: installs [uv](https://astral.sh/uv), picks NVIDIA CUDA or AMD ROCm on Windows, fetches the latest release, runs `uv sync` and opens the GUI (no git needed).
+Following command installs [uv](https://astral.sh/uv), picks NVIDIA CUDA or AMD ROCm on Windows, runs `uv sync` and opens the GUI.
 
 ```bash
 # Linux / macOS
@@ -25,7 +25,11 @@ curl -LsSf https://github.com/sorryhyun/anima_lora/releases/latest/download/inst
 irm https://github.com/sorryhyun/anima_lora/releases/latest/download/install.ps1 | iex
 ```
 
-Sign in to Hugging Face and download models from the GUI. Requirements, checksum-verified and pinned installs, and the manual clone path: [Advanced installation](#advanced-installation).
+Sign in to Hugging Face and download models from the GUI. 
+
+### move
+[Advanced installation](#advanced-installation).
+
 
 ## Features
 
@@ -33,11 +37,11 @@ Diagrams for every method: [`docs/anima/structure_images/`](docs/anima/structure
 
 ### Fast training
 
-**MOSS-Image, fast and accurate: 13 GB peak VRAM · 1.1 s/step** on an RTX 5070 Ti (rank 32, 1024²), against 1.6 s/step on bf16 at the same peak, with lower prediction error than bf16 at every σ tested (1.62% vs 1.93% at σ = 0.5). A LoRA freezes the base, so its linears run as GPTQ-calibrated int8 ConvRot GEMMs in both directions, over an fp32 residual stream. Details: [training_step.md](docs/moss/optimization/training_step.md), [accuracy](docs/moss/optimization/int8.md#accuracy).
+**MOSS-Image, fast and accurate: 13 GB peak VRAM · 1.1 s/step** on an RTX 5070 Ti (rank 32, 1024²), with lower prediction error than bf16. Details: [training_step.md](docs/moss/optimization/training_step.md), [accuracy](docs/moss/optimization/int8.md#accuracy).
 
-**Anima (bf16): 13.4 GB peak VRAM · 1.1 s/step** on an RTX 5060 Ti (rank 32, 1 MP). Per-block `torch.compile` with a dynamic sequence axis (one graph per token-count tier), fused QKV/KV, an activation memory budget instead of gradient checkpointing, and a compile-clean hot path. Details: [for_compile.md](docs/anima/optimizations/for_compile.md).
+**Anima (bf16): 13.4 GB peak VRAM · 1.1 s/step** on an RTX 5060 Ti (rank 32, 1 MP). Details: [for_compile.md](docs/anima/optimizations/for_compile.md).
 
-**Anima's fp32 stream.** The residual stream, modulation, q / k norms, RoPE, embedder and head run in fp32, and the block GEMMs and FlashAttention branch off it in int8 or bf16. Details: [fp32_stream.md](docs/anima/optimizations/fp32_stream.md).
+**Anima's fp32 stream.** The residual stream, modulation, q / k norms, RoPE, embedder and head run in fp32. Details: [fp32_stream.md](docs/anima/optimizations/fp32_stream.md).
 
 ### On by default
 
@@ -137,7 +141,9 @@ make download-list        # installed vs missing; SAM3 and OCR are opt-in
 
 ## Try it in the browser
 
-**[anima-turbo-webgpu.vercel.app](https://anima-turbo-webgpu.vercel.app)** runs [Anima Turbo 4-step](https://huggingface.co/sorryhyun/anima-turbo-4step) (v4, int8 ONNX) on your own GPU through WebGPU, with no install. The model files (3.2 GB) download once from Hugging Face and are cached in the browser; on an RTX 5070 Ti a 768² image takes about 3 s. Needs desktop Chrome / Edge or a recent Android Chrome with `shader-f16`. On Linux with an NVIDIA card, launch Chrome with `--enable-features=Vulkan --enable-dawn-features=vulkan_enable_f16_on_nvidia`. Source: [`project/webgpu_int8/demo/`](project/webgpu_int8/demo/index.html).
+**[anima-turbo-webgpu.vercel.app](https://anima-turbo-webgpu.vercel.app)** runs [Anima Turbo 4-step](https://huggingface.co/sorryhyun/anima-turbo-4step) (v4, int8 ONNX) on your own GPU through WebGPU, with no install.
+
+Source: [`project/webgpu_int8/demo/`](project/webgpu_int8/demo/index.html).
 
 ## License
 
