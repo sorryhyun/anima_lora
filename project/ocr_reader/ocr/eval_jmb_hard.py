@@ -2,8 +2,8 @@
 """JMangaBench_Hard v1.0 (github.com/muscgab/JMangaBench_Hard) read by the shipped reader.
 
 3 015 text-box crops (sound effects, stylised lettering, handwriting), one label each.
-The crops are read by ``anime_tools.ocr.reader.OcrReader`` (``--version``: v7, the
-default, or v6) under ``OCR:``, greedy, in batches of 16 sorted by area — the card's
+The crops are read by ``anime_tools.ocr.reader.OcrReader`` (``--version``: the
+package's default reader or an opt-in one) under ``OCR:``, greedy, in batches of 16 sorted by area — the card's
 code, which the leaderboard's v6 row was run with (there at most 80 new tokens; the
 package's 200 here).
 
@@ -32,6 +32,8 @@ import json
 import time
 from pathlib import Path
 
+from anime_tools.ocr.reader import DEFAULT_VERSION, READER_VERSIONS
+
 from project.ocr_reader.core.paths import EVAL_DATA, EVAL_OUT
 
 ARMS = ("given", "guard", "rep")
@@ -59,7 +61,13 @@ def main() -> None:
     )
     ap.add_argument("--data", type=Path, default=EVAL_DATA / "jmb_hard")
     ap.add_argument("--name", required=True, help="the output folder")
-    ap.add_argument("--version", default="v7", choices=("v7", "v6"))
+    ap.add_argument("--version", default=DEFAULT_VERSION, choices=READER_VERSIONS)
+    ap.add_argument(
+        "--adapter_dir",
+        type=Path,
+        help="a local checkpoint dir instead of the Hub row (``--version`` still sets "
+        "the crop margin); its ``vocab.safetensors`` is loaded when present",
+    )
     ap.add_argument("--arms", nargs="+", default=list(ARMS), choices=ARMS)
     ap.add_argument("--bs", type=int, default=16)
     ap.add_argument("--limit", type=int, help="read only this many crops (smoke)")
@@ -78,8 +86,17 @@ def main() -> None:
         crops.append(im)
     out = EVAL_OUT / "jmb_hard" / a.name
     out.mkdir(parents=True, exist_ok=True)
-    rd = OcrReader.load(device="cuda", batch_size=a.bs, version=a.version)
-    print(f"[jmb] {len(crops)} crops, reader {a.version}, arms {a.arms}", flush=True)
+    rd = OcrReader.load(
+        device="cuda", batch_size=a.bs, version=a.version, adapter_dir=a.adapter_dir
+    )
+    if a.adapter_dir:
+        from project.ocr_reader.core import vocab_ext
+
+        vocab_ext.load(a.adapter_dir, rd.model, rd.processor.tokenizer)
+    print(
+        f"[jmb] {len(crops)} crops, reader {a.adapter_dir or a.version}, arms {a.arms}",
+        flush=True,
+    )
 
     reads = {g["key"]: {"key": g["key"]} for g in gt}
     for arm in ("given", "rep"):  # ``given`` is always read: ``guard`` takes its reads

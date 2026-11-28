@@ -452,7 +452,7 @@ requires-dist = [
     { name = "accelerate", specifier = ">=1.13.0" },
     { name = "aiohttp", specifier = ">=3.13.5" },
     { name = "alembic", specifier = ">=1.18.4" },
-    { name = "anime-tools", extras = ["all"], git = "https://github.com/sorryhyun/anime_tools?tag=v0.16.0" },
+    { name = "anime-tools", extras = ["all"], git = "https://github.com/sorryhyun/anime_tools?tag=v0.17.0" },
     { name = "av", specifier = ">=17.0.1" },
     { name = "blake3", specifier = ">=1.0.8" },
     { name = "chardet" },
@@ -620,8 +620,8 @@ torch-214 = [
 
 [[package]]
 name = "anime-tools"
-version = "0.16.0"
-source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.16.0#e01f0f091c22423303df2252e1ca07c553180005" }
+version = "0.17.0"
+source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.17.0#257949560c50273ef12ff75218036b10d72463f7" }
 dependencies = [
     { name = "fastapi" },
     { name = "huggingface-hub" },
